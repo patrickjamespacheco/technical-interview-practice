@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Practice Journey — Interview Practice</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :root {
+      --bg: #f1f5f9; --surface: #fff; --border: #e2e8f0; --border-hover: #cbd5e1;
+      --text: #0f172a; --secondary: #475569; --muted: #64748b; --accent: #2563eb;
+      --accent-hover: #1d4ed8; --soft: #eff6ff; --success: #166534; --success-bg: #f0fdf4;
+      --warning: #92400e; --warning-bg: #fffbeb; --radius: 10px;
+      --shadow: 0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.04);
+    }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); line-height: 1.55; }
+    button, a { font: inherit; }
+    a { color: var(--accent); }
+    :focus-visible { outline: 3px solid #93c5fd; outline-offset: 3px; }
+    .skip-link { position: fixed; left: 1rem; top: -4rem; z-index: 20; padding: .5rem .8rem; background: var(--text); color: white; border-radius: 6px; }
+    .skip-link:focus { top: 1rem; }
+    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 1.15rem max(1rem, calc((100vw - 1180px) / 2)); }
+    .topline { display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
+    .back { font-size: .82rem; font-weight: 600; text-decoration: none; color: var(--secondary); }
+    header h1 { margin: .55rem 0 .15rem; font-size: clamp(1.35rem, 3vw, 1.75rem); line-height: 1.2; }
+    header p { color: var(--secondary); margin: 0; font-size: .9rem; }
+    .layout { width: min(1180px, calc(100% - 2rem)); margin: 1.25rem auto 3rem; display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+    .rail { position: sticky; top: 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: .8rem; box-shadow: var(--shadow); }
+    .rail h2 { margin: .2rem .45rem .7rem; font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+    .stage-list { list-style: none; padding: 0; margin: 0; display: grid; gap: .35rem; }
+    .stage-btn { width: 100%; border: 1px solid transparent; border-radius: 7px; background: transparent; padding: .7rem; text-align: left; cursor: pointer; color: var(--secondary); display: grid; grid-template-columns: 1.7rem minmax(0, 1fr); gap: .55rem; align-items: center; }
+    .stage-btn:hover { background: #f8fafc; }
+    .stage-btn[aria-current="step"] { background: var(--soft); color: #1e40af; border-color: #bfdbfe; }
+    .stage-number { width: 1.65rem; height: 1.65rem; display: grid; place-items: center; border-radius: 50%; background: #e2e8f0; font-size: .75rem; font-weight: 700; }
+    [aria-current="step"] .stage-number { background: var(--accent); color: white; }
+    .stage-label { font-size: .84rem; font-weight: 650; min-width: 0; }
+    main { min-width: 0; }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: clamp(1rem, 3vw, 2rem); overflow: hidden; }
+    .eyebrow { margin: 0 0 .35rem; color: var(--accent); text-transform: uppercase; letter-spacing: .08em; font-size: .72rem; font-weight: 750; }
+    h2 { margin: 0 0 .55rem; font-size: clamp(1.35rem, 3vw, 1.8rem); line-height: 1.25; }
+    h3 { margin: 1.6rem 0 .55rem; font-size: 1rem; }
+    p { overflow-wrap: anywhere; }
+    .lede { color: var(--secondary); margin: 0 0 1.2rem; }
+    .badges, .tags { display: flex; flex-wrap: wrap; gap: .4rem; }
+    .badge, .tag { border-radius: 999px; padding: .22rem .58rem; font-size: .73rem; font-weight: 650; }
+    .badge { background: #e8f0fe; color: #1e40af; }
+    .badge.react { background: #e0f7fa; color: #006064; } .badge.swift { background: #fff1ed; color: #b42318; }
+    .tag { background: #f1f5f9; color: var(--secondary); font-family: ui-monospace, "Cascadia Code", monospace; }
+    .info-grid { margin-top: 1.25rem; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: .7rem; }
+    .info-card { min-width: 0; border: 1px solid var(--border); border-radius: 8px; padding: .8rem; }
+    .info-card strong { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: .15rem; }
+    .outline { display: grid; gap: .55rem; padding: 0; list-style: none; counter-reset: part; }
+    .outline li { counter-increment: part; border-left: 3px solid #bfdbfe; padding: .45rem .7rem; color: var(--secondary); }
+    .outline li::before { content: "Part " counter(part) " · "; font-weight: 700; color: var(--text); }
+    pre, code { font-family: ui-monospace, "Cascadia Code", Menlo, monospace; }
+    pre { margin: .5rem 0; padding: 1rem; background: #0f172a; color: #e2e8f0; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; }
+    .legacy { border: 1px dashed #f59e0b; background: var(--warning-bg); color: var(--warning); padding: .8rem; border-radius: 8px; font-size: .85rem; }
+    .partbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-bottom: 1px solid var(--border); margin: -0.2rem 0 1.2rem; padding-bottom: .9rem; }
+    .part-dots { display: flex; flex-wrap: wrap; gap: .35rem; }
+    .part-dot { border: 1px solid var(--border); background: white; color: var(--secondary); min-width: 2rem; height: 2rem; border-radius: 999px; cursor: pointer; font-size: .75rem; font-weight: 700; }
+    .part-dot[aria-current="true"] { background: var(--accent); border-color: var(--accent); color: white; }
+    .part-status { font-size: .78rem; color: var(--muted); white-space: nowrap; }
+    .prompt { border-left: 4px solid var(--accent); background: var(--soft); padding: 1rem; border-radius: 0 8px 8px 0; font-size: 1.04rem; }
+    .reveal-row { display: flex; flex-wrap: wrap; gap: .6rem; margin: 1rem 0; }
+    .btn { border: 1px solid var(--border); border-radius: 7px; background: white; color: var(--secondary); padding: .55rem .8rem; cursor: pointer; font-weight: 650; font-size: .82rem; }
+    .btn:hover { border-color: var(--accent); color: var(--accent); }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
+    .btn.primary:hover { background: var(--accent-hover); }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+    .reveal { border: 1px solid var(--border); border-radius: 8px; padding: .2rem 1rem 1rem; margin-top: .75rem; }
+    .reveal[hidden] { display: none; }
+    ul { padding-left: 1.25rem; }
+    li + li { margin-top: .35rem; }
+    .command { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .5rem; align-items: stretch; margin: .55rem 0 1rem; min-width: 0; }
+    .command pre { margin: 0; border-radius: 8px 0 0 8px; }
+    .copy { border: 0; border-radius: 0 8px 8px 0; padding: .7rem; background: #1e293b; color: white; cursor: pointer; font-weight: 650; }
+    .copy:hover { background: #334155; }
+    .notice { border: 1px solid #bfdbfe; background: var(--soft); color: #1e3a8a; border-radius: 8px; padding: .85rem; font-size: .87rem; }
+    .self-checks { display: grid; gap: .65rem; border: 0; padding: 0; margin: 1rem 0; }
+    .self-checks legend { font-weight: 700; margin-bottom: .6rem; }
+    .check { display: flex; gap: .6rem; align-items: flex-start; padding: .7rem; border: 1px solid var(--border); border-radius: 7px; }
+    .check input { margin-top: .25rem; width: 1rem; height: 1rem; accent-color: var(--accent); }
+    .failures { display: grid; gap: .7rem; }
+    .failure { border: 1px solid var(--border); border-radius: 8px; padding: .85rem; min-width: 0; }
+    .failure strong { display: block; margin-bottom: .2rem; }
+    .failure p { margin: .22rem 0 0; color: var(--secondary); font-size: .87rem; }
+    .controls { display: flex; justify-content: space-between; gap: .8rem; margin-top: 1rem; }
+    .controls .btn:last-child { margin-left: auto; }
+    .error { max-width: 680px; margin: 4rem auto; text-align: center; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+    @media (max-width: 760px) {
+      .layout { grid-template-columns: 1fr; width: min(100% - 1rem, 700px); }
+      .rail { position: static; overflow-x: auto; }
+      .rail h2 { display: none; }
+      .stage-list { display: flex; min-width: max-content; }
+      .stage-btn { width: auto; min-width: 9rem; }
+      .info-grid { grid-template-columns: 1fr; }
+      .topline { align-items: flex-start; }
+      .command { grid-template-columns: 1fr; }
+      .command pre, .copy { border-radius: 8px; }
+    }
+    @media (max-width: 430px) { .partbar { align-items: flex-start; flex-direction: column; } .panel { padding: 1rem; } }
+    @media print {
+      body { background: white; } header, .rail, .controls, .reveal-row, .copy { display: none !important; }
+      .layout { display: block; width: 100%; margin: 0; } .panel { border: 0; box-shadow: none; padding: 0; }
+      pre { color: black; background: #f8fafc; border: 1px solid #cbd5e1; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#stage-content">Skip to stage content</a>
+  <header>
+    <div class="topline"><a class="back" href="index.html">← All problems</a><span id="local-note" class="badge">Saved locally</span></div>
+    <h1 id="problem-title">Practice journey</h1>
+    <p id="problem-subtitle">Frame it, plan it, code it, then verify it.</p>
+  </header>
+  <div class="layout" id="app" hidden>
+    <nav class="rail" aria-label="Journey stages"><h2>Your journey</h2><ol class="stage-list" id="stage-list"></ol></nav>
+    <div>
+      <main id="stage-content" class="panel" tabindex="-1"></main>
+      <nav class="controls" aria-label="Stage navigation">
+        <button class="btn" id="previous" type="button">← Previous</button>
+        <button class="btn primary" id="next" type="button">Next →</button>
+      </nav>
+    </div>
+  </div>
+  <div id="error" class="panel error" hidden></div>
+  <div id="announcer" class="sr-only" aria-live="polite"></div>
+  <script src="journey-data.js"></script>
+  <script>
+    (function () {
+      "use strict";
+      var SCHEMA_VERSION = 1;
+      var STAGES = ["Navigate and frame", "Plan the solution", "Code", "Verify"];
+      var params = new URLSearchParams(location.search);
+      var problemKey = params.get("problem");
+      var problem = window.JOURNEY_PROBLEMS && window.JOURNEY_PROBLEMS[problemKey];
+      var app = document.getElementById("app");
+      var content = document.getElementById("stage-content");
+      var storageKey = "practice-journey:v" + SCHEMA_VERSION + ":" + problemKey;
+      var state = { stage: 0, part: 1, reveals: {}, checks: {}, verified: {} };
+
+      if (!problem) {
+        var error = document.getElementById("error");
+        error.hidden = false;
+        error.innerHTML = "<h1>Journey not found</h1><p>This problem does not have an authored journey yet.</p><p><a href=\"index.html\">Return to the problem index</a></p>";
+        return;
+      }
+      try { state = Object.assign(state, JSON.parse(localStorage.getItem(storageKey) || "{}")); } catch (_) {}
+      // Hints always start closed on page entry, even when other progress resumes.
+      state.reveals = {};
+      state.stage = Math.max(0, Math.min(3, Number(state.stage) || 0));
+      state.part = Math.max(1, Math.min(problem.parts.length, Number(state.part) || 1));
+
+      document.title = problem.title + " — Practice Journey";
+      document.getElementById("problem-title").textContent = problem.title;
+      document.getElementById("problem-subtitle").textContent = problem.description;
+      app.hidden = false;
+
+      function esc(value) { var d = document.createElement("div"); d.textContent = value == null ? "" : String(value); return d.innerHTML; }
+      function label(value) { return value.split("-").map(function (w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(" "); }
+      function save() { try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch (_) { document.getElementById("local-note").textContent = "Local saving unavailable"; } }
+      function currentPart() { return problem.parts[state.part - 1]; }
+      function guidePart() { return problem.guide.approach.find(function (item) { return item.part === state.part; }); }
+      function list(items) { return "<ul>" + items.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>"; }
+      function partBar() {
+        return '<div class="partbar"><div class="part-dots" aria-label="Choose a part">' + problem.parts.map(function (p) {
+          return '<button type="button" class="part-dot" data-part="' + p.part + '" aria-label="Part ' + p.part + ': ' + esc(p.title) + '"' + (p.part === state.part ? ' aria-current="true"' : '') + '>' + p.part + '</button>';
+        }).join("") + '</div><span class="part-status">Part ' + state.part + ' of ' + problem.parts.length + '</span></div>';
+      }
+      function commandBlock(command, title) {
+        return '<h3>' + esc(title) + '</h3><div class="command"><pre tabindex="0"><code>' + esc(command) + '</code></pre><button class="copy" type="button" data-copy="' + esc(command) + '">Copy</button></div>';
+      }
+      function renderFrame() {
+        var example = problem.example ? '<pre><code>' + esc(problem.example) + '</code></pre>' : '<div class="legacy">This legacy pilot has no canonical usage example in its stub. Use the scenario and part outline as the requirements source.</div>';
+        return '<p class="eyebrow">Stage 1 of 4 · Requirements only</p><h2>Navigate and frame</h2><p class="lede">Understand the problem before choosing an approach.</p>' +
+          '<div class="badges"><span class="badge ' + esc(problem.language) + '">' + esc(label(problem.language)) + '</span><span class="badge">' + esc(label(problem.industry)) + '</span><span class="badge">' + esc(label(problem.level)) + '</span><span class="badge">~45 min</span></div>' +
+          '<div class="tags" style="margin-top:.65rem">' + problem.tags.map(function (t) { return '<span class="tag">#' + esc(t) + '</span>'; }).join("") + '</div>' +
+          '<div class="info-grid"><div class="info-card"><strong>Scenario</strong>' + esc(problem.description) + '</div><div class="info-card"><strong>Learning goals</strong>Build each cumulative contract while preserving earlier behavior.</div><div class="info-card"><strong>Prerequisites</strong>' + prerequisite() + '</div></div>' +
+          '<h3>Part outline</h3><ol class="outline">' + problem.parts.map(function (p) { return '<li>' + esc(p.title) + '</li>'; }).join("") + '</ol><h3>Concrete usage example</h3>' + example;
+      }
+      function prerequisite() {
+        if (problem.language === "react") return "React hooks, immutable state updates, and browser event handling.";
+        if (problem.language === "swift") return "Swift 6, value semantics, typed errors, and Swift Testing.";
+        return "Python collections, exceptions, and object-oriented design.";
+      }
+      function renderPlan() {
+        var g = guidePart(), key = String(state.part), reveal = state.reveals[key] || 0;
+        return partBar() + '<p class="eyebrow">Stage 2 of 4 · Think before revealing</p><h2>Plan part ' + state.part + ': ' + esc(currentPart().title) + '</h2><div class="prompt"><strong>Planning prompt</strong><br>' + esc(g.prompt) + '</div>' +
+          '<div class="reveal-row"><button class="btn" type="button" id="concepts">Reveal concepts</button><button class="btn" type="button" id="approach"' + (reveal < 1 ? ' disabled' : '') + '>Reveal approach &amp; pitfalls</button><button class="btn" type="button" id="reset-reveals">Reset reveals</button></div>' +
+          '<section class="reveal" id="concept-panel" tabindex="-1"' + (reveal < 1 ? ' hidden' : '') + '><h3>Concepts</h3>' + list(g.concepts) + '</section>' +
+          '<section class="reveal" id="approach-panel" tabindex="-1"' + (reveal < 2 ? ' hidden' : '') + '><h3>Approach</h3>' + list(g.steps) + '<h3>Pitfalls</h3>' + list(g.pitfalls) + '</section>' +
+          '<p class="notice">Reveals are optional. You can move on without opening either hint.</p>';
+      }
+      function renderCode() {
+        var part = currentPart(), vscode = "vscode://file" + location.pathname.replace(/\/journey\.html$/, "") + "/" + problem.stubPath;
+        var scoped = scopedCommand();
+        var checks = ["I kept the public signatures unchanged.", "I implemented this part without breaking earlier parts.", "I reviewed edge cases in the contract."];
+        return partBar() + '<p class="eyebrow">Stage 3 of 4 · Build</p><h2>Code part ' + state.part + ': ' + esc(part.title) + '</h2><h3>Signatures and contract</h3><pre><code>' + esc(part.contract) + '</code></pre>' +
+          commandBlock(problem.commands.copyCommand, "Copy the stub") + '<p><strong>Answer file:</strong> <code>' + esc(problem.commands.answerPath) + '</code></p><p>The filename must preserve the problem number and slug so the runner can map it correctly.</p>' +
+          '<p><a class="btn" href="' + esc(vscode) + '">Open stub in VS Code ↗</a></p>' + commandBlock(scoped.command, scoped.title) + (scoped.note ? '<p class="notice">' + esc(scoped.note) + '</p>' : '') +
+          '<fieldset class="self-checks"><legend>Self-reported coding checklist</legend>' + checks.map(function (text, i) { var key = state.part + ":" + i; return '<label class="check"><input type="checkbox" data-check="' + key + '"' + (state.checks[key] ? ' checked' : '') + '><span>' + esc(text) + '</span></label>'; }).join("") + '</fieldset><p class="lede">These marks are stored locally. They are not machine verification.</p>';
+      }
+      function scopedCommand() {
+        if (problem.language === "python") {
+          var suites = suitesForPart();
+          if (suites.length) return { title: "Run this part", command: problem.commands.testCommand.replace(/ -v$/, "::" + suites.join(" -v " + problem.testPath + "::") + " -v"), note: "This invokes the test classes derived for the current part." };
+        }
+        return { title: "Run the problem suite", command: problem.commands.testCommand, note: "This language's available metadata cannot honestly scope the runner to one part, so this runs the full problem suite." };
+      }
+      function suitesForPart() {
+        var pilotSuites = {
+          "python-03": [["TestCreateRole", "TestGrantRevokePermission", "TestAssignUnassignRole", "TestHasPermission"], ["TestRoleInheritance"], ["TestScopedPermissions"]],
+          "python-01": [["TestIsInZone"], ["TestGetCurrentZoneId"], ["TestProcessLocationUpdate"], ["TestAddZone", "TestRemoveZone", "TestAddAsset", "TestAddAlertRule"]]
+        };
+        return pilotSuites[problem.id] ? pilotSuites[problem.id][state.part - 1] : [];
+      }
+      function renderVerify() {
+        var suites = suitesForPart(); var green = !!state.verified[String(state.part)];
+        var success = problem.language === "react" ? "Playwright reports the selected suite passed with no failed tests." : problem.language === "swift" ? "Swift Testing finishes with zero issues." : "pytest reports all selected tests passed.";
+        return partBar() + '<p class="eyebrow">Stage 4 of 4 · Observe the terminal</p><h2>Verify part ' + state.part + '</h2><div class="notice"><strong>This page does not run tests and cannot know their result.</strong> Run the command yourself, then report what you observed.</div>' +
+          commandBlock(problem.commands.testCommand, "Exact terminal command") + '<h3>Test suites derived for this part</h3>' + (suites.length ? list(suites) : '<p>The available test metadata exposes only a full-problem suite. No part-specific suite is claimed.</p>') +
+          '<h3>What success looks like</h3><p>' + esc(success) + '</p><h3>Common failures</h3><div class="failures">' + problem.guide.verify.commonFailures.map(function (f) { return '<article class="failure"><strong>' + esc(f.symptom) + '</strong><p><b>Likely cause:</b> ' + esc(f.cause) + '</p><p><b>Check:</b> ' + esc(f.check) + '</p></article>'; }).join("") + '</div>' +
+          '<fieldset class="self-checks"><legend>Self-reported result</legend><label class="check"><input type="checkbox" id="saw-green"' + (green ? ' checked' : '') + '><span>I saw green for this part in my terminal.</span></label></fieldset><p class="lede">This mark is local and self-reported, not machine verification.</p>';
+      }
+      function render(focus) {
+        document.getElementById("stage-list").innerHTML = STAGES.map(function (name, i) { return '<li><button type="button" class="stage-btn" data-stage="' + i + '"' + (i === state.stage ? ' aria-current="step"' : '') + '><span class="stage-number">' + (i + 1) + '</span><span class="stage-label">' + esc(name) + '</span></button></li>'; }).join("");
+        content.innerHTML = [renderFrame, renderPlan, renderCode, renderVerify][state.stage]();
+        document.getElementById("previous").disabled = state.stage === 0;
+        document.getElementById("next").disabled = state.stage === 3;
+        document.getElementById("next").textContent = state.stage === 2 ? "Verify →" : "Next →";
+        bind(); save();
+        if (focus) { content.focus(); document.getElementById("announcer").textContent = STAGES[state.stage] + ", part " + state.part; }
+      }
+      function bind() {
+        Array.prototype.forEach.call(document.querySelectorAll("[data-stage]"), function (b) { b.onclick = function () { changeStage(Number(b.dataset.stage)); }; });
+        Array.prototype.forEach.call(document.querySelectorAll("[data-part]"), function (b) { b.onclick = function () { state.part = Number(b.dataset.part); render(true); }; });
+        Array.prototype.forEach.call(document.querySelectorAll("[data-check]"), function (b) { b.onchange = function () { state.checks[b.dataset.check] = b.checked; save(); }; });
+        Array.prototype.forEach.call(document.querySelectorAll("[data-copy]"), function (b) { b.onclick = function () { copyText(b.dataset.copy, b); }; });
+        var concepts = document.getElementById("concepts"), approach = document.getElementById("approach"), reset = document.getElementById("reset-reveals");
+        if (concepts) concepts.onclick = function () { state.reveals[String(state.part)] = Math.max(1, state.reveals[String(state.part)] || 0); render(false); document.getElementById("concept-panel").focus(); };
+        if (approach) approach.onclick = function () { state.reveals[String(state.part)] = 2; render(false); document.getElementById("approach-panel").focus(); };
+        if (reset) reset.onclick = function () { state.reveals = {}; render(false); reset.focus(); };
+        var green = document.getElementById("saw-green"); if (green) green.onchange = function () { state.verified[String(state.part)] = green.checked; save(); };
+      }
+      function copyText(text, button) {
+        function fallback() {
+          var range = document.createRange(); var code = button.previousElementSibling.querySelector("code"); range.selectNodeContents(code);
+          var selection = getSelection(); selection.removeAllRanges(); selection.addRange(range); button.textContent = "Text selected";
+        }
+        if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(function () { button.textContent = "Copied"; }, fallback); else fallback();
+        setTimeout(function () { button.textContent = "Copy"; }, 1800);
+      }
+      function changeStage(next) { state.stage = Math.max(0, Math.min(3, next)); render(true); }
+      document.getElementById("previous").onclick = function () { changeStage(state.stage - 1); };
+      document.getElementById("next").onclick = function () { changeStage(state.stage + 1); };
+      document.addEventListener("keydown", function (event) {
+        if (event.altKey || event.ctrlKey || event.metaKey || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
+        if (event.key === "ArrowLeft") { event.preventDefault(); changeStage(state.stage - 1); }
+        if (event.key === "ArrowRight") { event.preventDefault(); changeStage(state.stage + 1); }
+      });
+      render(false);
+    }());
+  </script>
+</body>
+</html>
