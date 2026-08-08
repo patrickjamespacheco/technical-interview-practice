@@ -1,0 +1,36 @@
+{
+  "python-03": {
+    "approach": [
+      {"part": 1, "prompt": "Which mappings make role updates and a user's permission union straightforward?", "concepts": ["role IDs map to permission sets", "user IDs map to assigned role IDs"], "steps": ["Validate role IDs at mutation boundaries.", "Return permission snapshots rather than internal collections."], "pitfalls": ["class-level mutable state", "returning an internal set by reference"]},
+      {"part": 2, "prompt": "How can inherited permissions extend the same effective-permission query?", "concepts": ["parent links", "transitive traversal"], "steps": ["Store one parent link per role.", "Make existing permission queries include ancestors."], "pitfalls": ["checking only the immediate parent", "duplicating permission logic"]},
+      {"part": 3, "prompt": "How can wildcard matching stay separate from permission collection?", "concepts": ["resource/action pairs", "exact and wildcard candidates"], "steps": ["Reuse the effective permission set.", "Compare it with the finite set of patterns that cover the request."], "pitfalls": ["treating malformed permissions as wildcards", "forgetting inherited wildcard permissions"]}
+    ],
+    "verify": {"commonFailures": [
+      {"symptom": "Tests pass alone but fail as a suite", "cause": "Mutable role or user state is shared", "check": "Initialize every collection on each manager instance."},
+      {"symptom": "Direct permissions pass but inherited checks fail", "cause": "Queries inspect only a role's own set", "check": "Trace the effective-permission query through every ancestor."}
+    ]}
+  },
+  "react-02": {
+    "approach": [
+      {"part": 1, "prompt": "What state and lifecycle boundary should own streamed incidents?", "concepts": ["effect cleanup", "immutable state updates"], "steps": ["Subscribe once when the dashboard mounts.", "Derive the active newest-first view from received incidents."], "pitfalls": ["leaking a subscription on unmount", "mutating the shared seed records"]},
+      {"part": 2, "prompt": "Which values are source state and which are derived display state?", "concepts": ["controlled filters", "memoized derivation"], "steps": ["Keep incidents and filter selections as separate state.", "Derive the visible list without reconnecting the feed."], "pitfalls": ["filtering incidents out of source state", "placing filter state in the subscription effect dependencies"]},
+      {"part": 3, "prompt": "What snapshot is needed to roll back one optimistic containment request?", "concepts": ["optimistic updates", "per-item pending and error state"], "steps": ["Mark only the selected incident optimistically.", "On rejection, restore it and expose a retryable error."], "pitfalls": ["one global loading flag", "rollback that overwrites newer streamed state"]}
+    ],
+    "verify": {"commonFailures": [
+      {"symptom": "Rows never appear", "cause": "The feed was not connected or subscribed", "check": "Confirm mount setup and unmount cleanup are both wired."},
+      {"symptom": "Playwright cannot find a control", "cause": "A required data-testid changed", "check": "Compare the rendered attribute with the stub contract."}
+    ]}
+  },
+  "python-01": {
+    "approach": [
+      {"part": 1, "prompt": "How will boundary coordinates and missing locations be handled consistently?", "concepts": ["inclusive bounds", "missing-coordinate guard"], "steps": ["Reject incomplete locations first.", "Check both axes against their inclusive ranges."], "pitfalls": ["exclusive edge comparisons", "truthiness checks that reject zero coordinates"]},
+      {"part": 2, "prompt": "How can zone lookup reuse the membership rule without changing insertion-order behavior?", "concepts": ["ordered dictionary iteration", "first match"], "steps": ["Resolve the asset safely.", "Return the first zone whose membership check succeeds."], "pitfalls": ["duplicating coordinate comparisons", "raising for an unknown asset"]},
+      {"part": 3, "prompt": "Which old values must be captured before applying a location update?", "concepts": ["state transition", "three-field rule matching"], "steps": ["Preserve the old zone before updating coordinates.", "Recompute through the Part 2 lookup and evaluate rules only on a transition."], "pitfalls": ["losing the previous zone", "firing alerts when the zone is unchanged"]},
+      {"part": 4, "prompt": "Where should uniqueness and referential cleanup be enforced?", "concepts": ["mutation boundaries", "stable string identifiers"], "steps": ["Validate duplicate IDs before mutation.", "When removing a zone, clear affected asset references without generating alerts."], "pitfalls": ["partially mutating before validation", "treating administrative removal as a GPS transition"]}
+    ],
+    "verify": {"commonFailures": [
+      {"symptom": "Edge coordinates are classified outside", "cause": "Bounds use strict comparisons", "check": "Review both minimum and maximum comparisons for inclusivity."},
+      {"symptom": "Unexpected alerts accumulate", "cause": "Rules run without a real zone transition", "check": "Compare old and recomputed zone IDs before matching rules."}
+    ]}
+  }
+}
