@@ -172,6 +172,38 @@ the problem file should too.
 # pm.has_permission("alice", "posts:read")    # -> False
 ```
 
+### Journey authoring contract
+
+Journey metadata is generated from stubs, tests, `index.html`, and the small
+hint-only guide. Use these exact machine-readable markers in every new stub:
+
+- A part heading is `PART N — Title  (~N min)`. In Python, put it in the
+  established separator comment as `# PART N — Title  (~N min)`; in React,
+  put `* PART N — Title  (~N min)` in the opening problem comment. Number parts
+  consecutively from 1.
+- A concrete usage block begins with a line containing exactly `# Example` in
+  Python or `* Example` in a React problem comment. Follow it with commented,
+  concrete calls and their `# -> result` outcomes. Do not put the example only
+  in a test file.
+
+Legacy exceptions are recorded rather than silently rewritten: Python 01
+Geofence Alert Engine has four stub parts while its index record says three and
+has no usage-example block; React 02 Incident Dashboard has no usage-example
+block. The generator preserves these pilots with an explicit `legacy-missing`
+example status. New problems receive no exception.
+
+When adding a problem:
+
+1. Use the canonical part headings and concrete example above.
+2. Order test classes or describes by Part.
+3. Append its catalogue record to `PROBLEMS` in `index.html`.
+4. Add `journey/problem_guides.yaml` prompts, concepts, steps, and pitfalls for
+   every part, plus symptom/cause/check verification failures.
+5. Keep guides to progressive hints: never full solution code, reference
+   implementations, test assertion internals, or expected test values.
+6. Regenerate with `python3 tools/build_journey_data.py`, then run
+   `python3 tools/build_journey_data.py --check` and the generator tests.
+
 ### Use string IDs, not auto-incrementing integers
 String slugs like `"admin"`, `"viewer"`, `"pk.abc123"` are more readable in tests and
 don't require the caller to track state. Auto-increment belongs in DB-backed systems,
