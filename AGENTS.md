@@ -362,6 +362,9 @@ to Part 1.
   owns source substitution.
 - Avoid timing sleeps. Actor and concurrency tests coordinate with continuations,
   clocks, or deterministic injected time.
+- When concurrent operations accept timestamps, give competing tasks the same
+  injected instant unless timestamp ordering is the behavior under test. Distinct
+  synthetic times can make actor scheduling order change window membership.
 
 ## Keeping the problem index up to date
 

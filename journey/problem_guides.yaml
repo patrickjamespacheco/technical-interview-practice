@@ -89,5 +89,27 @@
       {"symptom": "Changing a copied board changes the original", "cause": "Board storage is shared through a reference", "check": "Create two copies, place different marks, and inspect both positions."},
       {"symptom": "Large boards report wins across gaps", "cause": "The algorithm counts a player's marks without tracking adjacency", "check": "Trace one direction and reset the run at every different or empty cell."}
     ]}
+  },
+  "swift-02": {
+    "approach": [
+      {"part": 1, "prompt": "What single decision type can carry both permission to proceed and precise denial context?", "concepts": ["actor isolation", "associated-value outcomes", "sliding windows"], "steps": ["Keep plans, keys, and logs inside the actor.", "Compute current usage once, then apply minute-before-day precedence."], "pitfalls": ["returning Bool and losing denial context", "including the left window boundary"]},
+      {"part": 2, "prompt": "How can checking and recording remain one atomic actor operation?", "concepts": ["actor serialization", "decision composition", "bounded logs"], "steps": ["Call the Part 1 decision method first.", "Record and prune only after an allowed result."], "pitfalls": ["duplicating limit checks", "mutating the log on denial"]},
+      {"part": 3, "prompt": "Which immutable values let callers inspect usage without exposing actor storage?", "concepts": ["value snapshots", "deterministic ordering"], "steps": ["Build Usage from the same window-counting logic.", "Return sorted copies of key records and dates."], "pitfalls": ["leaking mutable backing storage", "using wall-clock time instead of the injected source"]}
+    ],
+    "verify": {"commonFailures": [
+      {"symptom": "Concurrent requests exceed the configured cap", "cause": "The check and record steps are not one actor-isolated operation", "check": "Trace handleRequest from its decision through its append without leaving actor isolation."},
+      {"symptom": "A day denial is returned when both limits are full", "cause": "Limit precedence is reversed", "check": "Evaluate the minute dimension before the day dimension."}
+    ]}
+  },
+  "swift-11": {
+    "approach": [
+      {"part": 1, "prompt": "Which typed values should be stored separately from changing heartbeat state?", "concepts": ["value records", "Date ordering", "immutable snapshots"], "steps": ["Index stations by readable ID.", "Reject a heartbeat unless it is strictly newer than the stored date."], "pitfalls": ["string timestamps", "returning dictionary storage order"]},
+      {"part": 2, "prompt": "How do Date and Duration express the stale boundary and open outage invariant?", "concepts": ["temporal boundaries", "single open interval", "snapshot arrays"], "steps": ["Resolve omitted query time through the injected source.", "Treat equality with the stale threshold as healthy."], "pitfalls": ["using system time directly", "allowing an outage end before its start"]},
+      {"part": 3, "prompt": "How can associated-value coverage states make impossible summaries unrepresentable?", "concepts": ["enum state modelling", "method composition", "duration reduction"], "steps": ["Intersect regional stations with the Part 2 stale snapshot.", "Reduce Part 2 outage snapshots into a Duration."], "pitfalls": ["reimplementing station or stale filtering", "forgetting to extend an open outage to the query time"]}
+    ],
+    "verify": {"commonFailures": [
+      {"symptom": "A station exactly at the threshold is stale", "cause": "The comparison is inclusive", "check": "Compare heartbeat age using greater-than, not greater-than-or-equal."},
+      {"symptom": "Open outage totals change with wall time", "cause": "The injected time source was bypassed", "check": "Resolve every omitted asOf value from the initializer closure."}
+    ]}
   }
 }

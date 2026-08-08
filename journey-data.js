@@ -962,5 +962,234 @@ window.JOURNEY_PROBLEMS = {
         ]
       }
     }
+  },
+  "swift-02": {
+    "id": "swift-02",
+    "title": "API Rate Limiter (Swift)",
+    "description": "Build an actor-isolated sliding-window limiter with rich typed denial decisions and deterministic time.",
+    "language": "swift",
+    "industry": "general",
+    "tags": [
+      "actors",
+      "rate-limiting",
+      "sliding-window",
+      "strict-concurrency"
+    ],
+    "level": "senior",
+    "stubPath": "swift/practice_problems/problem_02_api_rate_limiter.swift",
+    "testPath": "swift/Tests/Problem02APIRateLimiterTests/Problem02APIRateLimiterTests.swift",
+    "example": "/\nlet clock = { Date(timeIntervalSince1970: 1_700_000_000) }\nlet limiter = APIRateLimiter(plans: [\"free\": Plan(requestsPerMinute: 2, requestsPerDay: 10)], now: clock)\ntry await limiter.createKey(id: \"pk.demo\", owner: \"alice\", planID: \"free\")\nawait limiter.evaluate(\"pk.demo\") // -> .allowed(Usage(...))\nawait limiter.handleRequest(\"pk.demo\") // -> .allowed(Usage(...))\n\nPART 1 — Keys and rich rate decisions  (~20 min)\nRegister, revoke, and change plans. evaluate(_:at:) must distinguish every\ndenial reason and return current Usage with an allowed decision. Check the\nminute limit before the day limit. Calls without `at` use the injected clock.\n\nPART 2 — Atomic request handling  (~15 min)\nhandleRequest(_:at:) must call evaluate(_:at:). If allowed, append the\nrequest before returning an updated allowed Usage. Denials have no side\neffects. Prune timestamps at least 25 hours old when recording.\n\nPART 3 — Usage and immutable snapshots  (~10 min)\nusage(for:at:) returns current counts and limits. keySnapshots() returns\ncopies sorted by key ID, never mutable actor storage.\n\npublic struct Plan: Equatable, Sendable {\n    public let requestsPerMinute: Int?\n    public let requestsPerDay: Int?\n    public init(requestsPerMinute: Int?, requestsPerDay: Int?) {\n        self.requestsPerMinute = requestsPerMinute\n        self.requestsPerDay = requestsPerDay\n    }\n}\n\npublic struct Usage: Equatable, Sendable {\n    public let keyID: String\n    public let planID: String\n    public let minuteUsed: Int\n    public let minuteLimit: Int?\n    public let dayUsed: Int\n    public let dayLimit: Int?\n    public init(keyID: String, planID: String, minuteUsed: Int, minuteLimit: Int?, dayUsed: Int, dayLimit: Int?) {\n        self.keyID = keyID; self.planID = planID; self.minuteUsed = minuteUsed\n        self.minuteLimit = minuteLimit; self.dayUsed = dayUsed; self.dayLimit = dayLimit\n    }\n}\n\npublic enum DenialReason: Equatable, Sendable {\n    case keyNotFound(keyID: String)\n    case keyDisabled(keyID: String)\n    case perMinuteExceeded(limit: Int, used: Int)\n    case perDayExceeded(limit: Int, used: Int)\n}\n\npublic enum RateLimitDecision: Equatable, Sendable {\n    case allowed(Usage)\n    case denied(DenialReason)\n}\n\npublic struct APIKeySnapshot: Equatable, Sendable {\n    public let id: String\n    public let owner: String\n    public let planID: String\n    public let isEnabled: Bool\n    public let requestDates: [Date]\n    public init(id: String, owner: String, planID: String, isEnabled: Bool, requestDates: [Date]) {\n        self.id = id; self.owner = owner; self.planID = planID\n        self.isEnabled = isEnabled; self.requestDates = requestDates\n    }\n}\n\npublic enum APIRateLimiterError: Error, Equatable, Sendable {\n    case duplicateKey(String)\n    case unknownKey(String)\n    case unknownPlan(String)\n    case notImplemented\n}\n\npublic actor APIRateLimiter {\n    public init(plans: [String: Plan], now: @escaping @Sendable () -> Date) {}\n\nMARK: Part 1 — keys and rich rate decisions\n    public func createKey(id: String, owner: String, planID: String) throws(APIRateLimiterError) { throw .notImplemented }\n    public func revokeKey(_ keyID: String) throws(APIRateLimiterError) { throw .notImplemented }\n    public func updatePlan(for keyID: String, to planID: String) throws(APIRateLimiterError) { throw .notImplemented }\n    public func evaluate(_ keyID: String, at date: Date? = nil) -> RateLimitDecision {\n        .denied(.keyNotFound(keyID: keyID))\n    }\n\nMARK: Part 2 — atomic request handling\n    public func handleRequest(_ keyID: String, at date: Date? = nil) -> RateLimitDecision {\n        .denied(.keyNotFound(keyID: keyID))\n    }\n\nMARK: Part 3 — usage and immutable snapshots\n    public func usage(for keyID: String, at date: Date? = nil) throws(APIRateLimiterError) -> Usage { throw .notImplemented }\n    public func keySnapshots() -> [APIKeySnapshot] { [] }\n}",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Keys and rich rate decisions",
+        "contract": "Register, revoke, and change plans. evaluate(_:at:) must distinguish every\ndenial reason and return current Usage with an allowed decision. Check the\nminute limit before the day limit. Calls without `at` use the injected clock."
+      },
+      {
+        "part": 2,
+        "title": "Atomic request handling",
+        "contract": "handleRequest(_:at:) must call evaluate(_:at:). If allowed, append the\nrequest before returning an updated allowed Usage. Denials have no side\neffects. Prune timestamps at least 25 hours old when recording."
+      },
+      {
+        "part": 3,
+        "title": "Usage and immutable snapshots",
+        "contract": "usage(for:at:) returns current counts and limits. keySnapshots() returns\ncopies sorted by key ID, never mutable actor storage.\n\npublic struct Plan: Equatable, Sendable {\n    public let requestsPerMinute: Int?\n    public let requestsPerDay: Int?\n    public init(requestsPerMinute: Int?, requestsPerDay: Int?) {\n        self.requestsPerMinute = requestsPerMinute\n        self.requestsPerDay = requestsPerDay\n    }\n}\n\npublic struct Usage: Equatable, Sendable {\n    public let keyID: String\n    public let planID: String\n    public let minuteUsed: Int\n    public let minuteLimit: Int?\n    public let dayUsed: Int\n    public let dayLimit: Int?\n    public init(keyID: String, planID: String, minuteUsed: Int, minuteLimit: Int?, dayUsed: Int, dayLimit: Int?) {\n        self.keyID = keyID; self.planID = planID; self.minuteUsed = minuteUsed\n        self.minuteLimit = minuteLimit; self.dayUsed = dayUsed; self.dayLimit = dayLimit\n    }\n}\n\npublic enum DenialReason: Equatable, Sendable {\n    case keyNotFound(keyID: String)\n    case keyDisabled(keyID: String)\n    case perMinuteExceeded(limit: Int, used: Int)\n    case perDayExceeded(limit: Int, used: Int)\n}\n\npublic enum RateLimitDecision: Equatable, Sendable {\n    case allowed(Usage)\n    case denied(DenialReason)\n}\n\npublic struct APIKeySnapshot: Equatable, Sendable {\n    public let id: String\n    public let owner: String\n    public let planID: String\n    public let isEnabled: Bool\n    public let requestDates: [Date]\n    public init(id: String, owner: String, planID: String, isEnabled: Bool, requestDates: [Date]) {\n        self.id = id; self.owner = owner; self.planID = planID\n        self.isEnabled = isEnabled; self.requestDates = requestDates\n    }\n}\n\npublic enum APIRateLimiterError: Error, Equatable, Sendable {\n    case duplicateKey(String)\n    case unknownKey(String)\n    case unknownPlan(String)\n    case notImplemented\n}\n\npublic actor APIRateLimiter {\n    public init(plans: [String: Plan], now: @escaping @Sendable () -> Date) {}\n\nMARK: Part 1 — keys and rich rate decisions\n    public func createKey(id: String, owner: String, planID: String) throws(APIRateLimiterError) { throw .notImplemented }\n    public func revokeKey(_ keyID: String) throws(APIRateLimiterError) { throw .notImplemented }\n    public func updatePlan(for keyID: String, to planID: String) throws(APIRateLimiterError) { throw .notImplemented }\n    public func evaluate(_ keyID: String, at date: Date? = nil) -> RateLimitDecision {\n        .denied(.keyNotFound(keyID: keyID))\n    }\n\nMARK: Part 2 — atomic request handling\n    public func handleRequest(_ keyID: String, at date: Date? = nil) -> RateLimitDecision {\n        .denied(.keyNotFound(keyID: keyID))\n    }\n\nMARK: Part 3 — usage and immutable snapshots\n    public func usage(for keyID: String, at date: Date? = nil) throws(APIRateLimiterError) -> Usage { throw .notImplemented }\n    public func keySnapshots() -> [APIKeySnapshot] { [] }\n}"
+      }
+    ],
+    "testSuites": [
+      "Part 1 — Keys and rich rate decisions",
+      "Part 2 — Atomic request handling",
+      "Part 3 — Usage and immutable snapshots"
+    ],
+    "commands": {
+      "answerPath": "swift/practice_problem_answers/my_answer_02_api_rate_limiter.swift",
+      "copyCommand": "cp swift/practice_problems/problem_02_api_rate_limiter.swift swift/practice_problem_answers/my_answer_02_api_rate_limiter.swift",
+      "openCommand": "code swift/practice_problems/problem_02_api_rate_limiter.swift",
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_02_api_rate_limiter.swift -c swift test"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "What single decision type can carry both permission to proceed and precise denial context?",
+          "concepts": [
+            "actor isolation",
+            "associated-value outcomes",
+            "sliding windows"
+          ],
+          "steps": [
+            "Keep plans, keys, and logs inside the actor.",
+            "Compute current usage once, then apply minute-before-day precedence."
+          ],
+          "pitfalls": [
+            "returning Bool and losing denial context",
+            "including the left window boundary"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "How can checking and recording remain one atomic actor operation?",
+          "concepts": [
+            "actor serialization",
+            "decision composition",
+            "bounded logs"
+          ],
+          "steps": [
+            "Call the Part 1 decision method first.",
+            "Record and prune only after an allowed result."
+          ],
+          "pitfalls": [
+            "duplicating limit checks",
+            "mutating the log on denial"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "Which immutable values let callers inspect usage without exposing actor storage?",
+          "concepts": [
+            "value snapshots",
+            "deterministic ordering"
+          ],
+          "steps": [
+            "Build Usage from the same window-counting logic.",
+            "Return sorted copies of key records and dates."
+          ],
+          "pitfalls": [
+            "leaking mutable backing storage",
+            "using wall-clock time instead of the injected source"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "Concurrent requests exceed the configured cap",
+            "cause": "The check and record steps are not one actor-isolated operation",
+            "check": "Trace handleRequest from its decision through its append without leaving actor isolation."
+          },
+          {
+            "symptom": "A day denial is returned when both limits are full",
+            "cause": "Limit precedence is reversed",
+            "check": "Evaluate the minute dimension before the day dimension."
+          }
+        ]
+      }
+    }
+  },
+  "swift-11": {
+    "id": "swift-11",
+    "title": "Coverage Tracker (Swift)",
+    "description": "Model station health, outage history, and regional coverage with typed values and injected time.",
+    "language": "swift",
+    "industry": "public-safety",
+    "tags": [
+      "typed-time",
+      "outage-tracking",
+      "value-semantics",
+      "coverage-analysis"
+    ],
+    "level": "senior",
+    "stubPath": "swift/practice_problems/problem_11_coverage_tracker.swift",
+    "testPath": "swift/Tests/Problem11CoverageTrackerTests/Problem11CoverageTrackerTests.swift",
+    "example": "/\nlet tracker = CoverageTracker(now: { Date(timeIntervalSince1970: 1_700_000_300) })\ntry tracker.register(Station(id: \"sta-001\", name: \"North Tower\", region: \"downtown\"))\ntry tracker.recordHeartbeat(for: \"sta-001\", at: Date(timeIntervalSince1970: 1_700_000_000))\ntry tracker.staleStations(after: .seconds(120)) // -> [Station(id: \"sta-001\", ...)]\ntry tracker.coverageStatus(in: \"downtown\", staleAfter: .seconds(120)) // -> .unavailable(...)\n\nPART 1 — Stations and heartbeats  (~12 min)\nRegister unique string IDs, accept only strictly increasing heartbeats, and\nreturn station snapshots sorted by ID. Calls without `asOf` use injected time.\n\nPART 2 — Staleness and outage history  (~16 min)\nA station is stale when it has no heartbeat or its heartbeat age is greater\nthan the threshold. Allow one open outage per station. Ending an outage must\nbe after its start. Return outage snapshots sorted by start date.\n\nPART 3 — Coverage and duration summaries  (~17 min)\ncoverageStatus must compose stations(in:) and staleStations(asOf:after:).\noutageSummary must compose outages(for:) and count an open outage through\nthe requested/injected time.\n\npublic struct Station: Equatable, Sendable {\n    public let id: String\n    public let name: String\n    public let region: String\n    public init(id: String, name: String, region: String) {\n        self.id = id; self.name = name; self.region = region\n    }\n}\n\npublic struct Outage: Equatable, Sendable {\n    public let stationID: String\n    public let startedAt: Date\n    public let endedAt: Date?\n    public init(stationID: String, startedAt: Date, endedAt: Date? = nil) {\n        self.stationID = stationID; self.startedAt = startedAt; self.endedAt = endedAt\n    }\n}\n\npublic enum CoverageStatus: Equatable, Sendable {\n    case noStations(region: String)\n    case unavailable(region: String, total: Int, stale: Int)\n    case available(region: String, total: Int, healthy: Int, stale: Int)\n}\n\npublic struct OutageSummary: Equatable, Sendable {\n    public let stationID: String\n    public let totalOutages: Int\n    public let hasOpenOutage: Bool\n    public let totalDuration: Duration\n    public init(stationID: String, totalOutages: Int, hasOpenOutage: Bool, totalDuration: Duration) {\n        self.stationID = stationID; self.totalOutages = totalOutages\n        self.hasOpenOutage = hasOpenOutage; self.totalDuration = totalDuration\n    }\n}\n\npublic enum CoverageTrackerError: Error, Equatable, Sendable {\n    case duplicateStation(String)\n    case unknownStation(String)\n    case heartbeatNotIncreasing(stationID: String)\n    case outageAlreadyOpen(stationID: String)\n    case noOpenOutage(stationID: String)\n    case outageEndNotAfterStart(stationID: String)\n    case notImplemented\n}\n\npublic final class CoverageTracker {\n    public init(now: @escaping @Sendable () -> Date) {}\n\nMARK: Part 1 — stations and heartbeats\n    public func register(_ station: Station) throws(CoverageTrackerError) { throw .notImplemented }\n    public func recordHeartbeat(for stationID: String, at date: Date) throws(CoverageTrackerError) { throw .notImplemented }\n    public func lastHeartbeat(for stationID: String) throws(CoverageTrackerError) -> Date? { throw .notImplemented }\n    public func stations(in region: String? = nil) -> [Station] { [] }\n\nMARK: Part 2 — staleness and outage history\n    public func staleStations(asOf date: Date? = nil, after threshold: Duration) throws(CoverageTrackerError) -> [Station] { throw .notImplemented }\n    public func startOutage(for stationID: String, at date: Date) throws(CoverageTrackerError) { throw .notImplemented }\n    public func endOutage(for stationID: String, at date: Date) throws(CoverageTrackerError) { throw .notImplemented }\n    public func outages(for stationID: String) throws(CoverageTrackerError) -> [Outage] { throw .notImplemented }\n\nMARK: Part 3 — coverage and duration summaries\n    public func coverageStatus(in region: String, asOf date: Date? = nil, staleAfter threshold: Duration) throws(CoverageTrackerError) -> CoverageStatus { throw .notImplemented }\n    public func outageSummary(for stationID: String, asOf date: Date? = nil) throws(CoverageTrackerError) -> OutageSummary { throw .notImplemented }\n}",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Stations and heartbeats",
+        "contract": "Register unique string IDs, accept only strictly increasing heartbeats, and\nreturn station snapshots sorted by ID. Calls without `asOf` use injected time."
+      },
+      {
+        "part": 2,
+        "title": "Staleness and outage history",
+        "contract": "A station is stale when it has no heartbeat or its heartbeat age is greater\nthan the threshold. Allow one open outage per station. Ending an outage must\nbe after its start. Return outage snapshots sorted by start date."
+      },
+      {
+        "part": 3,
+        "title": "Coverage and duration summaries",
+        "contract": "coverageStatus must compose stations(in:) and staleStations(asOf:after:).\noutageSummary must compose outages(for:) and count an open outage through\nthe requested/injected time.\n\npublic struct Station: Equatable, Sendable {\n    public let id: String\n    public let name: String\n    public let region: String\n    public init(id: String, name: String, region: String) {\n        self.id = id; self.name = name; self.region = region\n    }\n}\n\npublic struct Outage: Equatable, Sendable {\n    public let stationID: String\n    public let startedAt: Date\n    public let endedAt: Date?\n    public init(stationID: String, startedAt: Date, endedAt: Date? = nil) {\n        self.stationID = stationID; self.startedAt = startedAt; self.endedAt = endedAt\n    }\n}\n\npublic enum CoverageStatus: Equatable, Sendable {\n    case noStations(region: String)\n    case unavailable(region: String, total: Int, stale: Int)\n    case available(region: String, total: Int, healthy: Int, stale: Int)\n}\n\npublic struct OutageSummary: Equatable, Sendable {\n    public let stationID: String\n    public let totalOutages: Int\n    public let hasOpenOutage: Bool\n    public let totalDuration: Duration\n    public init(stationID: String, totalOutages: Int, hasOpenOutage: Bool, totalDuration: Duration) {\n        self.stationID = stationID; self.totalOutages = totalOutages\n        self.hasOpenOutage = hasOpenOutage; self.totalDuration = totalDuration\n    }\n}\n\npublic enum CoverageTrackerError: Error, Equatable, Sendable {\n    case duplicateStation(String)\n    case unknownStation(String)\n    case heartbeatNotIncreasing(stationID: String)\n    case outageAlreadyOpen(stationID: String)\n    case noOpenOutage(stationID: String)\n    case outageEndNotAfterStart(stationID: String)\n    case notImplemented\n}\n\npublic final class CoverageTracker {\n    public init(now: @escaping @Sendable () -> Date) {}\n\nMARK: Part 1 — stations and heartbeats\n    public func register(_ station: Station) throws(CoverageTrackerError) { throw .notImplemented }\n    public func recordHeartbeat(for stationID: String, at date: Date) throws(CoverageTrackerError) { throw .notImplemented }\n    public func lastHeartbeat(for stationID: String) throws(CoverageTrackerError) -> Date? { throw .notImplemented }\n    public func stations(in region: String? = nil) -> [Station] { [] }\n\nMARK: Part 2 — staleness and outage history\n    public func staleStations(asOf date: Date? = nil, after threshold: Duration) throws(CoverageTrackerError) -> [Station] { throw .notImplemented }\n    public func startOutage(for stationID: String, at date: Date) throws(CoverageTrackerError) { throw .notImplemented }\n    public func endOutage(for stationID: String, at date: Date) throws(CoverageTrackerError) { throw .notImplemented }\n    public func outages(for stationID: String) throws(CoverageTrackerError) -> [Outage] { throw .notImplemented }\n\nMARK: Part 3 — coverage and duration summaries\n    public func coverageStatus(in region: String, asOf date: Date? = nil, staleAfter threshold: Duration) throws(CoverageTrackerError) -> CoverageStatus { throw .notImplemented }\n    public func outageSummary(for stationID: String, asOf date: Date? = nil) throws(CoverageTrackerError) -> OutageSummary { throw .notImplemented }\n}"
+      }
+    ],
+    "testSuites": [
+      "Part 1 — Stations and heartbeats",
+      "Part 2 — Staleness and outage history",
+      "Part 3 — Coverage and duration summaries"
+    ],
+    "commands": {
+      "answerPath": "swift/practice_problem_answers/my_answer_11_coverage_tracker.swift",
+      "copyCommand": "cp swift/practice_problems/problem_11_coverage_tracker.swift swift/practice_problem_answers/my_answer_11_coverage_tracker.swift",
+      "openCommand": "code swift/practice_problems/problem_11_coverage_tracker.swift",
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_11_coverage_tracker.swift -c swift test"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Which typed values should be stored separately from changing heartbeat state?",
+          "concepts": [
+            "value records",
+            "Date ordering",
+            "immutable snapshots"
+          ],
+          "steps": [
+            "Index stations by readable ID.",
+            "Reject a heartbeat unless it is strictly newer than the stored date."
+          ],
+          "pitfalls": [
+            "string timestamps",
+            "returning dictionary storage order"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "How do Date and Duration express the stale boundary and open outage invariant?",
+          "concepts": [
+            "temporal boundaries",
+            "single open interval",
+            "snapshot arrays"
+          ],
+          "steps": [
+            "Resolve omitted query time through the injected source.",
+            "Treat equality with the stale threshold as healthy."
+          ],
+          "pitfalls": [
+            "using system time directly",
+            "allowing an outage end before its start"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "How can associated-value coverage states make impossible summaries unrepresentable?",
+          "concepts": [
+            "enum state modelling",
+            "method composition",
+            "duration reduction"
+          ],
+          "steps": [
+            "Intersect regional stations with the Part 2 stale snapshot.",
+            "Reduce Part 2 outage snapshots into a Duration."
+          ],
+          "pitfalls": [
+            "reimplementing station or stale filtering",
+            "forgetting to extend an open outage to the query time"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "A station exactly at the threshold is stale",
+            "cause": "The comparison is inclusive",
+            "check": "Compare heartbeat age using greater-than, not greater-than-or-equal."
+          },
+          {
+            "symptom": "Open outage totals change with wall time",
+            "cause": "The injected time source was bypassed",
+            "check": "Resolve every omitted asOf value from the initializer closure."
+          }
+        ]
+      }
+    }
   }
 };
