@@ -90,6 +90,9 @@ if [[ "$ANSWER_ABS" == *.swift ]]; then
     if [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem03PermissionManager/Problem.swift" ]]; then
         PROBLEM_ID="03_permission_manager"
         SAME_FILE=1
+    elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem18InventoryReservationLedger/Problem.swift" ]]; then
+        PROBLEM_ID="18_inventory_reservation_ledger"
+        SAME_FILE=1
     elif [[ "$ANSWER_BASENAME" =~ (^|_)([0-9][0-9]_[a-z0-9_]+)\.swift$ ]]; then
         PROBLEM_ID="${BASH_REMATCH[2]}"
     else
@@ -98,6 +101,7 @@ if [[ "$ANSWER_ABS" == *.swift ]]; then
     fi
     case "$PROBLEM_ID" in
         03_permission_manager) ACTIVE_REL="Sources/Problem03PermissionManager/Problem.swift" ;;
+        18_inventory_reservation_ledger) ACTIVE_REL="Sources/Problem18InventoryReservationLedger/Problem.swift" ;;
         *) echo "Error: unknown Swift problem ID '$PROBLEM_ID'; no target mapping exists."; exit 1 ;;
     esac
     if [[ "${CMD[0]}" != "swift" || "${CMD[1]:-}" != "test" ]]; then
