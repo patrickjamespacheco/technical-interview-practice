@@ -83,6 +83,80 @@ fi
 
 ANSWER_ABS="$(cd "$(dirname "$ANSWER")" && pwd)/$(basename "$ANSWER")"
 
+if [[ "$ANSWER_ABS" == *.swift ]]; then
+    SWIFT_ROOT="$REPO_ROOT/swift"
+    ANSWER_BASENAME="$(basename "$ANSWER_ABS")"
+    SAME_FILE=0
+    if [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem03PermissionManager/Problem.swift" ]]; then
+        PROBLEM_ID="03_permission_manager"
+        SAME_FILE=1
+    elif [[ "$ANSWER_BASENAME" =~ (^|_)([0-9][0-9]_[a-z0-9_]+)\.swift$ ]]; then
+        PROBLEM_ID="${BASH_REMATCH[2]}"
+    else
+        echo "Error: Swift answer filename must end in NN_<name>.swift."
+        exit 1
+    fi
+    case "$PROBLEM_ID" in
+        03_permission_manager) ACTIVE_REL="Sources/Problem03PermissionManager/Problem.swift" ;;
+        *) echo "Error: unknown Swift problem ID '$PROBLEM_ID'; no target mapping exists."; exit 1 ;;
+    esac
+    if [[ "${CMD[0]}" != "swift" || "${CMD[1]:-}" != "test" ]]; then
+        echo "Error: Swift answers require a 'swift test' command."
+        exit 1
+    fi
+
+    ACTIVE="$SWIFT_ROOT/$ACTIVE_REL"
+
+    LOCK_DIR="$SWIFT_ROOT/.answer-run.lock"
+    TMP_DIR="$SWIFT_ROOT/.runner-tmp"
+    if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+        echo "Error: another Swift answer run is active (lock: swift/.answer-run.lock)."
+        exit 1
+    fi
+    mkdir -p "$TMP_DIR" "$SWIFT_ROOT/.build/answer-runs"
+    BACKUP="$(mktemp "$TMP_DIR/problem.XXXXXX")"
+    SCRATCH="$SWIFT_ROOT/.build/answer-runs/$$"
+    COPIED=0
+    COMMAND_PID=""
+
+    cleanup() {
+        status=$?
+        trap - EXIT INT TERM HUP
+        if [[ -n "$COMMAND_PID" ]]; then kill "$COMMAND_PID" 2>/dev/null || true; fi
+        if [[ "$COPIED" -eq 1 && -f "$BACKUP" ]]; then cp "$BACKUP" "$ACTIVE"; fi
+        rm -f "$BACKUP"
+        rmdir "$TMP_DIR" 2>/dev/null || true
+        rm -rf "$SCRATCH"
+        rmdir "$SWIFT_ROOT/.build/answer-runs" 2>/dev/null || true
+        rmdir "$LOCK_DIR" 2>/dev/null || true
+        exit "$status"
+    }
+    trap cleanup EXIT INT TERM HUP
+
+    if [[ "$SAME_FILE" -eq 0 ]]; then
+        cp "$ACTIVE" "$BACKUP"
+        cp "$ANSWER_ABS" "$ACTIVE"
+        COPIED=1
+    fi
+    SWIFT_CMD=(swift test --scratch-path "$SCRATCH" "${CMD[@]:2}")
+    if [[ "$SAME_FILE" -eq 1 ]]; then
+        echo "Answer : $ANSWER → $ACTIVE_REL (already active; no copy)"
+    else
+        echo "Answer : $ANSWER → $ACTIVE_REL"
+    fi
+    echo "Command: ${SWIFT_CMD[*]}"
+    echo ""
+    cd "$SWIFT_ROOT"
+    "${SWIFT_CMD[@]}" &
+    COMMAND_PID=$!
+    set +e
+    wait "$COMMAND_PID"
+    command_status=$?
+    set -e
+    COMMAND_PID=""
+    exit "$command_status"
+fi
+
 # ── React mode: .jsx / .tsx answer files ─────────────────────────────────────
 if [[ "$ANSWER_ABS" == *.jsx || "$ANSWER_ABS" == *.tsx ]]; then
     REACT_APP="$REPO_ROOT/react/src/App.jsx"

@@ -31,7 +31,13 @@ react/
   package.json                # Vite + Playwright deps
   playwright.config.js        # Playwright config (auto-starts Vite)
   vite.config.js
-run_tests.sh                  # Unified test runner for Python and React (see below)
+swift/
+  Package.swift                 # Swift 6 package (macOS 14+)
+  practice_problems/            # Swift starter files
+  practice_problem_answers/     # Swift answer files
+  Sources/                      # Active source swapped by the runner
+  Tests/                        # Swift Testing suites
+run_tests.sh                  # Unified test runner for Python, React, and Swift
 CLAUDE.md                     # Guidelines for the AI agent
 ```
 
@@ -56,6 +62,18 @@ cd react
 npm install
 npx playwright install chromium   # download the test browser (~95 MB)
 ```
+
+### Swift (one-time setup, macOS only)
+
+Swift problems require macOS 14 or newer and a Swift 6 toolchain. Install the
+Command Line Tools if needed; Xcode's UI and an `.xcodeproj` are not required:
+
+```bash
+xcode-select --install
+swift --version
+```
+
+Swift Testing ships with Swift 6, so there are no third-party test dependencies.
 
 ---
 
@@ -174,6 +192,30 @@ npm test            # all 3 spec files
 git restore react/src/App.jsx
 ```
 
+---
+
+### Swift problems
+
+Copy the stub to the answer directory, preserving the `NN_<name>` suffix:
+
+```bash
+cp swift/practice_problems/problem_03_permission_manager.swift \
+   swift/practice_problem_answers/my_answer_03_permission_manager.swift
+```
+
+Implement the answer, then run its Swift Testing suite from the repository root:
+
+```bash
+./run_tests.sh \
+  -f swift/practice_problem_answers/my_answer_03_permission_manager.swift \
+  -c swift test --filter Problem03PermissionManagerTests
+```
+
+The runner maps the filename through a checked problem manifest, substitutes it
+for one isolated build, and restores the active placeholder afterward. It also
+uses a per-run scratch build directory, so stale objects cannot affect results.
+When the active source itself is the answer, `swift test` runs without copying.
+
 ## Adding new problems with an AI agent
 ⚠️ WARNING - PLEASE READ: If contributing, please do not add any problems verbatim from actual technical interviews. We don't want to get each other in trouble or cause issues for people actively interviewing. The `CLAUDE.md` file has instructions to scrub actual company names from problems, but please double check the code for that before submitting a PR.
 
@@ -210,5 +252,3 @@ DO NOT ask it to improve existing problems or test suites, unless you don't plan
 as that will likely break other peoples' answers. Instead, if you would like to improve upon an existing problem/test
 just copy and paste it into a new problem/test file with something like `v.x` appended to the file name, and then try
 to improve the problem and/or test suite.
-
-

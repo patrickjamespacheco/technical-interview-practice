@@ -1,1 +1,4 @@
 __pycache__
+swift/.build/
+swift/.runner-tmp/
+swift/.answer-run.lock/
