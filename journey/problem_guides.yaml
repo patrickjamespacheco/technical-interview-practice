@@ -101,6 +101,18 @@
       {"symptom": "A day denial is returned when both limits are full", "cause": "Limit precedence is reversed", "check": "Evaluate the minute dimension before the day dimension."}
     ]}
   },
+  "swift-19": {
+    "approach": [
+      {"part": 1, "prompt": "Which state preserves first-seen order while making duplicate detection efficient?", "concepts": ["ordered pending queue", "set-backed deduplication", "monotonic batch sequence"], "steps": ["Record an ID the first time it arrives.", "Remove only a bounded prefix when forming each batch."], "pitfalls": ["replacing the first payload with a duplicate", "renumbering batches after consumption"]},
+      {"part": 2, "prompt": "What outcome contains everything the coordinator needs without inspecting processor internals?", "concepts": ["associated-value errors", "explicit delivery outcomes", "bounded retries"], "steps": ["Count every sink invocation as an attempt.", "Retry only retryable failures and return the original batch in the outcome."], "pitfalls": ["retrying permanent failures", "treating maxRetries as total attempts"]},
+      {"part": 3, "prompt": "How can completed work be concurrent while checkpoint commitment remains ordered?", "concepts": ["bounded task groups", "out-of-order completion buffer", "cooperative cancellation"], "steps": ["Seed only the allowed number of delivery tasks.", "Buffer successful outcomes by sequence and drain the contiguous prefix.", "Stop adding work as soon as cancellation is observed."], "pitfalls": ["advancing from task completion order", "reading processor state to infer success", "using elapsed time to coordinate tests"]}
+    ],
+    "verify": {"commonFailures": [
+      {"symptom": "A duplicate reading appears in a later batch", "cause": "Deduplication only checks the current batch", "check": "Keep first-seen IDs for the processor's whole lifetime."},
+      {"symptom": "The checkpoint skips an unfinished batch", "cause": "Every successful completion advances immediately", "check": "Buffer successes and commit only the next contiguous sequence."},
+      {"symptom": "Cancellation still starts queued sends", "cause": "Replacement work is scheduled without checking cancellation", "check": "Check cancellation before every task-group add."}
+    ]}
+  },
   "swift-11": {
     "approach": [
       {"part": 1, "prompt": "Which typed values should be stored separately from changing heartbeat state?", "concepts": ["value records", "Date ordering", "immutable snapshots"], "steps": ["Index stations by readable ID.", "Reject a heartbeat unless it is strictly newer than the stored date."], "pitfalls": ["string timestamps", "returning dictionary storage order"]},
