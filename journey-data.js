@@ -730,5 +730,237 @@ window.JOURNEY_PROBLEMS = {
         ]
       }
     }
+  },
+  "swift-13": {
+    "id": "swift-13",
+    "title": "Contract Lifecycle (Swift)",
+    "description": "Build an exhaustive typed contract state machine with immutable audit values, bulk transitions, and lifecycle reporting.",
+    "language": "swift",
+    "industry": "legal-tech",
+    "tags": [
+      "state-machine",
+      "enums",
+      "audit-trail",
+      "value-semantics"
+    ],
+    "level": "senior",
+    "stubPath": "swift/practice_problems/problem_13_contract_lifecycle.swift",
+    "testPath": "swift/Tests/Problem13ContractLifecycleTests/Problem13ContractLifecycleTests.swift",
+    "example": "var lifecycle = ContractLifecycle()\ntry lifecycle.createContract(id: \"c-001\", title: \"Vendor MSA\", createdAt: 0, actor: \"alice\")\ntry lifecycle.transition(\"c-001\", to: .inReview, at: 86_400, actor: \"alice\") // -> .inReview\ntry lifecycle.transition(\"c-001\", to: .approved, at: 172_800, actor: \"bob\") // -> .approved\n/\n\nPART 1 — Typed contracts and exhaustive transitions  (~20 min)\nCreate contracts, update string metadata, retrieve immutable contract and audit\nsnapshots, and transition only along the documented state machine. Creation\nrecords an audit entry whose fromState is nil. Expected failures use TransitionError.\n\nPART 2 — Audit queries and bulk advancement  (~15 min)\nQuery contracts by state sorted by ID and bulk-advance contracts. bulkAdvance\nmust call transition for every ID and continue after individual failures.\n\nPART 3 — Lifecycle reporting  (~10 min)\nReport counts by state using contracts(in:), then find nonterminal contracts\nwhose auditTrail(for:) ends more than 30 whole days ago, sorted by days stuck.\n\npublic enum ContractState: String, CaseIterable, Sendable {\n    case draft, inReview, approved, executed, active, expiringSoon, expired, terminated\n\n    public var isTerminal: Bool { self == .expired || self == .terminated }\n}\n\npublic enum TransitionError: Error, Equatable, Sendable {\n    case duplicateContract(String)\n    case unknownContract(String)\n    case invalidTransition(from: ContractState, to: ContractState)\n    case notImplemented\n}\n\npublic struct AuditEntry: Equatable, Sendable {\n    public let contractID: String\n    public let fromState: ContractState?\n    public let toState: ContractState\n    public let timestamp: Int\n    public let actor: String\n    public init(contractID: String, fromState: ContractState?, toState: ContractState, timestamp: Int, actor: String) {\n        self.contractID = contractID; self.fromState = fromState; self.toState = toState; self.timestamp = timestamp; self.actor = actor\n    }\n}\n\npublic struct Contract: Equatable, Sendable {\n    public let id: String\n    public let title: String\n    public let state: ContractState\n    public let createdAt: Int\n    public let fields: [String: String]\n    public init(id: String, title: String, state: ContractState, createdAt: Int, fields: [String: String]) {\n        self.id = id; self.title = title; self.state = state; self.createdAt = createdAt; self.fields = fields\n    }\n}\n\npublic struct BulkFailure: Equatable, Sendable { public let contractID: String; public let error: TransitionError; public init(contractID: String, error: TransitionError) { self.contractID = contractID; self.error = error } }\npublic struct BulkAdvanceResult: Equatable, Sendable { public let succeeded: [String]; public let failed: [BulkFailure]; public init(succeeded: [String], failed: [BulkFailure]) { self.succeeded = succeeded; self.failed = failed } }\npublic struct LifecycleMetrics: Equatable, Sendable { public let total: Int; public let byState: [ContractState: Int]; public let terminalCount: Int; public init(total: Int, byState: [ContractState: Int], terminalCount: Int) { self.total = total; self.byState = byState; self.terminalCount = terminalCount } }\npublic struct OverdueContract: Equatable, Sendable { public let contract: Contract; public let stuckSince: Int; public let daysStuck: Int; public init(contract: Contract, stuckSince: Int, daysStuck: Int) { self.contract = contract; self.stuckSince = stuckSince; self.daysStuck = daysStuck } }\n\npublic struct ContractLifecycle: Sendable {\n    public init() {}\n    public mutating func createContract(id: String, title: String, createdAt: Int, actor: String) throws(TransitionError) -> Contract { throw .notImplemented }\n    public mutating func setField(contractID: String, key: String, value: String) throws(TransitionError) -> Contract { throw .notImplemented }\n    public func contract(id: String) throws(TransitionError) -> Contract { throw .notImplemented }\n    public func auditTrail(for contractID: String) throws(TransitionError) -> [AuditEntry] { throw .notImplemented }\n    public mutating func transition(_ contractID: String, to state: ContractState, at: Int, actor: String) throws(TransitionError) -> Contract { throw .notImplemented }\n    public func contracts(in state: ContractState) -> [Contract] { [] }\n    public mutating func bulkAdvance(_ contractIDs: [String], to state: ContractState, at: Int, actor: String) -> BulkAdvanceResult { .init(succeeded: [], failed: []) }\n    public func lifecycleMetrics() -> LifecycleMetrics { .init(total: 0, byState: [:], terminalCount: 0) }\n    public func overdueContracts(asOf: Int) -> [OverdueContract] { [] }\n}",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Typed contracts and exhaustive transitions",
+        "contract": "Create contracts, update string metadata, retrieve immutable contract and audit\nsnapshots, and transition only along the documented state machine. Creation\nrecords an audit entry whose fromState is nil. Expected failures use TransitionError."
+      },
+      {
+        "part": 2,
+        "title": "Audit queries and bulk advancement",
+        "contract": "Query contracts by state sorted by ID and bulk-advance contracts. bulkAdvance\nmust call transition for every ID and continue after individual failures."
+      },
+      {
+        "part": 3,
+        "title": "Lifecycle reporting",
+        "contract": "Report counts by state using contracts(in:), then find nonterminal contracts\nwhose auditTrail(for:) ends more than 30 whole days ago, sorted by days stuck.\n\npublic enum ContractState: String, CaseIterable, Sendable {\n    case draft, inReview, approved, executed, active, expiringSoon, expired, terminated\n\n    public var isTerminal: Bool { self == .expired || self == .terminated }\n}\n\npublic enum TransitionError: Error, Equatable, Sendable {\n    case duplicateContract(String)\n    case unknownContract(String)\n    case invalidTransition(from: ContractState, to: ContractState)\n    case notImplemented\n}\n\npublic struct AuditEntry: Equatable, Sendable {\n    public let contractID: String\n    public let fromState: ContractState?\n    public let toState: ContractState\n    public let timestamp: Int\n    public let actor: String\n    public init(contractID: String, fromState: ContractState?, toState: ContractState, timestamp: Int, actor: String) {\n        self.contractID = contractID; self.fromState = fromState; self.toState = toState; self.timestamp = timestamp; self.actor = actor\n    }\n}\n\npublic struct Contract: Equatable, Sendable {\n    public let id: String\n    public let title: String\n    public let state: ContractState\n    public let createdAt: Int\n    public let fields: [String: String]\n    public init(id: String, title: String, state: ContractState, createdAt: Int, fields: [String: String]) {\n        self.id = id; self.title = title; self.state = state; self.createdAt = createdAt; self.fields = fields\n    }\n}\n\npublic struct BulkFailure: Equatable, Sendable { public let contractID: String; public let error: TransitionError; public init(contractID: String, error: TransitionError) { self.contractID = contractID; self.error = error } }\npublic struct BulkAdvanceResult: Equatable, Sendable { public let succeeded: [String]; public let failed: [BulkFailure]; public init(succeeded: [String], failed: [BulkFailure]) { self.succeeded = succeeded; self.failed = failed } }\npublic struct LifecycleMetrics: Equatable, Sendable { public let total: Int; public let byState: [ContractState: Int]; public let terminalCount: Int; public init(total: Int, byState: [ContractState: Int], terminalCount: Int) { self.total = total; self.byState = byState; self.terminalCount = terminalCount } }\npublic struct OverdueContract: Equatable, Sendable { public let contract: Contract; public let stuckSince: Int; public let daysStuck: Int; public init(contract: Contract, stuckSince: Int, daysStuck: Int) { self.contract = contract; self.stuckSince = stuckSince; self.daysStuck = daysStuck } }\n\npublic struct ContractLifecycle: Sendable {\n    public init() {}\n    public mutating func createContract(id: String, title: String, createdAt: Int, actor: String) throws(TransitionError) -> Contract { throw .notImplemented }\n    public mutating func setField(contractID: String, key: String, value: String) throws(TransitionError) -> Contract { throw .notImplemented }\n    public func contract(id: String) throws(TransitionError) -> Contract { throw .notImplemented }\n    public func auditTrail(for contractID: String) throws(TransitionError) -> [AuditEntry] { throw .notImplemented }\n    public mutating func transition(_ contractID: String, to state: ContractState, at: Int, actor: String) throws(TransitionError) -> Contract { throw .notImplemented }\n    public func contracts(in state: ContractState) -> [Contract] { [] }\n    public mutating func bulkAdvance(_ contractIDs: [String], to state: ContractState, at: Int, actor: String) -> BulkAdvanceResult { .init(succeeded: [], failed: []) }\n    public func lifecycleMetrics() -> LifecycleMetrics { .init(total: 0, byState: [:], terminalCount: 0) }\n    public func overdueContracts(asOf: Int) -> [OverdueContract] { [] }\n}"
+      }
+    ],
+    "testSuites": [
+      "Part 1 — Typed contracts and exhaustive transitions",
+      "Part 2 — Audit queries and bulk advancement",
+      "Part 3 — Lifecycle reporting"
+    ],
+    "commands": {
+      "answerPath": "swift/practice_problem_answers/my_answer_13_contract_lifecycle.swift",
+      "copyCommand": "cp swift/practice_problems/problem_13_contract_lifecycle.swift swift/practice_problem_answers/my_answer_13_contract_lifecycle.swift",
+      "openCommand": "code swift/practice_problems/problem_13_contract_lifecycle.swift",
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_13_contract_lifecycle.swift -c swift test"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "How can the compiler prove every source state has an explicit transition decision?",
+          "concepts": [
+            "exhaustive enum switching",
+            "typed expected failures",
+            "immutable snapshots"
+          ],
+          "steps": [
+            "Keep mutable storage private to the lifecycle value.",
+            "Decide allowed destinations with a switch over every source state before appending audit history."
+          ],
+          "pitfalls": [
+            "stringly typed states",
+            "mutating state before validation",
+            "forgetting the initial audit entry"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "How can bulk advancement preserve exactly the behavior of a single transition?",
+          "concepts": [
+            "method composition",
+            "partial success",
+            "deterministic ordering"
+          ],
+          "steps": [
+            "Call the single-contract transition for each requested ID.",
+            "Capture typed failures and continue processing later IDs."
+          ],
+          "pitfalls": [
+            "duplicating transition rules",
+            "aborting the whole batch on one failure"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "Which existing snapshots contain enough information for metrics and overdue reporting?",
+          "concepts": [
+            "state aggregation",
+            "latest audit event",
+            "whole-day arithmetic"
+          ],
+          "steps": [
+            "Aggregate current contract snapshots by enum case.",
+            "Use the latest audit timestamp and exclude terminal states before sorting."
+          ],
+          "pitfalls": [
+            "using creation time after later transitions",
+            "including contracts stuck exactly 30 days"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "A legal transition is unexpectedly rejected",
+            "cause": "One branch of the lifecycle switch omits a documented destination",
+            "check": "Walk every source enum case and compare its allowed destinations with the state diagram."
+          },
+          {
+            "symptom": "Bulk and single transitions produce different audit trails",
+            "cause": "Bulk logic implements a second state machine",
+            "check": "Confirm each bulk item delegates to the single transition method."
+          }
+        ]
+      }
+    }
+  },
+  "swift-15": {
+    "id": "swift-15",
+    "title": "Tic-Tac-Toe Engine (Swift)",
+    "description": "Build a generic value-semantic board with typed outcomes, independent copies, and configurable winning runs.",
+    "language": "swift",
+    "industry": "general",
+    "tags": [
+      "game-logic",
+      "generics",
+      "enums",
+      "value-semantics"
+    ],
+    "level": "senior",
+    "stubPath": "swift/practice_problems/problem_15_tic_tac_toe_engine.swift",
+    "testPath": "swift/Tests/Problem15TicTacToeEngineTests/Problem15TicTacToeEngineTests.swift",
+    "example": "var board = try Board<Mark>()\ntry board.place(.x, at: Position(row: 0, column: 0)) // -> .inProgress\ntry board.place(.x, at: Position(row: 0, column: 1)) // -> .inProgress\ntry board.place(.x, at: Position(row: 0, column: 2)) // -> .won(.x)\n/\n\nPART 1 — Generic board analysis  (~10 min)\nModel cells with Position and analyze rows, columns, and both diagonals.\nresult() returns in-progress, won, or draw without string sentinels.\n\nPART 2 — Mutating moves and value semantics  (~20 min)\nplace validates bounds and occupancy, mutates this board, and returns result().\nExpose the mark at a position and reset the board. Board copies must not share state.\n\nPART 3 — Configurable dimensions and win runs  (~15 min)\nSupport arbitrary positive size and winLength (1...size). Detect consecutive\nhorizontal, vertical, and diagonal runs of winLength on larger boards.\n\npublic enum Mark: Hashable, Sendable { case x, o, custom(String) }\npublic struct Position: Hashable, Sendable {\n    public let row: Int; public let column: Int\n    public init(row: Int, column: Int) { self.row = row; self.column = column }\n}\npublic enum GameResult<Player: Hashable & Sendable>: Equatable, Sendable {\n    case inProgress, won(Player), draw\n}\npublic enum BoardError: Error, Equatable, Sendable {\n    case invalidConfiguration\n    case outOfBounds(Position)\n    case occupied(Position)\n    case notImplemented\n}\n\npublic struct Board<Player: Hashable & Sendable>: Sendable {\n    public let size: Int\n    public let winLength: Int\n    private var cells: [Position: Player]\n    public init(size: Int = 3, winLength: Int? = nil, positions: [Position: Player] = [:]) throws(BoardError) {\n        let target = winLength ?? size\n        guard size > 0, target > 0, target <= size else { throw .invalidConfiguration }\n        guard positions.keys.allSatisfy({ (0..<size).contains($0.row) && (0..<size).contains($0.column) }) else { throw .invalidConfiguration }\n        self.size = size; self.winLength = target; self.cells = positions\n    }\n    public func mark(at position: Position) -> Player? { nil }\n    public func result() -> GameResult<Player> { .inProgress }\n    public mutating func place(_ player: Player, at position: Position) throws(BoardError) -> GameResult<Player> { throw .notImplemented }\n    public mutating func reset() {}\n}",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Generic board analysis",
+        "contract": "Model cells with Position and analyze rows, columns, and both diagonals.\nresult() returns in-progress, won, or draw without string sentinels."
+      },
+      {
+        "part": 2,
+        "title": "Mutating moves and value semantics",
+        "contract": "place validates bounds and occupancy, mutates this board, and returns result().\nExpose the mark at a position and reset the board. Board copies must not share state."
+      },
+      {
+        "part": 3,
+        "title": "Configurable dimensions and win runs",
+        "contract": "Support arbitrary positive size and winLength (1...size). Detect consecutive\nhorizontal, vertical, and diagonal runs of winLength on larger boards.\n\npublic enum Mark: Hashable, Sendable { case x, o, custom(String) }\npublic struct Position: Hashable, Sendable {\n    public let row: Int; public let column: Int\n    public init(row: Int, column: Int) { self.row = row; self.column = column }\n}\npublic enum GameResult<Player: Hashable & Sendable>: Equatable, Sendable {\n    case inProgress, won(Player), draw\n}\npublic enum BoardError: Error, Equatable, Sendable {\n    case invalidConfiguration\n    case outOfBounds(Position)\n    case occupied(Position)\n    case notImplemented\n}\n\npublic struct Board<Player: Hashable & Sendable>: Sendable {\n    public let size: Int\n    public let winLength: Int\n    private var cells: [Position: Player]\n    public init(size: Int = 3, winLength: Int? = nil, positions: [Position: Player] = [:]) throws(BoardError) {\n        let target = winLength ?? size\n        guard size > 0, target > 0, target <= size else { throw .invalidConfiguration }\n        guard positions.keys.allSatisfy({ (0..<size).contains($0.row) && (0..<size).contains($0.column) }) else { throw .invalidConfiguration }\n        self.size = size; self.winLength = target; self.cells = positions\n    }\n    public func mark(at position: Position) -> Player? { nil }\n    public func result() -> GameResult<Player> { .inProgress }\n    public mutating func place(_ player: Player, at position: Position) throws(BoardError) -> GameResult<Player> { throw .notImplemented }\n    public mutating func reset() {}\n}"
+      }
+    ],
+    "testSuites": [
+      "Part 1 — Generic board analysis",
+      "Part 2 — Mutating moves and value semantics",
+      "Part 3 — Configurable dimensions and win runs"
+    ],
+    "commands": {
+      "answerPath": "swift/practice_problem_answers/my_answer_15_tic_tac_toe_engine.swift",
+      "copyCommand": "cp swift/practice_problems/problem_15_tic_tac_toe_engine.swift swift/practice_problem_answers/my_answer_15_tic_tac_toe_engine.swift",
+      "openCommand": "code swift/practice_problems/problem_15_tic_tac_toe_engine.swift",
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_15_tic_tac_toe_engine.swift -c swift test"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "How can one directional scan express rows, columns, and both diagonal families?",
+          "concepts": [
+            "generic hashable players",
+            "typed game outcomes",
+            "direction vectors"
+          ],
+          "steps": [
+            "Represent occupied cells by Position.",
+            "Return the first complete winning run, otherwise distinguish available cells from a full board."
+          ],
+          "pitfalls": [
+            "treating empty lines as wins",
+            "hard-coding X and O"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "Which operation should be the single source of truth for the result after a move?",
+          "concepts": [
+            "mutating value types",
+            "copy independence",
+            "method composition"
+          ],
+          "steps": [
+            "Validate the position before changing storage.",
+            "After storing a mark, return the existing board result."
+          ],
+          "pitfalls": [
+            "reference-backed shared storage",
+            "partially mutating on an invalid move"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "How does winLength change a full-line check into a consecutive-run check?",
+          "concepts": [
+            "configurable dimensions",
+            "consecutive tracking",
+            "four canonical directions"
+          ],
+          "steps": [
+            "Validate size and win length together.",
+            "Search bounded starts and stop a run when the player changes."
+          ],
+          "pitfalls": [
+            "counting nonconsecutive marks",
+            "missing descending diagonals",
+            "accepting impossible configurations"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "Changing a copied board changes the original",
+            "cause": "Board storage is shared through a reference",
+            "check": "Create two copies, place different marks, and inspect both positions."
+          },
+          {
+            "symptom": "Large boards report wins across gaps",
+            "cause": "The algorithm counts a player's marks without tracking adjacency",
+            "check": "Trace one direction and reset the run at every different or empty cell."
+          }
+        ]
+      }
+    }
   }
 };

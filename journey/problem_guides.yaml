@@ -67,5 +67,27 @@
       {"symptom": "Out-of-order inputs produce an old current dose", "cause": "Arrival order was used as chronology", "check": "Confirm every latest-event decision follows comparable timestamp ordering."},
       {"symptom": "Adding an event changes the original tracker", "cause": "Mutable reference-backed storage is shared", "check": "Verify ingestion constructs and returns a new value snapshot."}
     ]}
+  },
+  "swift-13": {
+    "approach": [
+      {"part": 1, "prompt": "How can the compiler prove every source state has an explicit transition decision?", "concepts": ["exhaustive enum switching", "typed expected failures", "immutable snapshots"], "steps": ["Keep mutable storage private to the lifecycle value.", "Decide allowed destinations with a switch over every source state before appending audit history."], "pitfalls": ["stringly typed states", "mutating state before validation", "forgetting the initial audit entry"]},
+      {"part": 2, "prompt": "How can bulk advancement preserve exactly the behavior of a single transition?", "concepts": ["method composition", "partial success", "deterministic ordering"], "steps": ["Call the single-contract transition for each requested ID.", "Capture typed failures and continue processing later IDs."], "pitfalls": ["duplicating transition rules", "aborting the whole batch on one failure"]},
+      {"part": 3, "prompt": "Which existing snapshots contain enough information for metrics and overdue reporting?", "concepts": ["state aggregation", "latest audit event", "whole-day arithmetic"], "steps": ["Aggregate current contract snapshots by enum case.", "Use the latest audit timestamp and exclude terminal states before sorting."], "pitfalls": ["using creation time after later transitions", "including contracts stuck exactly 30 days"]}
+    ],
+    "verify": {"commonFailures": [
+      {"symptom": "A legal transition is unexpectedly rejected", "cause": "One branch of the lifecycle switch omits a documented destination", "check": "Walk every source enum case and compare its allowed destinations with the state diagram."},
+      {"symptom": "Bulk and single transitions produce different audit trails", "cause": "Bulk logic implements a second state machine", "check": "Confirm each bulk item delegates to the single transition method."}
+    ]}
+  },
+  "swift-15": {
+    "approach": [
+      {"part": 1, "prompt": "How can one directional scan express rows, columns, and both diagonal families?", "concepts": ["generic hashable players", "typed game outcomes", "direction vectors"], "steps": ["Represent occupied cells by Position.", "Return the first complete winning run, otherwise distinguish available cells from a full board."], "pitfalls": ["treating empty lines as wins", "hard-coding X and O"]},
+      {"part": 2, "prompt": "Which operation should be the single source of truth for the result after a move?", "concepts": ["mutating value types", "copy independence", "method composition"], "steps": ["Validate the position before changing storage.", "After storing a mark, return the existing board result."], "pitfalls": ["reference-backed shared storage", "partially mutating on an invalid move"]},
+      {"part": 3, "prompt": "How does winLength change a full-line check into a consecutive-run check?", "concepts": ["configurable dimensions", "consecutive tracking", "four canonical directions"], "steps": ["Validate size and win length together.", "Search bounded starts and stop a run when the player changes."], "pitfalls": ["counting nonconsecutive marks", "missing descending diagonals", "accepting impossible configurations"]}
+    ],
+    "verify": {"commonFailures": [
+      {"symptom": "Changing a copied board changes the original", "cause": "Board storage is shared through a reference", "check": "Create two copies, place different marks, and inspect both positions."},
+      {"symptom": "Large boards report wins across gaps", "cause": "The algorithm counts a player's marks without tracking adjacency", "check": "Trace one direction and reset the run at every different or empty cell."}
+    ]}
   }
 }
