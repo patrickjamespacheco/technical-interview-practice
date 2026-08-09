@@ -48,6 +48,8 @@ class JourneyGeneratorTests(unittest.TestCase):
             "swift/Tests/Problem19OfflineTelemetryBatchProcessorTests/Problem19OfflineTelemetryBatchProcessorTests.swift",
             "swift/practice_problems/problem_21_versioned_payload_migration.swift",
             "swift/Tests/Problem21VersionedPayloadMigrationTests/Problem21VersionedPayloadMigrationTests.swift",
+            "swift/practice_problems/problem_22_undo_redo_command_stack.swift",
+            "swift/Tests/Problem22UndoRedoCommandStackTests/Problem22UndoRedoCommandStackTests.swift",
         ]:
             destination = self.root / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -72,7 +74,7 @@ class JourneyGeneratorTests(unittest.TestCase):
 
     def test_parses_catalogue_parts_examples_and_suite_names(self):
         data = builder.build_data(self.root)
-        self.assertEqual(set(data), {"python-01", "python-03", "react-02", "swift-02", "swift-05", "swift-10", "swift-11", "swift-13", "swift-15", "swift-18", "swift-19", "swift-21"})
+        self.assertEqual(set(data), {"python-01", "python-03", "react-02", "swift-02", "swift-05", "swift-10", "swift-11", "swift-13", "swift-15", "swift-18", "swift-19", "swift-21", "swift-22"})
         self.assertEqual([part["title"] for part in data["python-03"]["parts"]], [
             "Flat role/permission model", "Role inheritance", "Scoped permissions with wildcards"
         ])

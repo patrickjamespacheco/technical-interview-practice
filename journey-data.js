@@ -1437,5 +1437,132 @@ window.JOURNEY_PROBLEMS = {
         ]
       }
     }
+  },
+  "swift-22": {
+    "id": "swift-22",
+    "title": "Undo/Redo Command Stack",
+    "description": "Build a value-semantic command history with redo clearing, time-window coalescing, and nested transaction groups.",
+    "language": "swift",
+    "industry": "general",
+    "tags": [
+      "command-pattern",
+      "undo-redo",
+      "value-semantics",
+      "protocols",
+      "state-management"
+    ],
+    "level": "mid-level",
+    "stubPath": "swift/practice_problems/problem_22_undo_redo_command_stack.swift",
+    "testPath": "swift/Tests/Problem22UndoRedoCommandStackTests/Problem22UndoRedoCommandStackTests.swift",
+    "example": "struct RenameCommand: Command {\n    let from: String; let to: String\n    var actionDescription: String { \"Rename\" }\n    func apply(to document: inout Document) { document.title = to }\n    func revert(on document: inout Document) { document.title = from }\n}\nstruct AppendCommand: Command {\n    let text: String\n    var actionDescription: String { \"Typing\" }\n    func apply(to document: inout Document) { document.body += text }\n    func revert(on document: inout Document) { document.body.removeLast(text.count) }\n    func coalesced(with newer: any Command) -> (any Command)? {\n        guard let newer = newer as? AppendCommand else { return nil }\n        return AppendCommand(text: text + newer.text)\n    }\n}\nstruct DeleteSuffixCommand: Command {\n    let text: String\n    var actionDescription: String { \"Delete\" }\n    func apply(to document: inout Document) { document.body.removeLast(text.count) }\n    func revert(on document: inout Document) { document.body += text }\n}\nvar history = UndoRedoStack(document: Document(title: \"Draft\", body: \"\"))\nhistory.execute(RenameCommand(from: \"Draft\", to: \"Plan\"))\nhistory.executeCoalescing(AppendCommand(text: \"H\"), at: 10, within: 2)\nhistory.executeCoalescing(AppendCommand(text: \"i\"), at: 11, within: 2)\nhistory.execute(DeleteSuffixCommand(text: \"i\"))\nhistory.undoCount // -> 3\ntry history.undo()\ntry history.undo()\nhistory.execute(AppendCommand(text: \"!\"))\nhistory.canRedo // -> false\nhistory.beginGroup(description: \"Format section\")\nhistory.executeCoalescing(AppendCommand(text: \"A\"), at: 20, within: 2)\nhistory.executeCoalescing(AppendCommand(text: \"B\"), at: 21, within: 2)\nhistory.execute(RenameCommand(from: \"Plan\", to: \"Final\"))\ntry history.endGroup()\ntry history.undo() // -> reverts all three grouped edits\n/\n\nPART 1 — Execute, undo, and redo  (~18 min)\nImplement Command and the basic history stack. execute is the one method that\napplies a command to the document. undo and redo move commands between their\nrespective histories. Executing a new command always clears redo history.\nnextUndoDescription describes the command that undo() would revert.\n\nPART 2 — Coalesce compatible commands  (~12 min)\nexecuteCoalescing(_:at:within:) must call execute(_:) for the mutation. When\nthis command and the immediately preceding command are compatible, within the\ninclusive injected time window, ask the older command to coalesce(with:) the\nnewer one and replace those two history entries with the returned command.\nA negative window is invalid. Never read the system clock.\n\nPART 3 — Group commands into transactions  (~15 min)\nbeginGroup opens an explicit transaction and endGroup closes it. Commands in a\ngroup still travel through execute or executeCoalescing, but the completed\nouter group becomes one undoable command. Nested groups become one command in\ntheir parent. Undo a group in reverse order and redo it in forward order. Empty\ngroups add no history. An unmatched endGroup is a typed failure.\n\npublic struct Document: Equatable, Sendable {\n    public var title: String\n    public var body: String\n\n    public init(title: String, body: String) {\n        self.title = title\n        self.body = body\n    }\n}\n\npublic protocol Command: Sendable {\n    var actionDescription: String { get }\n    func apply(to document: inout Document)\n    func revert(on document: inout Document)\n\n/ Return one command representing `self` followed by `newer`, or nil when\n/ the commands are incompatible and must remain separate undo steps.\n    func coalesced(with newer: any Command) -> (any Command)?\n}\n\npublic extension Command {\n    func coalesced(with newer: any Command) -> (any Command)? { nil }\n}\n\npublic enum UndoRedoError: Error, Equatable, Sendable {\n    case nothingToUndo\n    case nothingToRedo\n    case invalidCoalescingWindow\n    case noOpenGroup\n    case notImplemented\n}\n\npublic struct UndoRedoStack: Sendable {\n    public private(set) var document: Document\n\n    public init(document: Document) {\n        self.document = document\n    }\n\nMARK: Part 1 — execute, undo, and redo\n    public var canUndo: Bool { false }\n    public var canRedo: Bool { false }\n    public var undoCount: Int { 0 }\n    public var redoCount: Int { 0 }\n    public var nextUndoDescription: String? { nil }\n\n    public mutating func execute(_ command: any Command) {}\n    public mutating func undo() throws(UndoRedoError) { throw .notImplemented }\n    public mutating func redo() throws(UndoRedoError) { throw .notImplemented }\n\nMARK: Part 2 — command-directed coalescing\n    public mutating func executeCoalescing(\n        _ command: any Command,\n        at timestamp: Int,\n        within window: Int\n    ) throws(UndoRedoError) {\n        throw .notImplemented\n    }\n\nMARK: Part 3 — nested transaction groups\n    public mutating func beginGroup(description: String) {}\n    public mutating func endGroup() throws(UndoRedoError) { throw .notImplemented }\n}",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Execute, undo, and redo",
+        "contract": "Implement Command and the basic history stack. execute is the one method that\napplies a command to the document. undo and redo move commands between their\nrespective histories. Executing a new command always clears redo history.\nnextUndoDescription describes the command that undo() would revert."
+      },
+      {
+        "part": 2,
+        "title": "Coalesce compatible commands",
+        "contract": "executeCoalescing(_:at:within:) must call execute(_:) for the mutation. When\nthis command and the immediately preceding command are compatible, within the\ninclusive injected time window, ask the older command to coalesce(with:) the\nnewer one and replace those two history entries with the returned command.\nA negative window is invalid. Never read the system clock."
+      },
+      {
+        "part": 3,
+        "title": "Group commands into transactions",
+        "contract": "beginGroup opens an explicit transaction and endGroup closes it. Commands in a\ngroup still travel through execute or executeCoalescing, but the completed\nouter group becomes one undoable command. Nested groups become one command in\ntheir parent. Undo a group in reverse order and redo it in forward order. Empty\ngroups add no history. An unmatched endGroup is a typed failure.\n\npublic struct Document: Equatable, Sendable {\n    public var title: String\n    public var body: String\n\n    public init(title: String, body: String) {\n        self.title = title\n        self.body = body\n    }\n}\n\npublic protocol Command: Sendable {\n    var actionDescription: String { get }\n    func apply(to document: inout Document)\n    func revert(on document: inout Document)\n\n/ Return one command representing `self` followed by `newer`, or nil when\n/ the commands are incompatible and must remain separate undo steps.\n    func coalesced(with newer: any Command) -> (any Command)?\n}\n\npublic extension Command {\n    func coalesced(with newer: any Command) -> (any Command)? { nil }\n}\n\npublic enum UndoRedoError: Error, Equatable, Sendable {\n    case nothingToUndo\n    case nothingToRedo\n    case invalidCoalescingWindow\n    case noOpenGroup\n    case notImplemented\n}\n\npublic struct UndoRedoStack: Sendable {\n    public private(set) var document: Document\n\n    public init(document: Document) {\n        self.document = document\n    }\n\nMARK: Part 1 — execute, undo, and redo\n    public var canUndo: Bool { false }\n    public var canRedo: Bool { false }\n    public var undoCount: Int { 0 }\n    public var redoCount: Int { 0 }\n    public var nextUndoDescription: String? { nil }\n\n    public mutating func execute(_ command: any Command) {}\n    public mutating func undo() throws(UndoRedoError) { throw .notImplemented }\n    public mutating func redo() throws(UndoRedoError) { throw .notImplemented }\n\nMARK: Part 2 — command-directed coalescing\n    public mutating func executeCoalescing(\n        _ command: any Command,\n        at timestamp: Int,\n        within window: Int\n    ) throws(UndoRedoError) {\n        throw .notImplemented\n    }\n\nMARK: Part 3 — nested transaction groups\n    public mutating func beginGroup(description: String) {}\n    public mutating func endGroup() throws(UndoRedoError) { throw .notImplemented }\n}"
+      }
+    ],
+    "testSuites": [
+      "Part 1 — Execute, undo, and redo",
+      "Part 2 — Coalesce compatible commands",
+      "Part 3 — Group commands into transactions"
+    ],
+    "commands": {
+      "answerPath": "swift/practice_problem_answers/my_answer_22_undo_redo_command_stack.swift",
+      "copyCommand": "cp swift/practice_problems/problem_22_undo_redo_command_stack.swift swift/practice_problem_answers/my_answer_22_undo_redo_command_stack.swift",
+      "openCommand": "code swift/practice_problems/problem_22_undo_redo_command_stack.swift",
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_22_undo_redo_command_stack.swift -c swift test"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Which history record lets one command move cleanly between undo and redo without copying mutation logic?",
+          "concepts": [
+            "command protocol",
+            "value semantics",
+            "two-stack history"
+          ],
+          "steps": [
+            "Keep the document and both histories inside each stack value.",
+            "Make execute the only path that applies a new command and clears the abandoned redo future.",
+            "Move the same command value between histories during undo and redo."
+          ],
+          "pitfalls": [
+            "forgetting to clear redo after a new edit",
+            "reversing the order of stack operations",
+            "sharing reference-backed history between copies"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "What metadata is needed to decide whether the newest two history entries may become one?",
+          "concepts": [
+            "injected time",
+            "command-directed compatibility",
+            "history rewriting"
+          ],
+          "steps": [
+            "Validate the supplied window before mutation.",
+            "Call execute for the new command, then inspect the newest pair and their timestamps.",
+            "Let the older command decide compatibility and replace only the history records."
+          ],
+          "pitfalls": [
+            "applying a command a second time while merging",
+            "using the wall clock",
+            "merging merely because timestamps are close"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "How can nesting change history ownership without introducing another document mutation path?",
+          "concepts": [
+            "composite command",
+            "nested transaction stack",
+            "forward apply and reverse revert"
+          ],
+          "steps": [
+            "Collect executed history in the innermost open group.",
+            "Close a nested group into one composite entry in its parent.",
+            "Publish only the completed outer group to undo history and ignore empty groups."
+          ],
+          "pitfalls": [
+            "placing grouped commands directly in global undo history",
+            "reverting a group in forward order",
+            "flattening nested groups into separate undo steps"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "Typing is coalesced but undo removes only the last character",
+            "cause": "The merged history command does not represent the full edit sequence",
+            "check": "Inspect the command returned by the older entry's coalescing method and verify its revert covers both edits."
+          },
+          {
+            "symptom": "An edit after undo can still redo the abandoned command",
+            "cause": "The execute path retained redo history",
+            "check": "Trace every new command, including grouped and coalescing calls, through execute's redo-clearing boundary."
+          },
+          {
+            "symptom": "Undoing a transaction leaves an earlier grouped edit applied",
+            "cause": "The composite reverts children in execution order",
+            "check": "Walk the transaction commands from newest to oldest during revert."
+          }
+        ]
+      }
+    }
   }
 };
