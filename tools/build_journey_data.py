@@ -18,9 +18,21 @@ LESSON_DIR_NAME = "journey-lessons"
 GUIDES_PATH = Path("journey/problem_guides.yaml")
 LEGACY_EXAMPLE_EXCEPTIONS = {
     "python-01": "pre-existing stub has no usage example",
+    "python-02": "pre-existing stub has no usage example",
+    "react-01": "pre-existing stub has no usage example block",
     "react-02": "pre-existing stub has seed data but no usage example block",
+    "react-03": "pre-existing stub has seed data but no usage example block",
+    "react-04": "pre-existing stub has seed data but no usage example block",
+    "react-05": "pre-existing stub describes interactions but has no usage example block",
+    "swift-03": "pre-existing stub has no usage example block",
 }
 LEGACY_PART_COUNT_EXCEPTIONS = {"python-01": 4}
+LEGACY_PART_TITLES = {
+    "python-12": ["Contract and alert-config management", "Alert schedule and due alerts", "Sent alerts and upcoming alerts"],
+    "python-13": ["Contract creation, fields, and transitions", "Audit queries and bulk advancement", "Lifecycle metrics and overdue contracts"],
+    "python-14": ["Base contract management", "Amendments and effective contracts", "Value history and amendment summary"],
+    "python-17": ["Canonical ingestion and lookups", "Settlement matching", "Batch reconciliation"],
+}
 PART_RE = re.compile(r"\bPART\s+(\d+)\s+[—-]\s+(.+?)(?:\s{2,}\([^\n]*\))?\s*$", re.I | re.M)
 EXAMPLE_RE = re.compile(
     r"(?:^\s*(?:[#*]\s*)?EXAMPLE\s*$\s*(?:^\s*(?:[#*]\s*)?-{3,}\s*$)?|^\s*#\s*Example\s*$)",
@@ -117,7 +129,17 @@ def _clean_comment_text(value: str) -> str:
     return "\n".join(lines).strip()
 
 
-def parse_parts(source: str, expected_count: int, path: Path) -> list[dict[str, Any]]:
+def _legacy_part_positions(source: str, titles: list[str]) -> list[tuple[int, int, int, str]]:
+    positions = []
+    for number, title in enumerate(titles, 1):
+        match = re.search(rf"^\s*#\s*─+\s*Part\s+{number}\s*─+.*$", source, re.I | re.M)
+        if not match:
+            return []
+        positions.append((number, match.start(), match.end(), title))
+    return positions
+
+
+def parse_parts(source: str, expected_count: int, path: Path, legacy_titles: list[str] | None = None) -> list[dict[str, Any]]:
     matches = []
     seen = set()
     for match in PART_RE.finditer(source):
@@ -126,6 +148,14 @@ def parse_parts(source: str, expected_count: int, path: Path) -> list[dict[str, 
             seen.add(number)
             matches.append(match)
     expected = set(range(1, expected_count + 1))
+    if seen != expected and legacy_titles:
+        positions = _legacy_part_positions(source, legacy_titles)
+        if len(positions) == expected_count:
+            parts = []
+            for index, (number, _start, heading_end, title) in enumerate(positions):
+                end = positions[index + 1][1] if index + 1 < len(positions) else len(source)
+                parts.append({"part": number, "title": title, "contract": _clean_comment_text(source[heading_end:end])})
+            return parts
     if seen != expected:
         missing = sorted(expected - seen)
         extra = sorted(seen - expected)
@@ -144,7 +174,7 @@ def parse_parts(source: str, expected_count: int, path: Path) -> list[dict[str, 
     return sorted(parts, key=lambda part: part["part"])
 
 
-def source_part_ranges(source: str, expected_count: int) -> list[dict[str, Any]]:
+def source_part_ranges(source: str, expected_count: int, legacy_titles: list[str] | None = None) -> list[dict[str, Any]]:
     """Return honest source excerpts bounded by canonical part headings.
 
     Some React and Swift stubs put requirements in one leading comment and the
@@ -159,6 +189,12 @@ def source_part_ranges(source: str, expected_count: int) -> list[dict[str, Any]]
         if number not in seen and 1 <= number <= expected_count:
             seen.add(number)
             matches.append(match)
+    if len(seen) != expected_count and legacy_titles:
+        positions = _legacy_part_positions(source, legacy_titles)
+        return [
+            {"part": number, "source": source[start:(positions[index + 1][1] if index + 1 < len(positions) else len(source))].rstrip() + "\n"}
+            for index, (number, start, _end, _title) in enumerate(positions)
+        ]
     excerpts = []
     for index, match in enumerate(matches):
         start = source.rfind("\n", 0, match.start()) + 1
@@ -324,7 +360,8 @@ def build_data(root: Path) -> dict[str, Any]:
             raise JourneyDataError(f"{key}: bad path; test does not exist: {test_value!r}")
         source = stub_path.read_text()
         expected_parts = LEGACY_PART_COUNT_EXCEPTIONS.get(key, int(problem["parts"]))
-        parts = parse_parts(source, expected_parts, stub_path.relative_to(root))
+        legacy_titles = LEGACY_PART_TITLES.get(key)
+        parts = parse_parts(source, expected_parts, stub_path.relative_to(root), legacy_titles)
         example = parse_example(source)
         if not example and key not in LEGACY_EXAMPLE_EXCEPTIONS:
             raise JourneyDataError(f"{key}: absent usage example in {problem['path']}; add a canonical `# Example` block")
@@ -363,7 +400,11 @@ def render_source(key: str, problem: dict[str, Any], root: Path) -> str:
         "language": problem["language"],
         "stub": {"path": problem["stubPath"], "source": (root / problem["stubPath"]).read_text()},
         "test": {"path": problem["testPath"], "source": (root / problem["testPath"]).read_text()} if problem.get("testPath") else None,
-        "parts": source_part_ranges((root / problem["stubPath"]).read_text(), int(problem["expectedParts"])),
+        "parts": source_part_ranges(
+            (root / problem["stubPath"]).read_text(),
+            int(problem["expectedParts"]),
+            LEGACY_PART_TITLES.get(key),
+        ),
         "implementationSurface": implementation_surface((root / problem["stubPath"]).read_text(), problem["language"]),
     }
     return "// Generated by tools/build_journey_data.py; do not edit.\nwindow.PROBLEM_SOURCES = window.PROBLEM_SOURCES || {};\nwindow.PROBLEM_SOURCES[" + json.dumps(key) + "] = " + json.dumps(payload, ensure_ascii=False) + ";\n"
