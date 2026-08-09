@@ -334,6 +334,70 @@
         }
       ],
       "reflection": "The transferable concurrency lesson is that an actor protects only code that stays within its isolation boundary. Rich Part 1 results let reservation logic reuse decisions, a single terminal-transition helper protects counters, and validate-then-apply turns serialized access into atomic business behavior."
+    },
+    "execution": {
+      "timeBudget": {
+        "navigation": 5,
+        "solution": 10,
+        "coding": 24,
+        "verification": 6
+      },
+      "navigation": {
+        "say": "I’ll confirm the behavioral contract for Inventory Reservation Ledger before choosing storage.",
+        "questions": [
+          "Can I confirm idempotency identity, expiry equality, oversell races, and atomic commits?",
+          "Which ordering guarantees are observable at the API boundary?"
+        ],
+        "assumptions": [
+          "The supplied domain types and typed failures are the public contract.",
+          "Injected timestamps are authoritative and equality follows the stated boundary."
+        ],
+        "edgeCases": [
+          "idempotency identity",
+          "expiry equality",
+          "oversell races",
+          "and atomic commits"
+        ],
+        "restate": "Protect commerce inventory with actor-isolated stock adjustments, idempotent reservations, deterministic expiry, and atomic order commits. Later parts will compose earlier behavior."
+      },
+      "solution": {
+        "pitch": "Actor-isolated state uses dictionaries for identity, sets for uniqueness, and sorting only at deterministic output boundaries.",
+        "dataStructures": [
+          "Dictionaries provide identity lookup; sets enforce uniqueness.",
+          "Arrays preserve audit/event/history order; derived views are computed by shared helpers."
+        ],
+        "types": [
+          "Domain structs and exhaustive enums prevent invalid stringly-typed states.",
+          "Rich Result/error/outcome values preserve the reason later parts need."
+        ],
+        "composition": "Part 1: What snapshot can carry both the stock facts and the reason an availability check failed? → Part 2: Where must idempotency lookup, availability validation, and reservation mutation occur to make overselling impossible? → Part 3: How can expiry and commit share reservation transitions while preserving all-or-nothing order behavior?",
+        "tradeoff": "Prefer clear invariants and deterministic scans; add indexes behind the interface only after measuring scale.",
+        "trap": "Spot the composition trap early: What snapshot can carry both the stock facts and the reason an availability check failed? must return or preserve enough evidence for How can expiry and commit share reservation transitions while preserving all-or-nothing order behavior?; otherwise later code would duplicate the decision."
+      },
+      "coding": {
+        "order": [
+          "Part 1: Derive one immutable snapshot from on-hand and reserved counts.",
+          "Part 2: Check the idempotency key before validating replay arguments.",
+          "Part 3: Collect eligible IDs, then expire them through release."
+        ],
+        "commentary": [
+          "I’m establishing the canonical lookup/reduction first.",
+          "Every mutation validates before committing, and later APIs delegate to the earlier boundary.",
+          "Actor isolation serializes the check-and-mutate critical section; I will not await inside it."
+        ],
+        "checkIn": "Pause after Part 1 tests: ‘Does this result preserve the evidence we need for the later parts?’"
+      },
+      "verification": {
+        "walkthroughs": [
+          "Walk the stub example and name every state change.",
+          "Walk the boundary cases: idempotency identity, expiry equality, oversell races, and atomic commits.",
+          "Launch competing tasks at the same injected instant and prove the invariant."
+        ],
+        "tests": "Run the Swift suite for swift/Tests/Problem18InventoryReservationLedgerTests/Problem18InventoryReservationLedgerTests.swift and map each ordered suite to its part.",
+        "complexity": "State lookup is O(1) average; derived scans are O(n), with O(n log n) only where deterministic sorting is required.",
+        "moreTime": "Add property-based invariant tests, measured indexes, persistence, and observability without changing the public contract."
+      },
+      "code": "import Foundation\n\n// Problem 18: Inventory Reservation Ledger\n// Swift 6, macOS 14+ | Senior | approximately 45 minutes\n//\n// Build an actor-backed inventory ledger for a commerce checkout flow. You choose\n// the internal data structures — the public interface is what matters.\n// Store all state in instance variables initialized in init. Mutable global or\n// static state will bleed between tests and ledger instances — avoid it.\n//\n// PART 1 — Typed stock and availability  (~12 min)\n// Seed stock by SKU, adjust it with typed Result failures, and return an\n// InventorySnapshot from availability. A negative adjustment may consume only\n// available stock, never units held by reservations.\n//\n// PART 2 — Idempotent concurrent reservations  (~18 min)\n// Reserve and release stock under readable string IDs and idempotency keys.\n// reserve must consume availability's Result directly. Replaying any key returns\n// its original reservation, even if the replay's other arguments differ. Because\n// all checks and mutations occur inside this actor, concurrent calls must never\n// oversell. reservation(id:) is the lookup seam used by release.\n//\n// PART 3 — Expiry and atomic order commits  (~15 min)\n// expireReservations(at:) uses the injected instant and calls release for every\n// active reservation whose expiry is at or before that instant. commit validates\n// every reservation through reservation(id:) before changing anything, then\n// commits the whole order atomically. Centralize terminal reservation bookkeeping\n// so release, expiry, and commit never maintain parallel counter logic.\n//\n/*\n * Example\n * let ledger = InventoryReservationLedger(initialStock: [\"camera\": 2])\n * async let first = ledger.reserve(id: \"res-a\", idempotencyKey: \"key-a\", sku: \"camera\", quantity: 2, expiresAt: Date(timeIntervalSince1970: 100))\n * async let second = ledger.reserve(id: \"res-b\", idempotencyKey: \"key-b\", sku: \"camera\", quantity: 2, expiresAt: Date(timeIntervalSince1970: 100))\n * let attempts = await [first, second] // -> exactly one success\n * let replay = await ledger.reserve(id: \"ignored\", idempotencyKey: \"key-a\", sku: \"camera\", quantity: 99, expiresAt: .distantFuture) // -> same res-a when key-a won\n * let expired = await ledger.expireReservations(at: Date(timeIntervalSince1970: 100)) // -> winner released; camera available is 2\n */\n\npublic struct InventorySnapshot: Equatable, Sendable {\n    public let sku: String\n    public let onHand: Int\n    public let reserved: Int\n    public let available: Int\n\n    public init(sku: String, onHand: Int, reserved: Int, available: Int) {\n        self.sku = sku\n        self.onHand = onHand\n        self.reserved = reserved\n        self.available = available\n    }\n}\n\npublic enum InventoryError: Error, Equatable, Sendable {\n    case invalidQuantity(Int)\n    case unknownSKU(String)\n    case insufficientAvailable(sku: String, requested: Int, available: Int)\n    case duplicateReservationID(String)\n    case unknownReservation(String)\n    case reservationNotActive(String)\n    case duplicateOrderID(String)\n    case emptyOrder\n    case notImplemented\n}\n\npublic enum ReservationState: Equatable, Sendable {\n    case active\n    case released\n    case expired\n    case committed(orderID: String)\n}\n\npublic struct Reservation: Equatable, Sendable {\n    public let id: String\n    public let idempotencyKey: String\n    public let sku: String\n    public let quantity: Int\n    public let expiresAt: Date\n    public let state: ReservationState\n\n    public init(id: String, idempotencyKey: String, sku: String, quantity: Int, expiresAt: Date, state: ReservationState = .active) {\n        self.id = id\n        self.idempotencyKey = idempotencyKey\n        self.sku = sku\n        self.quantity = quantity\n        self.expiresAt = expiresAt\n        self.state = state\n    }\n}\n\npublic struct CommittedOrder: Equatable, Sendable {\n    public let id: String\n    public let reservationIDs: [String]\n\n    public init(id: String, reservationIDs: [String]) {\n        self.id = id\n        self.reservationIDs = reservationIDs\n    }\n}\n\npublic actor InventoryReservationLedger {\n    public init(initialStock: [String: Int] = [:]) {}\n\n    // MARK: Part 1 — typed stock and availability\n    public func snapshot(for sku: String) -> Result<InventorySnapshot, InventoryError> { .failure(.notImplemented) }\n    public func availability(for sku: String, quantity: Int) -> Result<InventorySnapshot, InventoryError> { .failure(.notImplemented) }\n    public func adjustStock(sku: String, by quantity: Int) -> Result<InventorySnapshot, InventoryError> { .failure(.notImplemented) }\n\n    // MARK: Part 2 — idempotent concurrent reservations\n    public func reservation(id: String) -> Result<Reservation, InventoryError> { .failure(.notImplemented) }\n    public func reserve(id: String, idempotencyKey: String, sku: String, quantity: Int, expiresAt: Date) -> Result<Reservation, InventoryError> { .failure(.notImplemented) }\n    public func release(reservationID: String) -> Result<Reservation, InventoryError> { .failure(.notImplemented) }\n\n    // MARK: Part 3 — expiry and atomic commits\n    public func expireReservations(at instant: Date) -> [Reservation] { [] }\n    public func commit(orderID: String, reservationIDs: [String]) -> Result<CommittedOrder, InventoryError> { .failure(.notImplemented) }\n}\n"
     }
   },
   "python-01": {
@@ -482,6 +546,69 @@
           "check": "Trace the selected ID into the public manual-assignment method."
         }
       ]
+    },
+    "execution": {
+      "timeBudget": {
+        "navigation": 5,
+        "solution": 10,
+        "coding": 24,
+        "verification": 6
+      },
+      "navigation": {
+        "say": "I’ll confirm the behavioral contract for Responder Dispatch Manager (Swift) before choosing storage.",
+        "questions": [
+          "Can I confirm unresolved capacity, matching, and assignment tie-breaks?",
+          "Which ordering guarantees are observable at the API boundary?"
+        ],
+        "assumptions": [
+          "The supplied domain types and typed failures are the public contract.",
+          "Injected timestamps are authoritative and equality follows the stated boundary."
+        ],
+        "edgeCases": [
+          "unresolved capacity",
+          "matching",
+          "and assignment tie-breaks"
+        ],
+        "restate": "Route typed incidents through a pluggable assignment strategy while enforcing responder capacity and reusable manual-assignment validation. Later parts will compose earlier behavior."
+      },
+      "solution": {
+        "pitch": "Value-semantic state uses dictionaries for identity, sets for uniqueness, and sorting only at deterministic output boundaries.",
+        "dataStructures": [
+          "Dictionaries provide identity lookup; sets enforce uniqueness.",
+          "Arrays preserve audit/event/history order; derived views are computed by shared helpers."
+        ],
+        "types": [
+          "Domain structs and exhaustive enums prevent invalid stringly-typed states.",
+          "Rich Result/error/outcome values preserve the reason later parts need."
+        ],
+        "composition": "Part 1: Which keyed stores and one canonical ordering rule make registration and matching predictable? → Part 2: What should manual assignment return so automatic assignment can reuse both its mutation and resulting capacity facts? → Part 3: Where should eligibility selection end and authoritative assignment begin?",
+        "tradeoff": "Prefer clear invariants and deterministic scans; add indexes behind the interface only after measuring scale.",
+        "trap": "Spot the composition trap early: Which keyed stores and one canonical ordering rule make registration and matching predictable? must return or preserve enough evidence for Where should eligibility selection end and authoritative assignment begin?; otherwise later code would duplicate the decision."
+      },
+      "coding": {
+        "order": [
+          "Part 1: Validate uniqueness before inserting records.",
+          "Part 2: Count only assigned unresolved incidents.",
+          "Part 3: Build candidates from subscriptions and current capacity."
+        ],
+        "commentary": [
+          "I’m establishing the canonical lookup/reduction first.",
+          "Every mutation validates before committing, and later APIs delegate to the earlier boundary.",
+          "Copies remain independent because mutable state is stored on the value instance."
+        ],
+        "checkIn": "Pause after Part 1 tests: ‘Does this result preserve the evidence we need for the later parts?’"
+      },
+      "verification": {
+        "walkthroughs": [
+          "Walk the stub example and name every state change.",
+          "Walk the boundary cases: unresolved capacity, matching, and assignment tie-breaks.",
+          "Mutate one copy/instance and prove a second remains unchanged."
+        ],
+        "tests": "Run the Swift suite for swift/Tests/Problem10DispatchManagerTests/Problem10DispatchManagerTests.swift and map each ordered suite to its part.",
+        "complexity": "State lookup is O(1) average; derived scans are O(n), with O(n log n) only where deterministic sorting is required.",
+        "moreTime": "Add property-based invariant tests, measured indexes, persistence, and observability without changing the public contract."
+      },
+      "code": "// Problem 10: Responder Dispatch Manager\n// Swift 6, macOS 14+ | Senior | approximately 45 minutes\n//\n// Build an in-memory dispatch service in three cumulative parts. You choose the\n// internal data structures; the public interface is the contract. Store all\n// mutable state in instance variables initialized by init; never use mutable\n// global or static state.\n//\n// PART 1 — Registration and matching queries  (~10 min)\n// Register uniquely identified responders and incidents. Matching incidents are\n// ordered by severity descending, then timestamp and incident ID ascending.\n//\n// PART 2 — Manual assignment and resolution  (~15 min)\n// Enforce existence, single assignment, and responder capacity. Return an\n// AssignmentResult snapshot from assignIncident so later behavior can reuse it.\n// Resolving an incident frees capacity. Manual assignment does not require a\n// responder subscription; subscriptions govern automatic selection.\n//\n// PART 3 — Strategy-based automatic assignment  (~20 min)\n// Ask the injected AssignmentStrategy to select among subscribed responders with\n// capacity. Then call assignIncident to perform the assignment; do not duplicate\n// its validation or mutation. Produce responder summaries ordered by ID.\n//\n/*\n * Example\n * var manager = DispatchManager(strategy: LeastLoadedAssignmentStrategy())\n * try manager.registerResponder(Responder(id: \"unit-12\", name: \"Alpha\", subscribedTypes: [\"fire\"], capacity: 2))\n * try manager.addIncident(Incident(id: \"inc-001\", type: \"fire\", severity: 5, timestamp: DispatchTimestamp(100)))\n * let assignment = try manager.autoAssign(IncidentID(\"inc-001\"))\n * assignment.responderID // -> ResponderID(\"unit-12\")\n */\n\npublic struct ResponderID: Hashable, Comparable, Sendable, ExpressibleByStringLiteral {\n    public let rawValue: String\n    public init(_ rawValue: String) { self.rawValue = rawValue }\n    public init(stringLiteral value: String) { self.init(value) }\n    public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }\n}\npublic struct IncidentID: Hashable, Comparable, Sendable, ExpressibleByStringLiteral {\n    public let rawValue: String\n    public init(_ rawValue: String) { self.rawValue = rawValue }\n    public init(stringLiteral value: String) { self.init(value) }\n    public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }\n}\npublic struct IncidentType: Hashable, Sendable, ExpressibleByStringLiteral {\n    public let rawValue: String\n    public init(_ rawValue: String) { self.rawValue = rawValue }\n    public init(stringLiteral value: String) { self.init(value) }\n}\npublic struct DispatchTimestamp: Hashable, Comparable, Sendable {\n    public let rawValue: Int\n    public init(_ rawValue: Int) { self.rawValue = rawValue }\n    public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }\n}\npublic struct Responder: Equatable, Sendable {\n    public let id: ResponderID; public let name: String\n    public let subscribedTypes: Set<IncidentType>; public let capacity: Int\n    public init(id: ResponderID, name: String, subscribedTypes: Set<IncidentType>, capacity: Int) {\n        self.id = id; self.name = name; self.subscribedTypes = subscribedTypes; self.capacity = capacity\n    }\n}\npublic struct Incident: Equatable, Sendable {\n    public let id: IncidentID; public let type: IncidentType; public let severity: Int\n    public let timestamp: DispatchTimestamp; public var responderID: ResponderID?; public var isResolved: Bool\n    public init(id: IncidentID, type: IncidentType, severity: Int, timestamp: DispatchTimestamp, responderID: ResponderID? = nil, isResolved: Bool = false) {\n        self.id = id; self.type = type; self.severity = severity; self.timestamp = timestamp; self.responderID = responderID; self.isResolved = isResolved\n    }\n}\npublic enum DispatchError: Error, Equatable, Sendable {\n    case duplicateResponder(ResponderID), duplicateIncident(IncidentID)\n    case unknownResponder(ResponderID), unknownIncident(IncidentID)\n    case alreadyAssigned(IncidentID), alreadyResolved(IncidentID)\n    case responderAtCapacity(ResponderID), noEligibleResponder(IncidentID), invalidCapacity(Int), notImplemented\n}\npublic struct AssignmentCandidate: Equatable, Sendable {\n    public let responder: Responder; public let openCount: Int\n    public init(responder: Responder, openCount: Int) { self.responder = responder; self.openCount = openCount }\n}\npublic struct AssignmentResult: Equatable, Sendable {\n    public let incident: Incident; public let responder: Responder\n    public let openCount: Int; public let availableCapacity: Int\n    public var responderID: ResponderID { responder.id }\n}\npublic struct DispatchSummary: Equatable, Sendable {\n    public let responderID: ResponderID; public let name: String\n    public let capacity: Int; public let openCount: Int; public let availableCapacity: Int\n}\npublic protocol AssignmentStrategy {\n    func selectResponder(for incident: Incident, from candidates: [AssignmentCandidate]) -> ResponderID?\n}\npublic struct LeastLoadedAssignmentStrategy: AssignmentStrategy, Sendable {\n    public init() {}\n    public func selectResponder(for incident: Incident, from candidates: [AssignmentCandidate]) -> ResponderID? {\n        candidates.sorted { ($0.openCount, -$0.responder.capacity, $0.responder.id) < ($1.openCount, -$1.responder.capacity, $1.responder.id) }.first?.responder.id\n    }\n}\npublic struct DispatchManager {\n    public init(strategy: any AssignmentStrategy = LeastLoadedAssignmentStrategy()) { self.strategy = strategy }\n    private let strategy: any AssignmentStrategy\n    public mutating func registerResponder(_ responder: Responder) throws(DispatchError) { throw .notImplemented }\n    public mutating func addIncident(_ incident: Incident) throws(DispatchError) { throw .notImplemented }\n    public func incidents(matching responderID: ResponderID) throws(DispatchError) -> [Incident] { throw .notImplemented }\n    public mutating func assignIncident(_ incidentID: IncidentID, to responderID: ResponderID) throws(DispatchError) -> AssignmentResult { throw .notImplemented }\n    public mutating func resolveIncident(_ incidentID: IncidentID) throws(DispatchError) -> Incident { throw .notImplemented }\n    public func openAssignments(for responderID: ResponderID) throws(DispatchError) -> [Incident] { throw .notImplemented }\n    public mutating func autoAssign(_ incidentID: IncidentID) throws(DispatchError) -> AssignmentResult { throw .notImplemented }\n    public func dispatchSummary() -> [DispatchSummary] { [] }\n}\n"
     }
   },
   "swift-05": {
@@ -564,6 +691,70 @@
           "check": "Verify ingestion constructs and returns a new value snapshot."
         }
       ]
+    },
+    "execution": {
+      "timeBudget": {
+        "navigation": 5,
+        "solution": 10,
+        "coding": 24,
+        "verification": 6
+      },
+      "navigation": {
+        "say": "I’ll confirm the behavioral contract for Medication Titration Tracker (Swift) before choosing storage.",
+        "questions": [
+          "Can I confirm out-of-order events, stop semantics, and deterministic ties?",
+          "Which ordering guarantees are observable at the API boundary?"
+        ],
+        "assumptions": [
+          "The supplied domain types and typed failures are the public contract.",
+          "Injected timestamps are authoritative and equality follows the stated boundary."
+        ],
+        "edgeCases": [
+          "out-of-order events",
+          "stop semantics",
+          "and deterministic ties"
+        ],
+        "restate": "Reduce out-of-order typed medication events into immutable patient and population snapshots with injected temporal values. Later parts will compose earlier behavior."
+      },
+      "solution": {
+        "pitch": "Value-semantic state uses dictionaries for identity, sets for uniqueness, and sorting only at deterministic output boundaries.",
+        "dataStructures": [
+          "Dictionaries provide identity lookup; sets enforce uniqueness.",
+          "Arrays preserve audit/event/history order; derived views are computed by shared helpers."
+        ],
+        "types": [
+          "Domain structs and exhaustive enums prevent invalid stringly-typed states.",
+          "Rich Result/error/outcome values preserve the reason later parts need."
+        ],
+        "composition": "Part 1: How can one chronological history reduction produce each active medication snapshot? → Part 2: Which patient-level counts can be expressed directly over the Part 1 history? → Part 3: How can population queries reuse patient snapshots while remaining deterministic? → Part 4: What event identity enables last-write-wins without mutating either the input collection or existing tracker?",
+        "tradeoff": "Prefer clear invariants and deterministic scans; add indexes behind the interface only after measuring scale.",
+        "trap": "Spot the composition trap early: How can one chronological history reduction produce each active medication snapshot? must return or preserve enough evidence for What event identity enables last-write-wins without mutating either the input collection or existing tracker?; otherwise later code would duplicate the decision."
+      },
+      "coding": {
+        "order": [
+          "Part 1: Filter by typed patient and medication IDs.",
+          "Part 2: Reuse chronological history for optional direction counts.",
+          "Part 3: Derive unique typed patient and medication IDs from events.",
+          "Part 4: Remove an event matching patient, medication, and timestamp."
+        ],
+        "commentary": [
+          "I’m establishing the canonical lookup/reduction first.",
+          "Every mutation validates before committing, and later APIs delegate to the earlier boundary.",
+          "Copies remain independent because mutable state is stored on the value instance."
+        ],
+        "checkIn": "Pause after Part 1 tests: ‘Does this result preserve the evidence we need for the later parts?’"
+      },
+      "verification": {
+        "walkthroughs": [
+          "Walk the stub example and name every state change.",
+          "Walk the boundary cases: out-of-order events, stop semantics, and deterministic ties.",
+          "Mutate one copy/instance and prove a second remains unchanged."
+        ],
+        "tests": "Run the Swift suite for swift/Tests/Problem05MedicationTitrationTests/Problem05MedicationTitrationTests.swift and map each ordered suite to its part.",
+        "complexity": "State lookup is O(1) average; derived scans are O(n), with O(n log n) only where deterministic sorting is required.",
+        "moreTime": "Add property-based invariant tests, measured indexes, persistence, and observability without changing the public contract."
+      },
+      "code": "import Foundation\n\n// Problem 05: Medication Titration Tracker\n// Swift 6, macOS 14+ | Senior | approximately 45 minutes\n//\n// Reduce out-of-order medication events into immutable clinical snapshots.\n// Values and identifiers are pre-given. TitrationTracker itself is immutable:\n// adding an event returns a new tracker and never changes the original value.\n// No wall clock is used; every temporal value arrives through an event.\n//\n// PART 1 — Patient medication snapshots  (~12 min)\n// Return chronological history and active medication snapshots. The latest event\n// determines activity and dose; a stop event makes the medication inactive.\n//\n// PART 2 — Patient-level reductions  (~10 min)\n// Count events, optionally by direction, and summarize decreases plus stops per\n// medication. Reuse history rather than creating a parallel filtering path.\n//\n// PART 3 — Population-level reductions  (~13 min)\n// Find sorted active patients and the most-titrated medications across patients.\n// Reuse the Part 1 snapshot behavior when determining active medications.\n//\n// PART 4 — Immutable event ingestion  (~10 min)\n// Return a new tracker containing the event. For the same patient, medication,\n// and timestamp, the new event replaces the old event (last write wins).\n//\n/*\n * Example\n * let events = [MedicationEvent(patientID: \"pt-1\", medicationID: \"metformin\", direction: .start, dose: Dose(milligrams: 500), timestamp: MedicationTimestamp(10))]\n * let tracker = TitrationTracker(events: events)\n * tracker.currentMedications(for: \"pt-1\").first?.dose // -> Dose(milligrams: 500)\n * tracker.adding(MedicationEvent(patientID: \"pt-1\", medicationID: \"metformin\", direction: .stop, dose: .zero, timestamp: MedicationTimestamp(20))).currentMedications(for: \"pt-1\") // -> []\n */\n\npublic struct PatientID: Hashable, Comparable, Sendable, ExpressibleByStringLiteral {\n    public let rawValue: String; public init(_ rawValue: String) { self.rawValue = rawValue }\n    public init(stringLiteral value: String) { self.init(value) }\n    public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }\n}\npublic struct MedicationID: Hashable, Comparable, Sendable, ExpressibleByStringLiteral {\n    public let rawValue: String; public init(_ rawValue: String) { self.rawValue = rawValue }\n    public init(stringLiteral value: String) { self.init(value) }\n    public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }\n}\npublic struct MedicationTimestamp: Hashable, Comparable, Sendable {\n    public let rawValue: Int; public init(_ rawValue: Int) { self.rawValue = rawValue }\n    public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }\n}\npublic struct Dose: Equatable, Sendable {\n    public let milligrams: Decimal\n    public init(milligrams: Decimal) { self.milligrams = milligrams }\n    public static let zero = Dose(milligrams: 0)\n}\npublic enum TitrationDirection: Equatable, Sendable { case start, increase, decrease, stop }\npublic struct MedicationEvent: Equatable, Sendable {\n    public let patientID: PatientID; public let medicationID: MedicationID\n    public let direction: TitrationDirection; public let dose: Dose; public let timestamp: MedicationTimestamp\n    public init(patientID: PatientID, medicationID: MedicationID, direction: TitrationDirection, dose: Dose, timestamp: MedicationTimestamp) {\n        self.patientID = patientID; self.medicationID = medicationID; self.direction = direction; self.dose = dose; self.timestamp = timestamp\n    }\n}\npublic struct MedicationSnapshot: Equatable, Sendable {\n    public let medicationID: MedicationID; public let dose: Dose\n    public let lastChanged: MedicationTimestamp; public let totalChanges: Int\n}\npublic struct MedicationCount: Equatable, Sendable {\n    public let medicationID: MedicationID; public let count: Int\n}\npublic struct TitrationTracker: Sendable {\n    public init(events: [MedicationEvent] = []) { self.events = events }\n    private let events: [MedicationEvent]\n    public func medicationHistory(for patientID: PatientID, medicationID: MedicationID) -> [MedicationEvent] { [] }\n    public func currentMedications(for patientID: PatientID) -> [MedicationSnapshot] { [] }\n    public func titrationCount(for patientID: PatientID, medicationID: MedicationID, direction: TitrationDirection? = nil) -> Int { 0 }\n    public func deEscalationSummary(for patientID: PatientID) -> [MedicationID: Int] { [:] }\n    public func patients(on medicationID: MedicationID) -> [PatientID] { [] }\n    public func mostTitratedMedications(limit: Int = 3) -> [MedicationCount] { [] }\n    public func adding(_ event: MedicationEvent) -> TitrationTracker { self }\n}\n"
     }
   },
   "swift-13": {
@@ -634,6 +825,69 @@
           "check": "Confirm each bulk item delegates to the single transition method."
         }
       ]
+    },
+    "execution": {
+      "timeBudget": {
+        "navigation": 5,
+        "solution": 10,
+        "coding": 24,
+        "verification": 6
+      },
+      "navigation": {
+        "say": "I’ll confirm the behavioral contract for Contract Lifecycle (Swift) before choosing storage.",
+        "questions": [
+          "Can I confirm the legal transition graph, partial bulk failure, and overdue criteria?",
+          "Which ordering guarantees are observable at the API boundary?"
+        ],
+        "assumptions": [
+          "The supplied domain types and typed failures are the public contract.",
+          "Injected timestamps are authoritative and equality follows the stated boundary."
+        ],
+        "edgeCases": [
+          "the legal transition graph",
+          "partial bulk failure",
+          "and overdue criteria"
+        ],
+        "restate": "Build an exhaustive typed contract state machine with immutable audit values, bulk transitions, and lifecycle reporting. Later parts will compose earlier behavior."
+      },
+      "solution": {
+        "pitch": "Value-semantic state uses dictionaries for identity, sets for uniqueness, and sorting only at deterministic output boundaries.",
+        "dataStructures": [
+          "Dictionaries provide identity lookup; sets enforce uniqueness.",
+          "Arrays preserve audit/event/history order; derived views are computed by shared helpers."
+        ],
+        "types": [
+          "Domain structs and exhaustive enums prevent invalid stringly-typed states.",
+          "Rich Result/error/outcome values preserve the reason later parts need."
+        ],
+        "composition": "Part 1: How can the compiler prove every source state has an explicit transition decision? → Part 2: How can bulk advancement preserve exactly the behavior of a single transition? → Part 3: Which existing snapshots contain enough information for metrics and overdue reporting?",
+        "tradeoff": "Prefer clear invariants and deterministic scans; add indexes behind the interface only after measuring scale.",
+        "trap": "Spot the composition trap early: How can the compiler prove every source state has an explicit transition decision? must return or preserve enough evidence for Which existing snapshots contain enough information for metrics and overdue reporting?; otherwise later code would duplicate the decision."
+      },
+      "coding": {
+        "order": [
+          "Part 1: Keep mutable storage private to the lifecycle value.",
+          "Part 2: Call the single-contract transition for each requested ID.",
+          "Part 3: Aggregate current contract snapshots by enum case."
+        ],
+        "commentary": [
+          "I’m establishing the canonical lookup/reduction first.",
+          "Every mutation validates before committing, and later APIs delegate to the earlier boundary.",
+          "Copies remain independent because mutable state is stored on the value instance."
+        ],
+        "checkIn": "Pause after Part 1 tests: ‘Does this result preserve the evidence we need for the later parts?’"
+      },
+      "verification": {
+        "walkthroughs": [
+          "Walk the stub example and name every state change.",
+          "Walk the boundary cases: the legal transition graph, partial bulk failure, and overdue criteria.",
+          "Mutate one copy/instance and prove a second remains unchanged."
+        ],
+        "tests": "Run the Swift suite for swift/Tests/Problem13ContractLifecycleTests/Problem13ContractLifecycleTests.swift and map each ordered suite to its part.",
+        "complexity": "State lookup is O(1) average; derived scans are O(n), with O(n log n) only where deterministic sorting is required.",
+        "moreTime": "Add property-based invariant tests, measured indexes, persistence, and observability without changing the public contract."
+      },
+      "code": "// Problem 13: Contract Lifecycle\n// Swift 6, macOS 14+ | Senior | approximately 45 minutes\n//\n// Build a typed contract state machine. You choose the internal data structures;\n// the public interface is the contract. Store all mutable state in instance\n// variables initialized in init; mutable static state will bleed between instances.\n// Every transition decision must use an exhaustive switch over ContractState.\n//\n/*\n# Example\nvar lifecycle = ContractLifecycle()\ntry lifecycle.createContract(id: \"c-001\", title: \"Vendor MSA\", createdAt: 0, actor: \"alice\")\ntry lifecycle.transition(\"c-001\", to: .inReview, at: 86_400, actor: \"alice\") // -> .inReview\ntry lifecycle.transition(\"c-001\", to: .approved, at: 172_800, actor: \"bob\") // -> .approved\n*/\n//\n// PART 1 — Typed contracts and exhaustive transitions  (~20 min)\n// Create contracts, update string metadata, retrieve immutable contract and audit\n// snapshots, and transition only along the documented state machine. Creation\n// records an audit entry whose fromState is nil. Expected failures use TransitionError.\n//\n// PART 2 — Audit queries and bulk advancement  (~15 min)\n// Query contracts by state sorted by ID and bulk-advance contracts. bulkAdvance\n// must call transition for every ID and continue after individual failures.\n//\n// PART 3 — Lifecycle reporting  (~10 min)\n// Report counts by state using contracts(in:), then find nonterminal contracts\n// whose auditTrail(for:) ends more than 30 whole days ago, sorted by days stuck.\n\npublic enum ContractState: String, CaseIterable, Sendable {\n    case draft, inReview, approved, executed, active, expiringSoon, expired, terminated\n\n    public var isTerminal: Bool { self == .expired || self == .terminated }\n}\n\npublic enum TransitionError: Error, Equatable, Sendable {\n    case duplicateContract(String)\n    case unknownContract(String)\n    case invalidTransition(from: ContractState, to: ContractState)\n    case notImplemented\n}\n\npublic struct AuditEntry: Equatable, Sendable {\n    public let contractID: String\n    public let fromState: ContractState?\n    public let toState: ContractState\n    public let timestamp: Int\n    public let actor: String\n    public init(contractID: String, fromState: ContractState?, toState: ContractState, timestamp: Int, actor: String) {\n        self.contractID = contractID; self.fromState = fromState; self.toState = toState; self.timestamp = timestamp; self.actor = actor\n    }\n}\n\npublic struct Contract: Equatable, Sendable {\n    public let id: String\n    public let title: String\n    public let state: ContractState\n    public let createdAt: Int\n    public let fields: [String: String]\n    public init(id: String, title: String, state: ContractState, createdAt: Int, fields: [String: String]) {\n        self.id = id; self.title = title; self.state = state; self.createdAt = createdAt; self.fields = fields\n    }\n}\n\npublic struct BulkFailure: Equatable, Sendable { public let contractID: String; public let error: TransitionError; public init(contractID: String, error: TransitionError) { self.contractID = contractID; self.error = error } }\npublic struct BulkAdvanceResult: Equatable, Sendable { public let succeeded: [String]; public let failed: [BulkFailure]; public init(succeeded: [String], failed: [BulkFailure]) { self.succeeded = succeeded; self.failed = failed } }\npublic struct LifecycleMetrics: Equatable, Sendable { public let total: Int; public let byState: [ContractState: Int]; public let terminalCount: Int; public init(total: Int, byState: [ContractState: Int], terminalCount: Int) { self.total = total; self.byState = byState; self.terminalCount = terminalCount } }\npublic struct OverdueContract: Equatable, Sendable { public let contract: Contract; public let stuckSince: Int; public let daysStuck: Int; public init(contract: Contract, stuckSince: Int, daysStuck: Int) { self.contract = contract; self.stuckSince = stuckSince; self.daysStuck = daysStuck } }\n\npublic struct ContractLifecycle: Sendable {\n    public init() {}\n    public mutating func createContract(id: String, title: String, createdAt: Int, actor: String) throws(TransitionError) -> Contract { throw .notImplemented }\n    public mutating func setField(contractID: String, key: String, value: String) throws(TransitionError) -> Contract { throw .notImplemented }\n    public func contract(id: String) throws(TransitionError) -> Contract { throw .notImplemented }\n    public func auditTrail(for contractID: String) throws(TransitionError) -> [AuditEntry] { throw .notImplemented }\n    public mutating func transition(_ contractID: String, to state: ContractState, at: Int, actor: String) throws(TransitionError) -> Contract { throw .notImplemented }\n    public func contracts(in state: ContractState) -> [Contract] { [] }\n    public mutating func bulkAdvance(_ contractIDs: [String], to state: ContractState, at: Int, actor: String) -> BulkAdvanceResult { .init(succeeded: [], failed: []) }\n    public func lifecycleMetrics() -> LifecycleMetrics { .init(total: 0, byState: [:], terminalCount: 0) }\n    public func overdueContracts(asOf: Int) -> [OverdueContract] { [] }\n}\n"
     }
   },
   "swift-15": {
@@ -704,6 +958,70 @@
           "check": "Trace one direction and reset the run at every different or empty cell."
         }
       ]
+    },
+    "execution": {
+      "timeBudget": {
+        "navigation": 5,
+        "solution": 10,
+        "coding": 24,
+        "verification": 6
+      },
+      "navigation": {
+        "say": "I’ll confirm the behavioral contract for Tic-Tac-Toe Engine (Swift) before choosing storage.",
+        "questions": [
+          "Can I confirm bounds, configurable win runs, draws, and generic players?",
+          "Which ordering guarantees are observable at the API boundary?"
+        ],
+        "assumptions": [
+          "The supplied domain types and typed failures are the public contract.",
+          "Injected timestamps are authoritative and equality follows the stated boundary."
+        ],
+        "edgeCases": [
+          "bounds",
+          "configurable win runs",
+          "draws",
+          "and generic players"
+        ],
+        "restate": "Build a generic value-semantic board with typed outcomes, independent copies, and configurable winning runs. Later parts will compose earlier behavior."
+      },
+      "solution": {
+        "pitch": "Value-semantic state uses dictionaries for identity, sets for uniqueness, and sorting only at deterministic output boundaries.",
+        "dataStructures": [
+          "Dictionaries provide identity lookup; sets enforce uniqueness.",
+          "Arrays preserve audit/event/history order; derived views are computed by shared helpers."
+        ],
+        "types": [
+          "Domain structs and exhaustive enums prevent invalid stringly-typed states.",
+          "Rich Result/error/outcome values preserve the reason later parts need."
+        ],
+        "composition": "Part 1: How can one directional scan express rows, columns, and both diagonal families? → Part 2: Which operation should be the single source of truth for the result after a move? → Part 3: How does winLength change a full-line check into a consecutive-run check?",
+        "tradeoff": "Prefer clear invariants and deterministic scans; add indexes behind the interface only after measuring scale.",
+        "trap": "Spot the composition trap early: How can one directional scan express rows, columns, and both diagonal families? must return or preserve enough evidence for How does winLength change a full-line check into a consecutive-run check?; otherwise later code would duplicate the decision."
+      },
+      "coding": {
+        "order": [
+          "Part 1: Represent occupied cells by Position.",
+          "Part 2: Validate the position before changing storage.",
+          "Part 3: Validate size and win length together."
+        ],
+        "commentary": [
+          "I’m establishing the canonical lookup/reduction first.",
+          "Every mutation validates before committing, and later APIs delegate to the earlier boundary.",
+          "Copies remain independent because mutable state is stored on the value instance."
+        ],
+        "checkIn": "Pause after Part 1 tests: ‘Does this result preserve the evidence we need for the later parts?’"
+      },
+      "verification": {
+        "walkthroughs": [
+          "Walk the stub example and name every state change.",
+          "Walk the boundary cases: bounds, configurable win runs, draws, and generic players.",
+          "Mutate one copy/instance and prove a second remains unchanged."
+        ],
+        "tests": "Run the Swift suite for swift/Tests/Problem15TicTacToeEngineTests/Problem15TicTacToeEngineTests.swift and map each ordered suite to its part.",
+        "complexity": "State lookup is O(1) average; derived scans are O(n), with O(n log n) only where deterministic sorting is required.",
+        "moreTime": "Add property-based invariant tests, measured indexes, persistence, and observability without changing the public contract."
+      },
+      "code": "// Problem 15: Tic-Tac-Toe Engine\n// Swift 6, macOS 14+ | Senior | approximately 45 minutes\n//\n// Build a configurable, value-semantic board. Board is generic so the engine is\n// reusable, while Mark supplies the familiar tic-tac-toe players. All mutable\n// state belongs to each Board value; copies must evolve independently.\n//\n/*\n# Example\nvar board = try Board<Mark>()\ntry board.place(.x, at: Position(row: 0, column: 0)) // -> .inProgress\ntry board.place(.x, at: Position(row: 0, column: 1)) // -> .inProgress\ntry board.place(.x, at: Position(row: 0, column: 2)) // -> .won(.x)\n*/\n//\n// PART 1 — Generic board analysis  (~10 min)\n// Model cells with Position and analyze rows, columns, and both diagonals.\n// result() returns in-progress, won, or draw without string sentinels.\n//\n// PART 2 — Mutating moves and value semantics  (~20 min)\n// place validates bounds and occupancy, mutates this board, and returns result().\n// Expose the mark at a position and reset the board. Board copies must not share state.\n//\n// PART 3 — Configurable dimensions and win runs  (~15 min)\n// Support arbitrary positive size and winLength (1...size). Detect consecutive\n// horizontal, vertical, and diagonal runs of winLength on larger boards.\n\npublic enum Mark: Hashable, Sendable { case x, o, custom(String) }\npublic struct Position: Hashable, Sendable {\n    public let row: Int; public let column: Int\n    public init(row: Int, column: Int) { self.row = row; self.column = column }\n}\npublic enum GameResult<Player: Hashable & Sendable>: Equatable, Sendable {\n    case inProgress, won(Player), draw\n}\npublic enum BoardError: Error, Equatable, Sendable {\n    case invalidConfiguration\n    case outOfBounds(Position)\n    case occupied(Position)\n    case notImplemented\n}\n\npublic struct Board<Player: Hashable & Sendable>: Sendable {\n    public let size: Int\n    public let winLength: Int\n    private var cells: [Position: Player]\n    public init(size: Int = 3, winLength: Int? = nil, positions: [Position: Player] = [:]) throws(BoardError) {\n        let target = winLength ?? size\n        guard size > 0, target > 0, target <= size else { throw .invalidConfiguration }\n        guard positions.keys.allSatisfy({ (0..<size).contains($0.row) && (0..<size).contains($0.column) }) else { throw .invalidConfiguration }\n        self.size = size; self.winLength = target; self.cells = positions\n    }\n    public func mark(at position: Position) -> Player? { nil }\n    public func result() -> GameResult<Player> { .inProgress }\n    public mutating func place(_ player: Player, at position: Position) throws(BoardError) -> GameResult<Player> { throw .notImplemented }\n    public mutating func reset() {}\n}\n"
     }
   },
   "swift-02": {
@@ -772,6 +1090,69 @@
           "check": "Evaluate the minute dimension before the day dimension."
         }
       ]
+    },
+    "execution": {
+      "timeBudget": {
+        "navigation": 5,
+        "solution": 10,
+        "coding": 24,
+        "verification": 6
+      },
+      "navigation": {
+        "say": "I’ll confirm the behavioral contract for API Rate Limiter (Swift) before choosing storage.",
+        "questions": [
+          "Can I confirm window boundaries, denied-call accounting, and atomic evaluation/recording inside an actor?",
+          "Which ordering guarantees are observable at the API boundary?"
+        ],
+        "assumptions": [
+          "The supplied domain types and typed failures are the public contract.",
+          "Injected timestamps are authoritative and equality follows the stated boundary."
+        ],
+        "edgeCases": [
+          "window boundaries",
+          "denied-call accounting",
+          "and atomic evaluation/recording inside an actor"
+        ],
+        "restate": "Build an actor-isolated sliding-window limiter with rich typed denial decisions and deterministic time. Later parts will compose earlier behavior."
+      },
+      "solution": {
+        "pitch": "Actor-isolated state uses dictionaries for identity, sets for uniqueness, and sorting only at deterministic output boundaries.",
+        "dataStructures": [
+          "Dictionaries provide identity lookup; sets enforce uniqueness.",
+          "Arrays preserve audit/event/history order; derived views are computed by shared helpers."
+        ],
+        "types": [
+          "Domain structs and exhaustive enums prevent invalid stringly-typed states.",
+          "Rich Result/error/outcome values preserve the reason later parts need."
+        ],
+        "composition": "Part 1: What single decision type can carry both permission to proceed and precise denial context? → Part 2: How can checking and recording remain one atomic actor operation? → Part 3: Which immutable values let callers inspect usage without exposing actor storage?",
+        "tradeoff": "Prefer clear invariants and deterministic scans; add indexes behind the interface only after measuring scale.",
+        "trap": "Spot the composition trap early: What single decision type can carry both permission to proceed and precise denial context? must return or preserve enough evidence for Which immutable values let callers inspect usage without exposing actor storage?; otherwise later code would duplicate the decision."
+      },
+      "coding": {
+        "order": [
+          "Part 1: Keep plans, keys, and logs inside the actor.",
+          "Part 2: Call the Part 1 decision method first.",
+          "Part 3: Build Usage from the same window-counting logic."
+        ],
+        "commentary": [
+          "I’m establishing the canonical lookup/reduction first.",
+          "Every mutation validates before committing, and later APIs delegate to the earlier boundary.",
+          "Actor isolation serializes the check-and-mutate critical section; I will not await inside it."
+        ],
+        "checkIn": "Pause after Part 1 tests: ‘Does this result preserve the evidence we need for the later parts?’"
+      },
+      "verification": {
+        "walkthroughs": [
+          "Walk the stub example and name every state change.",
+          "Walk the boundary cases: window boundaries, denied-call accounting, and atomic evaluation/recording inside an actor.",
+          "Launch competing tasks at the same injected instant and prove the invariant."
+        ],
+        "tests": "Run the Swift suite for swift/Tests/Problem02APIRateLimiterTests/Problem02APIRateLimiterTests.swift and map each ordered suite to its part.",
+        "complexity": "State lookup is O(1) average; derived scans are O(n), with O(n log n) only where deterministic sorting is required.",
+        "moreTime": "Add property-based invariant tests, measured indexes, persistence, and observability without changing the public contract."
+      },
+      "code": "import Foundation\n\n// Problem 02: API Rate Limiter\n// Swift 6, macOS 14+ | Senior | approximately 45 minutes\n//\n// Build an actor that protects API keys with per-minute and per-day sliding\n// windows. You choose the actor's internal data structures; the public\n// interface is the contract. Store all mutable state in actor instance state.\n// Limits of nil are unlimited. Window intervals are (start, now].\n//\n/*\n * Example\n */\n// let clock = { Date(timeIntervalSince1970: 1_700_000_000) }\n// let limiter = APIRateLimiter(plans: [\"free\": Plan(requestsPerMinute: 2, requestsPerDay: 10)], now: clock)\n// try await limiter.createKey(id: \"pk.demo\", owner: \"alice\", planID: \"free\")\n// await limiter.evaluate(\"pk.demo\") // -> .allowed(Usage(...))\n// await limiter.handleRequest(\"pk.demo\") // -> .allowed(Usage(...))\n//\n// PART 1 — Keys and rich rate decisions  (~20 min)\n// Register, revoke, and change plans. evaluate(_:at:) must distinguish every\n// denial reason and return current Usage with an allowed decision. Check the\n// minute limit before the day limit. Calls without `at` use the injected clock.\n//\n// PART 2 — Atomic request handling  (~15 min)\n// handleRequest(_:at:) must call evaluate(_:at:). If allowed, append the\n// request before returning an updated allowed Usage. Denials have no side\n// effects. Prune timestamps at least 25 hours old when recording.\n//\n// PART 3 — Usage and immutable snapshots  (~10 min)\n// usage(for:at:) returns current counts and limits. keySnapshots() returns\n// copies sorted by key ID, never mutable actor storage.\n\npublic struct Plan: Equatable, Sendable {\n    public let requestsPerMinute: Int?\n    public let requestsPerDay: Int?\n    public init(requestsPerMinute: Int?, requestsPerDay: Int?) {\n        self.requestsPerMinute = requestsPerMinute\n        self.requestsPerDay = requestsPerDay\n    }\n}\n\npublic struct Usage: Equatable, Sendable {\n    public let keyID: String\n    public let planID: String\n    public let minuteUsed: Int\n    public let minuteLimit: Int?\n    public let dayUsed: Int\n    public let dayLimit: Int?\n    public init(keyID: String, planID: String, minuteUsed: Int, minuteLimit: Int?, dayUsed: Int, dayLimit: Int?) {\n        self.keyID = keyID; self.planID = planID; self.minuteUsed = minuteUsed\n        self.minuteLimit = minuteLimit; self.dayUsed = dayUsed; self.dayLimit = dayLimit\n    }\n}\n\npublic enum DenialReason: Equatable, Sendable {\n    case keyNotFound(keyID: String)\n    case keyDisabled(keyID: String)\n    case perMinuteExceeded(limit: Int, used: Int)\n    case perDayExceeded(limit: Int, used: Int)\n}\n\npublic enum RateLimitDecision: Equatable, Sendable {\n    case allowed(Usage)\n    case denied(DenialReason)\n}\n\npublic struct APIKeySnapshot: Equatable, Sendable {\n    public let id: String\n    public let owner: String\n    public let planID: String\n    public let isEnabled: Bool\n    public let requestDates: [Date]\n    public init(id: String, owner: String, planID: String, isEnabled: Bool, requestDates: [Date]) {\n        self.id = id; self.owner = owner; self.planID = planID\n        self.isEnabled = isEnabled; self.requestDates = requestDates\n    }\n}\n\npublic enum APIRateLimiterError: Error, Equatable, Sendable {\n    case duplicateKey(String)\n    case unknownKey(String)\n    case unknownPlan(String)\n    case notImplemented\n}\n\npublic actor APIRateLimiter {\n    public init(plans: [String: Plan], now: @escaping @Sendable () -> Date) {}\n\n    // MARK: Part 1 — keys and rich rate decisions\n    public func createKey(id: String, owner: String, planID: String) throws(APIRateLimiterError) { throw .notImplemented }\n    public func revokeKey(_ keyID: String) throws(APIRateLimiterError) { throw .notImplemented }\n    public func updatePlan(for keyID: String, to planID: String) throws(APIRateLimiterError) { throw .notImplemented }\n    public func evaluate(_ keyID: String, at date: Date? = nil) -> RateLimitDecision {\n        .denied(.keyNotFound(keyID: keyID))\n    }\n\n    // MARK: Part 2 — atomic request handling\n    public func handleRequest(_ keyID: String, at date: Date? = nil) -> RateLimitDecision {\n        .denied(.keyNotFound(keyID: keyID))\n    }\n\n    // MARK: Part 3 — usage and immutable snapshots\n    public func usage(for keyID: String, at date: Date? = nil) throws(APIRateLimiterError) -> Usage { throw .notImplemented }\n    public func keySnapshots() -> [APIKeySnapshot] { [] }\n}\n"
     }
   },
   "swift-19": {
@@ -848,6 +1229,70 @@
           "check": "Check cancellation before every task-group add."
         }
       ]
+    },
+    "execution": {
+      "timeBudget": {
+        "navigation": 5,
+        "solution": 10,
+        "coding": 24,
+        "verification": 6
+      },
+      "navigation": {
+        "say": "I’ll confirm the behavioral contract for Offline Telemetry Batch Processor before choosing storage.",
+        "questions": [
+          "Can I confirm dedupe order, retry classification, bounded concurrency, and checkpoint order?",
+          "Which ordering guarantees are observable at the API boundary?"
+        ],
+        "assumptions": [
+          "The supplied domain types and typed failures are the public contract.",
+          "Injected timestamps are authoritative and equality follows the stated boundary."
+        ],
+        "edgeCases": [
+          "dedupe order",
+          "retry classification",
+          "bounded concurrency",
+          "and checkpoint order"
+        ],
+        "restate": "Deduplicate and batch offline IoT readings, classify delivery failures, and coordinate bounded concurrent delivery with ordered checkpoints. Later parts will compose earlier behavior."
+      },
+      "solution": {
+        "pitch": "Actor-isolated state uses dictionaries for identity, sets for uniqueness, and sorting only at deterministic output boundaries.",
+        "dataStructures": [
+          "Dictionaries provide identity lookup; sets enforce uniqueness.",
+          "Arrays preserve audit/event/history order; derived views are computed by shared helpers."
+        ],
+        "types": [
+          "Domain structs and exhaustive enums prevent invalid stringly-typed states.",
+          "Rich Result/error/outcome values preserve the reason later parts need."
+        ],
+        "composition": "Part 1: Which state preserves first-seen order while making duplicate detection efficient? → Part 2: What outcome contains everything the coordinator needs without inspecting processor internals? → Part 3: How can completed work be concurrent while checkpoint commitment remains ordered?",
+        "tradeoff": "Prefer clear invariants and deterministic scans; add indexes behind the interface only after measuring scale.",
+        "trap": "Spot the composition trap early: Which state preserves first-seen order while making duplicate detection efficient? must return or preserve enough evidence for How can completed work be concurrent while checkpoint commitment remains ordered?; otherwise later code would duplicate the decision."
+      },
+      "coding": {
+        "order": [
+          "Part 1: Record an ID the first time it arrives.",
+          "Part 2: Count every sink invocation as an attempt.",
+          "Part 3: Seed only the allowed number of delivery tasks."
+        ],
+        "commentary": [
+          "I’m establishing the canonical lookup/reduction first.",
+          "Every mutation validates before committing, and later APIs delegate to the earlier boundary.",
+          "Actor isolation serializes the check-and-mutate critical section; I will not await inside it."
+        ],
+        "checkIn": "Pause after Part 1 tests: ‘Does this result preserve the evidence we need for the later parts?’"
+      },
+      "verification": {
+        "walkthroughs": [
+          "Walk the stub example and name every state change.",
+          "Walk the boundary cases: dedupe order, retry classification, bounded concurrency, and checkpoint order.",
+          "Launch competing tasks at the same injected instant and prove the invariant."
+        ],
+        "tests": "Run the Swift suite for swift/Tests/Problem19OfflineTelemetryBatchProcessorTests/Problem19OfflineTelemetryBatchProcessorTests.swift and map each ordered suite to its part.",
+        "complexity": "State lookup is O(1) average; derived scans are O(n), with O(n log n) only where deterministic sorting is required.",
+        "moreTime": "Add property-based invariant tests, measured indexes, persistence, and observability without changing the public contract."
+      },
+      "code": "// Problem 19: Offline Telemetry Batch Processor\n// Swift 6, macOS 14+ | Staff | approximately 45 minutes\n//\n// Process readings buffered by intermittently connected IoT devices. The public\n// interface is the contract; you choose the internal data structures. Store all\n// mutable state in instance properties initialized by init. Never use mutable\n// global or static state.\n//\n// PART 1 — Deduplicate and batch readings  (~12 min)\n// Ingest readings in arrival order, ignoring repeated IDs. makeBatch removes and\n// returns at most maxCount pending readings without reordering them. It returns\n// nil when none remain. maxCount must be positive.\n//\n// PART 2 — Classify delivery outcomes  (~13 min)\n// Implement deliver(batch:to:maxRetries:). A retryable sink failure may be tried\n// again up to maxRetries times; a permanent failure returns immediately. Report\n// the batch and attempt count in every outcome. Callers must feed this method\n// batches produced by Part 1 rather than chunking readings a second way.\n//\n// PART 3 — Coordinate bounded concurrent delivery  (~20 min)\n// TelemetryCoordinator owns a processor and schedules no more than maxInFlight\n// batch deliveries concurrently. Cooperatively stop scheduling when its task is\n// cancelled. Advance the checkpoint only across contiguous successful outcomes,\n// even when later batches finish first. Derive advancement solely from the\n// DeliveryOutcome values returned by Part 2.\n//\n/*\n * Example\n * let readings = (1...5).map { TelemetryReading(id: \"r\\($0)\", payload: \"v\\($0)\") }\n * var processor = TelemetryBatchProcessor(readings: readings)\n * try processor.makeBatch(maxCount: 2)?.readings.map(\\.id) // -> [\"r1\", \"r2\"]\n * try processor.makeBatch(maxCount: 2)?.readings.map(\\.id) // -> [\"r3\", \"r4\"]\n * try processor.makeBatch(maxCount: 2)?.readings.map(\\.id) // -> [\"r5\"]\n * With a sink that fails batch 2 retryably once, the coordinator retries it,\n * and its checkpoint still advances in order through all five unique readings.\n */\n\npublic struct TelemetryReading: Equatable, Sendable {\n    public let id: String\n    public let payload: String\n    public init(id: String, payload: String) { self.id = id; self.payload = payload }\n}\n\npublic struct TelemetryBatch: Equatable, Sendable {\n    public let sequence: Int\n    public let readings: [TelemetryReading]\n    public init(sequence: Int, readings: [TelemetryReading]) {\n        self.sequence = sequence; self.readings = readings\n    }\n}\n\npublic enum TelemetryProcessorError: Error, Equatable, Sendable {\n    case invalidBatchSize\n    case invalidRetryLimit\n    case notImplemented\n}\n\npublic enum TelemetrySinkError: Error, Equatable, Sendable {\n    case retryable(reason: String)\n    case permanent(reason: String)\n}\n\npublic protocol TelemetrySink: Sendable {\n    func send(_ batch: TelemetryBatch) async throws(TelemetrySinkError)\n}\n\npublic enum DeliveryOutcome: Equatable, Sendable {\n    case delivered(batch: TelemetryBatch, attempts: Int)\n    case failed(batch: TelemetryBatch, attempts: Int, error: TelemetrySinkError)\n\n    public var batch: TelemetryBatch {\n        switch self {\n        case let .delivered(batch, _), let .failed(batch, _, _): batch\n        }\n    }\n}\n\npublic struct TelemetryBatchProcessor: Sendable {\n    public init(readings: [TelemetryReading] = []) {}\n\n    // MARK: Part 1 — deterministic ingestion and batching\n    public mutating func ingest(_ readings: [TelemetryReading]) {}\n    public mutating func makeBatch(maxCount: Int) throws(TelemetryProcessorError) -> TelemetryBatch? {\n        throw .notImplemented\n    }\n    public var pendingCount: Int { 0 }\n\n    // MARK: Part 2 — typed delivery and retry policy\n    public func deliver<S: TelemetrySink>(\n        batch: TelemetryBatch,\n        to sink: S,\n        maxRetries: Int\n    ) async throws(TelemetryProcessorError) -> DeliveryOutcome {\n        throw .notImplemented\n    }\n}\n\npublic struct TelemetryCheckpoint: Equatable, Sendable {\n    public let deliveredReadingIDs: [String]\n    public init(deliveredReadingIDs: [String] = []) { self.deliveredReadingIDs = deliveredReadingIDs }\n}\n\npublic actor TelemetryCoordinator {\n    public init(readings: [TelemetryReading], batchSize: Int, maxInFlight: Int, maxRetries: Int) {}\n\n    // MARK: Part 3 — bounded concurrency and ordered checkpointing\n    public func run<S: TelemetrySink>(sink: S) async throws(TelemetryProcessorError) -> TelemetryCheckpoint {\n        throw .notImplemented\n    }\n    public func checkpoint() -> TelemetryCheckpoint { TelemetryCheckpoint() }\n}\n"
     }
   },
   "swift-20": {
@@ -923,6 +1368,70 @@
           "check": "Inspect the outcome's record contents and resolve deletion precedence first."
         }
       ]
+    },
+    "execution": {
+      "timeBudget": {
+        "navigation": 5,
+        "solution": 10,
+        "coding": 24,
+        "verification": 6
+      },
+      "navigation": {
+        "say": "I’ll confirm the behavioral contract for Offline Sync Conflict Resolver before choosing storage.",
+        "questions": [
+          "Can I confirm three-way baselines, delete/edit conflicts, merge policy, and tombstones?",
+          "Which ordering guarantees are observable at the API boundary?"
+        ],
+        "assumptions": [
+          "The supplied domain types and typed failures are the public contract.",
+          "Injected timestamps are authoritative and equality follows the stated boundary."
+        ],
+        "edgeCases": [
+          "three-way baselines",
+          "delete/edit conflicts",
+          "merge policy",
+          "and tombstones"
+        ],
+        "restate": "Reconcile versioned offline note edits with rich conflict outcomes, field-level merges, and deterministic tombstone handling. Later parts will compose earlier behavior."
+      },
+      "solution": {
+        "pitch": "Value-semantic state uses dictionaries for identity, sets for uniqueness, and sorting only at deterministic output boundaries.",
+        "dataStructures": [
+          "Dictionaries provide identity lookup; sets enforce uniqueness.",
+          "Arrays preserve audit/event/history order; derived views are computed by shared helpers."
+        ],
+        "types": [
+          "Domain structs and exhaustive enums prevent invalid stringly-typed states.",
+          "Rich Result/error/outcome values preserve the reason later parts need."
+        ],
+        "composition": "Part 1: Which snapshots preserve both the current local value and the clean ancestor needed by later reconciliation? → Part 2: What context must each outcome carry so resolution never compares ordering metadata again? → Part 3: How can baseline-relative field choices and deletion precedence be derived only from reconciliation outcomes?",
+        "tradeoff": "Prefer clear invariants and deterministic scans; add indexes behind the interface only after measuring scale.",
+        "trap": "Spot the composition trap early: Which snapshots preserve both the current local value and the clean ancestor needed by later reconciliation? must return or preserve enough evidence for How can baseline-relative field choices and deletion precedence be derived only from reconciliation outcomes?; otherwise later code would duplicate the decision."
+      },
+      "coding": {
+        "order": [
+          "Part 1: Keep the first clean baseline when a record becomes dirty.",
+          "Part 2: Use the pending snapshot to identify dirty local records.",
+          "Part 3: Classify each field as unchanged, one-sided, or divergent against the baseline."
+        ],
+        "commentary": [
+          "I’m establishing the canonical lookup/reduction first.",
+          "Every mutation validates before committing, and later APIs delegate to the earlier boundary.",
+          "Copies remain independent because mutable state is stored on the value instance."
+        ],
+        "checkIn": "Pause after Part 1 tests: ‘Does this result preserve the evidence we need for the later parts?’"
+      },
+      "verification": {
+        "walkthroughs": [
+          "Walk the stub example and name every state change.",
+          "Walk the boundary cases: three-way baselines, delete/edit conflicts, merge policy, and tombstones.",
+          "Mutate one copy/instance and prove a second remains unchanged."
+        ],
+        "tests": "Run the Swift suite for swift/Tests/Problem20OfflineSyncConflictResolverTests/Problem20OfflineSyncConflictResolverTests.swift and map each ordered suite to its part.",
+        "complexity": "State lookup is O(1) average; derived scans are O(n), with O(n log n) only where deterministic sorting is required.",
+        "moreTime": "Add property-based invariant tests, measured indexes, persistence, and observability without changing the public contract."
+      },
+      "code": "import Foundation\n\n// Problem 20: Offline Sync Conflict Resolver\n// Swift 6, macOS 14+ | Senior | approximately 45 minutes\n//\n// Build the reconciliation core for a productivity app whose notes can change\n// while a device is offline. The public interface is the contract; you choose\n// the internal data structures. Store all mutable state in instance properties\n// initialized by init. Never use mutable global or static state.\n//\n// PART 1 — Versioned local changes  (~12 min)\n// Store the supplied records. edit changes selected fields, increments the\n// record's version once, uses only the injected instant, and marks it dirty.\n// delete replaces a live record with a tombstone under the same rules.\n// pendingChanges returns a value snapshot, sorted by record ID, containing each\n// dirty record and the clean baseline from which its local changes began.\n//\n// PART 2 — Rich reconciliation outcomes  (~15 min)\n// reconcile(remote:) compares a batch with local state. It must call\n// pendingChanges() to discover dirty records and return one outcome per remote\n// ID, sorted by ID. Compare version first, then lastModified, then originID\n// lexicographically as the deterministic tie-break. Identical records are\n// unchanged. If all ordering metadata ties but content differs, report a\n// conflicted outcome. Every non-unchanged outcome carries a SyncComparison with\n// enough baseline/local/remote context for Part 3; do not expose parallel logic.\n//\n// PART 3 — Merge fields and preserve tombstones  (~18 min)\n// apply(_:resolution:at:originID:) consumes Part 2 outcomes directly. With\n// mergeFields, compare each field with the baseline: preserve one-sided edits,\n// and use the chosen preference only when both sides changed the same field\n// differently. A tombstone always beats a live edit, recording why deletion won.\n// A synthesized merge has max(local, remote) version + 1 and the injected time\n// and origin. Applying the exact same outcome batch again must be idempotent.\n//\n/*\n * Example\n * let base = SyncRecord(id: \"note-plan\", version: 2, lastModified: Date(timeIntervalSince1970: 20), originID: \"server\", content: .note(.init(title: \"Plan\", body: \"Draft\")))\n * var store = OfflineSyncStore(records: [base])\n * try store.edit(id: \"note-plan\", title: \"Launch plan\", at: Date(timeIntervalSince1970: 30), originID: \"phone\").version // -> 3\n * store.reconcile(remote: [base]).first?.kind // -> .localWins\n * let remote = SyncRecord(id: \"note-plan\", version: 4, lastModified: Date(timeIntervalSince1970: 40), originID: \"server\", content: .note(.init(title: \"Plan\", body: \"Approved\")))\n * let outcomes = store.reconcile(remote: [remote])\n * store.apply(outcomes, resolution: .mergeFields(prefer: .remote), at: Date(timeIntervalSince1970: 50), originID: \"phone\").first?.record.content // -> .note(.init(title: \"Launch plan\", body: \"Approved\"))\n * After delete, applying a racing live edit returns .tombstone with reason .tombstonePrecedence.\n */\n\npublic struct NoteFields: Equatable, Sendable {\n    public let title: String\n    public let body: String\n\n    public init(title: String, body: String) {\n        self.title = title\n        self.body = body\n    }\n}\n\npublic enum DeletionReason: Equatable, Sendable {\n    case userDeleted\n    case tombstonePrecedence(deletedOriginID: String, editedOriginID: String)\n}\n\npublic enum RecordContent: Equatable, Sendable {\n    case note(NoteFields)\n    case tombstone(reason: DeletionReason)\n}\n\npublic struct SyncRecord: Equatable, Sendable {\n    public let id: String\n    public let version: Int\n    public let lastModified: Date\n    public let originID: String\n    public let content: RecordContent\n\n    public init(id: String, version: Int, lastModified: Date, originID: String, content: RecordContent) {\n        self.id = id\n        self.version = version\n        self.lastModified = lastModified\n        self.originID = originID\n        self.content = content\n    }\n}\n\npublic struct PendingChange: Equatable, Sendable {\n    public let baseline: SyncRecord\n    public let local: SyncRecord\n\n    public init(baseline: SyncRecord, local: SyncRecord) {\n        self.baseline = baseline\n        self.local = local\n    }\n}\n\npublic struct PendingChanges: Equatable, Sendable {\n    public let changes: [PendingChange]\n\n    public init(changes: [PendingChange]) {\n        self.changes = changes\n    }\n}\n\npublic struct SyncComparison: Equatable, Sendable {\n    public let baseline: SyncRecord?\n    public let local: SyncRecord?\n    public let remote: SyncRecord\n\n    public init(baseline: SyncRecord?, local: SyncRecord?, remote: SyncRecord) {\n        self.baseline = baseline\n        self.local = local\n        self.remote = remote\n    }\n}\n\npublic enum ReconciliationKind: Equatable, Sendable {\n    case unchanged\n    case remoteWins\n    case localWins\n    case conflicted\n}\n\npublic enum ReconciliationOutcome: Equatable, Sendable {\n    case unchanged(SyncRecord)\n    case remoteWins(SyncComparison)\n    case localWins(SyncComparison)\n    case conflicted(SyncComparison)\n\n    public var kind: ReconciliationKind {\n        switch self {\n        case .unchanged: .unchanged\n        case .remoteWins: .remoteWins\n        case .localWins: .localWins\n        case .conflicted: .conflicted\n        }\n    }\n\n    public var recordID: String {\n        switch self {\n        case let .unchanged(record): record.id\n        case let .remoteWins(comparison), let .localWins(comparison), let .conflicted(comparison): comparison.remote.id\n        }\n    }\n}\n\npublic enum MergePreference: Equatable, Sendable {\n    case local\n    case remote\n}\n\npublic enum ResolutionStrategy: Equatable, Sendable {\n    case acceptWinner\n    case mergeFields(prefer: MergePreference)\n}\n\npublic enum ResolutionReason: Equatable, Sendable {\n    case unchanged\n    case acceptedRemote\n    case retainedLocal\n    case fieldMerge\n    case tombstonePrecedence\n}\n\npublic struct AppliedResolution: Equatable, Sendable {\n    public let record: SyncRecord\n    public let reason: ResolutionReason\n\n    public init(record: SyncRecord, reason: ResolutionReason) {\n        self.record = record\n        self.reason = reason\n    }\n}\n\npublic enum SyncStoreError: Error, Equatable, Sendable {\n    case unknownRecord(String)\n    case recordDeleted(String)\n    case notImplemented\n}\n\npublic struct OfflineSyncStore: Sendable {\n    public init(records: [SyncRecord] = []) {}\n\n    // MARK: Part 1 — versioned local state and dirty snapshots\n    public func record(id: String) -> SyncRecord? { nil }\n\n    @discardableResult\n    public mutating func edit(\n        id: String,\n        title: String? = nil,\n        body: String? = nil,\n        at instant: Date,\n        originID: String\n    ) throws(SyncStoreError) -> SyncRecord {\n        throw .notImplemented\n    }\n\n    @discardableResult\n    public mutating func delete(\n        id: String,\n        at instant: Date,\n        originID: String\n    ) throws(SyncStoreError) -> SyncRecord {\n        throw .notImplemented\n    }\n\n    public func pendingChanges() -> PendingChanges { PendingChanges(changes: []) }\n\n    // MARK: Part 2 — deterministic reconciliation\n    public func reconcile(remote: [SyncRecord]) -> [ReconciliationOutcome] { [] }\n\n    // MARK: Part 3 — outcome-driven resolution\n    @discardableResult\n    public mutating func apply(\n        _ outcomes: [ReconciliationOutcome],\n        resolution: ResolutionStrategy,\n        at instant: Date,\n        originID: String\n    ) -> [AppliedResolution] { [] }\n}\n"
     }
   },
   "swift-11": {
@@ -992,6 +1501,69 @@
           "check": "Resolve every omitted asOf value from the initializer closure."
         }
       ]
+    },
+    "execution": {
+      "timeBudget": {
+        "navigation": 5,
+        "solution": 10,
+        "coding": 24,
+        "verification": 6
+      },
+      "navigation": {
+        "say": "I’ll confirm the behavioral contract for Coverage Tracker (Swift) before choosing storage.",
+        "questions": [
+          "Can I confirm never-heartbeating staleness, threshold equality, and open outage duration?",
+          "Which ordering guarantees are observable at the API boundary?"
+        ],
+        "assumptions": [
+          "The supplied domain types and typed failures are the public contract.",
+          "Injected timestamps are authoritative and equality follows the stated boundary."
+        ],
+        "edgeCases": [
+          "never-heartbeating staleness",
+          "threshold equality",
+          "and open outage duration"
+        ],
+        "restate": "Model station health, outage history, and regional coverage with typed values and injected time. Later parts will compose earlier behavior."
+      },
+      "solution": {
+        "pitch": "Value-semantic state uses dictionaries for identity, sets for uniqueness, and sorting only at deterministic output boundaries.",
+        "dataStructures": [
+          "Dictionaries provide identity lookup; sets enforce uniqueness.",
+          "Arrays preserve audit/event/history order; derived views are computed by shared helpers."
+        ],
+        "types": [
+          "Domain structs and exhaustive enums prevent invalid stringly-typed states.",
+          "Rich Result/error/outcome values preserve the reason later parts need."
+        ],
+        "composition": "Part 1: Which typed values should be stored separately from changing heartbeat state? → Part 2: How do Date and Duration express the stale boundary and open outage invariant? → Part 3: How can associated-value coverage states make impossible summaries unrepresentable?",
+        "tradeoff": "Prefer clear invariants and deterministic scans; add indexes behind the interface only after measuring scale.",
+        "trap": "Spot the composition trap early: Which typed values should be stored separately from changing heartbeat state? must return or preserve enough evidence for How can associated-value coverage states make impossible summaries unrepresentable?; otherwise later code would duplicate the decision."
+      },
+      "coding": {
+        "order": [
+          "Part 1: Index stations by readable ID.",
+          "Part 2: Resolve omitted query time through the injected source.",
+          "Part 3: Intersect regional stations with the Part 2 stale snapshot."
+        ],
+        "commentary": [
+          "I’m establishing the canonical lookup/reduction first.",
+          "Every mutation validates before committing, and later APIs delegate to the earlier boundary.",
+          "Copies remain independent because mutable state is stored on the value instance."
+        ],
+        "checkIn": "Pause after Part 1 tests: ‘Does this result preserve the evidence we need for the later parts?’"
+      },
+      "verification": {
+        "walkthroughs": [
+          "Walk the stub example and name every state change.",
+          "Walk the boundary cases: never-heartbeating staleness, threshold equality, and open outage duration.",
+          "Mutate one copy/instance and prove a second remains unchanged."
+        ],
+        "tests": "Run the Swift suite for swift/Tests/Problem11CoverageTrackerTests/Problem11CoverageTrackerTests.swift and map each ordered suite to its part.",
+        "complexity": "State lookup is O(1) average; derived scans are O(n), with O(n log n) only where deterministic sorting is required.",
+        "moreTime": "Add property-based invariant tests, measured indexes, persistence, and observability without changing the public contract."
+      },
+      "code": "import Foundation\n\n// Problem 11: Coverage Tracker\n// Swift 6, macOS 14+ | Senior | approximately 45 minutes\n//\n// Track receiver stations, heartbeats, outages, and regional coverage using\n// typed temporal values. You choose the internal data structures; the public\n// interface is the contract. Store mutable state only in this instance.\n// Returned arrays and summaries are immutable snapshots.\n//\n/*\n * Example\n */\n// let tracker = CoverageTracker(now: { Date(timeIntervalSince1970: 1_700_000_300) })\n// try tracker.register(Station(id: \"sta-001\", name: \"North Tower\", region: \"downtown\"))\n// try tracker.recordHeartbeat(for: \"sta-001\", at: Date(timeIntervalSince1970: 1_700_000_000))\n// try tracker.staleStations(after: .seconds(120)) // -> [Station(id: \"sta-001\", ...)]\n// try tracker.coverageStatus(in: \"downtown\", staleAfter: .seconds(120)) // -> .unavailable(...)\n//\n// PART 1 — Stations and heartbeats  (~12 min)\n// Register unique string IDs, accept only strictly increasing heartbeats, and\n// return station snapshots sorted by ID. Calls without `asOf` use injected time.\n//\n// PART 2 — Staleness and outage history  (~16 min)\n// A station is stale when it has no heartbeat or its heartbeat age is greater\n// than the threshold. Allow one open outage per station. Ending an outage must\n// be after its start. Return outage snapshots sorted by start date.\n//\n// PART 3 — Coverage and duration summaries  (~17 min)\n// coverageStatus must compose stations(in:) and staleStations(asOf:after:).\n// outageSummary must compose outages(for:) and count an open outage through\n// the requested/injected time.\n\npublic struct Station: Equatable, Sendable {\n    public let id: String\n    public let name: String\n    public let region: String\n    public init(id: String, name: String, region: String) {\n        self.id = id; self.name = name; self.region = region\n    }\n}\n\npublic struct Outage: Equatable, Sendable {\n    public let stationID: String\n    public let startedAt: Date\n    public let endedAt: Date?\n    public init(stationID: String, startedAt: Date, endedAt: Date? = nil) {\n        self.stationID = stationID; self.startedAt = startedAt; self.endedAt = endedAt\n    }\n}\n\npublic enum CoverageStatus: Equatable, Sendable {\n    case noStations(region: String)\n    case unavailable(region: String, total: Int, stale: Int)\n    case available(region: String, total: Int, healthy: Int, stale: Int)\n}\n\npublic struct OutageSummary: Equatable, Sendable {\n    public let stationID: String\n    public let totalOutages: Int\n    public let hasOpenOutage: Bool\n    public let totalDuration: Duration\n    public init(stationID: String, totalOutages: Int, hasOpenOutage: Bool, totalDuration: Duration) {\n        self.stationID = stationID; self.totalOutages = totalOutages\n        self.hasOpenOutage = hasOpenOutage; self.totalDuration = totalDuration\n    }\n}\n\npublic enum CoverageTrackerError: Error, Equatable, Sendable {\n    case duplicateStation(String)\n    case unknownStation(String)\n    case heartbeatNotIncreasing(stationID: String)\n    case outageAlreadyOpen(stationID: String)\n    case noOpenOutage(stationID: String)\n    case outageEndNotAfterStart(stationID: String)\n    case notImplemented\n}\n\npublic final class CoverageTracker {\n    public init(now: @escaping @Sendable () -> Date) {}\n\n    // MARK: Part 1 — stations and heartbeats\n    public func register(_ station: Station) throws(CoverageTrackerError) { throw .notImplemented }\n    public func recordHeartbeat(for stationID: String, at date: Date) throws(CoverageTrackerError) { throw .notImplemented }\n    public func lastHeartbeat(for stationID: String) throws(CoverageTrackerError) -> Date? { throw .notImplemented }\n    public func stations(in region: String? = nil) -> [Station] { [] }\n\n    // MARK: Part 2 — staleness and outage history\n    public func staleStations(asOf date: Date? = nil, after threshold: Duration) throws(CoverageTrackerError) -> [Station] { throw .notImplemented }\n    public func startOutage(for stationID: String, at date: Date) throws(CoverageTrackerError) { throw .notImplemented }\n    public func endOutage(for stationID: String, at date: Date) throws(CoverageTrackerError) { throw .notImplemented }\n    public func outages(for stationID: String) throws(CoverageTrackerError) -> [Outage] { throw .notImplemented }\n\n    // MARK: Part 3 — coverage and duration summaries\n    public func coverageStatus(in region: String, asOf date: Date? = nil, staleAfter threshold: Duration) throws(CoverageTrackerError) -> CoverageStatus { throw .notImplemented }\n    public func outageSummary(for stationID: String, asOf date: Date? = nil) throws(CoverageTrackerError) -> OutageSummary { throw .notImplemented }\n}\n"
     }
   },
   "swift-21": {
@@ -1068,6 +1640,70 @@
           "check": "Fold only over the MigrationOutcome returned for each item."
         }
       ]
+    },
+    "execution": {
+      "timeBudget": {
+        "navigation": 5,
+        "solution": 10,
+        "coding": 24,
+        "verification": 6
+      },
+      "navigation": {
+        "say": "I’ll confirm the behavioral contract for Versioned Payload Migration before choosing storage.",
+        "questions": [
+          "Can I confirm future versions, missing migration links, pure steps, and batch ordering?",
+          "Which ordering guarantees are observable at the API boundary?"
+        ],
+        "assumptions": [
+          "The supplied domain types and typed failures are the public contract.",
+          "Injected timestamps are authoritative and equality follows the stated boundary."
+        ],
+        "edgeCases": [
+          "future versions",
+          "missing migration links",
+          "pure steps",
+          "and batch ordering"
+        ],
+        "restate": "Decode persisted mobile payloads with typed failures, compose pure schema migrations, and report batch outcomes. Later parts will compose earlier behavior."
+      },
+      "solution": {
+        "pitch": "Value-semantic state uses dictionaries for identity, sets for uniqueness, and sorting only at deterministic output boundaries.",
+        "dataStructures": [
+          "Dictionaries provide identity lookup; sets enforce uniqueness.",
+          "Arrays preserve audit/event/history order; derived views are computed by shared helpers."
+        ],
+        "types": [
+          "Domain structs and exhaustive enums prevent invalid stringly-typed states.",
+          "Rich Result/error/outcome values preserve the reason later parts need."
+        ],
+        "composition": "Part 1: Which decoding boundaries preserve the detected version while keeping structural and field failures distinct? → Part 2: How can an unordered registry produce one deterministic contiguous path to the current schema? → Part 3: Which Part 2 outcome contains enough information to classify every batch item without repeating migration logic?",
+        "tradeoff": "Prefer clear invariants and deterministic scans; add indexes behind the interface only after measuring scale.",
+        "trap": "Spot the composition trap early: Which decoding boundaries preserve the detected version while keeping structural and field failures distinct? must return or preserve enough evidence for Which Part 2 outcome contains enough information to classify every batch item without repeating migration logic?; otherwise later code would duplicate the decision."
+      },
+      "coding": {
+        "order": [
+          "Part 1: Decode only enough envelope structure for version detection.",
+          "Part 2: Start the chain from the Part 1 detected version.",
+          "Part 3: Map each input to the existing single-payload migration operation."
+        ],
+        "commentary": [
+          "I’m establishing the canonical lookup/reduction first.",
+          "Every mutation validates before committing, and later APIs delegate to the earlier boundary.",
+          "Copies remain independent because mutable state is stored on the value instance."
+        ],
+        "checkIn": "Pause after Part 1 tests: ‘Does this result preserve the evidence we need for the later parts?’"
+      },
+      "verification": {
+        "walkthroughs": [
+          "Walk the stub example and name every state change.",
+          "Walk the boundary cases: future versions, missing migration links, pure steps, and batch ordering.",
+          "Mutate one copy/instance and prove a second remains unchanged."
+        ],
+        "tests": "Run the Swift suite for swift/Tests/Problem21VersionedPayloadMigrationTests/Problem21VersionedPayloadMigrationTests.swift and map each ordered suite to its part.",
+        "complexity": "State lookup is O(1) average; derived scans are O(n), with O(n log n) only where deterministic sorting is required.",
+        "moreTime": "Add property-based invariant tests, measured indexes, persistence, and observability without changing the public contract."
+      },
+      "code": "import Foundation\n\n// Problem 21: Versioned Payload Migration\n// Swift 6, macOS 14+ | Senior | approximately 45 minutes\n//\n// Persisted mobile data can outlive several app releases. Build a decoder and\n// migration pipeline that upgrades older payloads without hiding why one failed.\n// You choose the internal data structures; the public interface is the contract.\n// Store all mutable state in instance properties initialized by init. Never use\n// mutable global or static state. Migrations must be pure value transformations.\n//\n// PART 1 — Decode a versioned envelope  (~15 min)\n// detectVersion reads the envelope version without validating a version-specific\n// body. payloadDocument uses detectVersion and parses the body as string fields.\n// decodeCurrent accepts only currentVersion and requires firstName, lastName, and\n// locale. Preserve the distinct typed failures below.\n//\n// PART 2 — Compose migration steps  (~17 min)\n// Migration describes one forward version step. MigrationRegistry stores steps\n// by instance, accepts them in any order, and builds a contiguous chain by calling\n// the Part 1 detectVersion query. migrate must consume that chain, apply each step\n// once, then decode the resulting current document. Name any missing version gap.\n//\n// PART 3 — Migrate a batch and report  (~13 min)\n// migrateBatch calls migrate for every input in its original order. Return one\n// result per payload plus aggregate counts for migrated, already-current, and\n// failed items. Do not mutate the input collection or reorder the report.\n//\n/*\n * Example\n * let v1 = #\"{\"version\":1,\"body\":{\"name\":\"Ada Lovelace\"}}\"#.data(using: .utf8)!\n * let v3 = #\"{\"version\":3,\"body\":{\"firstName\":\"Grace\",\"lastName\":\"Hopper\",\"locale\":\"en-US\"}}\"#.data(using: .utf8)!\n * let v9 = #\"{\"version\":9,\"body\":{}}\"#.data(using: .utf8)!\n * registry.migrate(v1) // -> migrated from 1 through 2 to a DecodedPayload at 3\n * registry.migrate(v3) // -> alreadyCurrent with Grace Hopper unchanged\n * registry.migrate(v9) // -> failure(.unknownVersion(9))\n */\n\npublic enum PayloadError: Error, Equatable, Sendable {\n    case malformedEnvelope\n    case malformedBody(version: Int)\n    case missingRequiredField(field: String, version: Int)\n    case unknownVersion(Int)\n    case notImplemented\n}\n\npublic struct PayloadDocument: Equatable, Sendable {\n    public let version: Int\n    public let fields: [String: String]\n    public init(version: Int, fields: [String: String]) {\n        self.version = version\n        self.fields = fields\n    }\n}\n\npublic struct DecodedPayload: Equatable, Sendable {\n    public let version: Int\n    public let firstName: String\n    public let lastName: String\n    public let locale: String\n    public init(version: Int, firstName: String, lastName: String, locale: String) {\n        self.version = version\n        self.firstName = firstName\n        self.lastName = lastName\n        self.locale = locale\n    }\n}\n\npublic struct PayloadDecoder: Sendable {\n    public let currentVersion: Int\n    public init(currentVersion: Int = 3) { self.currentVersion = currentVersion }\n\n    public func detectVersion(_ data: Data) -> Result<Int, PayloadError> {\n        .failure(.notImplemented)\n    }\n\n    public func payloadDocument(_ data: Data) -> Result<PayloadDocument, PayloadError> {\n        .failure(.notImplemented)\n    }\n\n    public func decodeCurrent(_ data: Data) -> Result<DecodedPayload, PayloadError> {\n        .failure(.notImplemented)\n    }\n}\n\npublic enum MigrationError: Error, Equatable, Sendable {\n    case payload(PayloadError)\n    case invalidStep(from: Int, to: Int)\n    case missingStep(from: Int, to: Int)\n    case stepFailed(from: Int, to: Int, reason: String)\n    case notImplemented\n}\n\npublic protocol Migration: Sendable {\n    var fromVersion: Int { get }\n    var toVersion: Int { get }\n    func apply(to document: PayloadDocument) -> Result<PayloadDocument, MigrationError>\n}\n\npublic enum MigrationOutcome: Equatable, Sendable {\n    case migrated(fromVersion: Int, payload: DecodedPayload)\n    case alreadyCurrent(DecodedPayload)\n    case failed(MigrationError)\n}\n\npublic struct MigrationRegistry: Sendable {\n    public let decoder: PayloadDecoder\n    public init(decoder: PayloadDecoder = PayloadDecoder(), migrations: [any Migration] = []) {\n        self.decoder = decoder\n    }\n\n    public mutating func register(_ migration: any Migration) {}\n\n    public func migrationChain(from data: Data) -> Result<[any Migration], MigrationError> {\n        .failure(.notImplemented)\n    }\n\n    public func migrate(_ data: Data) -> MigrationOutcome {\n        .failed(.notImplemented)\n    }\n\n    public func registeredVersions() -> [Int] { [] }\n}\n\npublic struct BatchPayload: Equatable, Sendable {\n    public let id: String\n    public let data: Data\n    public init(id: String, data: Data) { self.id = id; self.data = data }\n}\n\npublic struct BatchPayloadResult: Equatable, Sendable {\n    public let id: String\n    public let outcome: MigrationOutcome\n    public init(id: String, outcome: MigrationOutcome) { self.id = id; self.outcome = outcome }\n}\n\npublic struct MigrationReport: Equatable, Sendable {\n    public let results: [BatchPayloadResult]\n    public let migratedCount: Int\n    public let alreadyCurrentCount: Int\n    public let failedCount: Int\n    public init(results: [BatchPayloadResult], migratedCount: Int, alreadyCurrentCount: Int, failedCount: Int) {\n        self.results = results\n        self.migratedCount = migratedCount\n        self.alreadyCurrentCount = alreadyCurrentCount\n        self.failedCount = failedCount\n    }\n}\n\npublic extension MigrationRegistry {\n    func migrateBatch(_ payloads: [BatchPayload]) -> MigrationReport {\n        MigrationReport(results: [], migratedCount: 0, alreadyCurrentCount: 0, failedCount: 0)\n    }\n}\n"
     }
   },
   "python-02": {
@@ -2504,6 +3140,69 @@
           "check": "Trace matching through the effective permission query and every ancestor."
         }
       ]
+    },
+    "execution": {
+      "timeBudget": {
+        "navigation": 5,
+        "solution": 10,
+        "coding": 24,
+        "verification": 6
+      },
+      "navigation": {
+        "say": "I’ll confirm the behavioral contract for Permission Manager (Swift) before choosing storage.",
+        "questions": [
+          "Can I confirm single-parent inheritance, cycle rejection, and wildcard matching?",
+          "Which ordering guarantees are observable at the API boundary?"
+        ],
+        "assumptions": [
+          "The supplied domain types and typed failures are the public contract.",
+          "Injected timestamps are authoritative and equality follows the stated boundary."
+        ],
+        "edgeCases": [
+          "single-parent inheritance",
+          "cycle rejection",
+          "and wildcard matching"
+        ],
+        "restate": "Build typed role-based access control with inheritance and wildcard permission patterns. Later parts will compose earlier behavior."
+      },
+      "solution": {
+        "pitch": "Value-semantic state uses dictionaries for identity, sets for uniqueness, and sorting only at deterministic output boundaries.",
+        "dataStructures": [
+          "Dictionaries provide identity lookup; sets enforce uniqueness.",
+          "Arrays preserve audit/event/history order; derived views are computed by shared helpers."
+        ],
+        "types": [
+          "Domain structs and exhaustive enums prevent invalid stringly-typed states.",
+          "Rich Result/error/outcome values preserve the reason later parts need."
+        ],
+        "composition": "Part 1: Which value-semantic mappings make role updates and a user's effective permission union straightforward? → Part 2: How can one parent link extend the existing effective-permission query transitively? → Part 3: How can scoped wildcard matching consume effective permissions without becoming a second inheritance algorithm?",
+        "tradeoff": "Prefer clear invariants and deterministic scans; add indexes behind the interface only after measuring scale.",
+        "trap": "Spot the composition trap early: Which value-semantic mappings make role updates and a user's effective permission union straightforward? must return or preserve enough evidence for How can scoped wildcard matching consume effective permissions without becoming a second inheritance algorithm?; otherwise later code would duplicate the decision."
+      },
+      "coding": {
+        "order": [
+          "Part 1: Keep roles and user assignments private to each manager value.",
+          "Part 2: Validate parent and child IDs before storing inheritance.",
+          "Part 3: Parse the requested permission at the matching boundary."
+        ],
+        "commentary": [
+          "I’m establishing the canonical lookup/reduction first.",
+          "Every mutation validates before committing, and later APIs delegate to the earlier boundary.",
+          "Copies remain independent because mutable state is stored on the value instance."
+        ],
+        "checkIn": "Pause after Part 1 tests: ‘Does this result preserve the evidence we need for the later parts?’"
+      },
+      "verification": {
+        "walkthroughs": [
+          "Walk the stub example and name every state change.",
+          "Walk the boundary cases: single-parent inheritance, cycle rejection, and wildcard matching.",
+          "Mutate one copy/instance and prove a second remains unchanged."
+        ],
+        "tests": "Run the Swift suite for swift/Tests/Problem03PermissionManagerTests/Problem03PermissionManagerTests.swift and map each ordered suite to its part.",
+        "complexity": "State lookup is O(1) average; derived scans are O(n), with O(n log n) only where deterministic sorting is required.",
+        "moreTime": "Add property-based invariant tests, measured indexes, persistence, and observability without changing the public contract."
+      },
+      "code": "public struct Permission: Hashable, Sendable, ExpressibleByStringLiteral {\n    public let rawValue: String\n    public init(_ rawValue: String) { self.rawValue = rawValue }\n    public init(stringLiteral value: String) { self.init(value) }\n}\n\npublic struct Role: Equatable, Sendable {\n    public let id: String\n    public var permissions: Set<Permission>\n    public var parentID: String?\n    public init(id: String, permissions: Set<Permission> = [], parentID: String? = nil) {\n        self.id = id; self.permissions = permissions; self.parentID = parentID\n    }\n}\n\npublic enum PermissionPattern: Equatable, Sendable {\n    case exact(resource: String, action: String)\n    case anyAction(resource: String)\n    case anyResource(action: String)\n    case any\n\n    public init?(_ permission: Permission) {\n        let pieces = permission.rawValue.split(separator: \":\", omittingEmptySubsequences: false)\n        guard pieces.count == 2 else { return nil }\n        let resource = String(pieces[0]), action = String(pieces[1])\n        switch (resource, action) {\n        case (\"*\", \"*\"): self = .any\n        case (\"*\", _): self = .anyResource(action: action)\n        case (_, \"*\"): self = .anyAction(resource: resource)\n        default: self = .exact(resource: resource, action: action)\n        }\n    }\n\n    public func matches(resource: String, action: String) -> Bool {\n        switch self {\n        case let .exact(r, a): r == resource && a == action\n        case let .anyAction(r): r == resource\n        case let .anyResource(a): a == action\n        case .any: true\n        }\n    }\n}\n\npublic enum PermissionManagerError: Error, Equatable, Sendable {\n    case duplicateRole(String)\n    case unknownRole(String)\n    case roleNotAssigned(userID: String, roleID: String)\n    case notImplemented\n}\n\npublic protocol PermissionChecking {\n    func hasPermission(_ permission: Permission, userID: String) -> Bool\n    func hasScopedPermission(userID: String, resource: String, action: String) -> Bool\n}\n\npublic struct PermissionManager: PermissionChecking, Sendable {\n    private var roles: [String: Role] = [:]\n    private var userRoles: [String: Set<String>] = [:]\n    public init() {}\n\n    public mutating func createRole(id: String, permissions: Set<Permission> = []) throws(PermissionManagerError) {\n        guard roles[id] == nil else { throw PermissionManagerError.duplicateRole(id) }\n        roles[id] = Role(id: id, permissions: permissions)\n    }\n\n    public mutating func grant(_ permission: Permission, to roleID: String) throws(PermissionManagerError) {\n        guard roles[roleID] != nil else { throw PermissionManagerError.unknownRole(roleID) }\n        roles[roleID]!.permissions.insert(permission)\n    }\n\n    public mutating func revoke(_ permission: Permission, from roleID: String) throws(PermissionManagerError) {\n        guard roles[roleID] != nil else { throw PermissionManagerError.unknownRole(roleID) }\n        roles[roleID]!.permissions.remove(permission)\n    }\n\n    public mutating func assignRole(_ roleID: String, to userID: String) throws(PermissionManagerError) {\n        guard roles[roleID] != nil else { throw PermissionManagerError.unknownRole(roleID) }\n        userRoles[userID, default: []].insert(roleID)\n    }\n\n    public mutating func unassignRole(_ roleID: String, from userID: String) throws(PermissionManagerError) {\n        guard roles[roleID] != nil else { throw PermissionManagerError.unknownRole(roleID) }\n        guard userRoles[userID]?.contains(roleID) == true else {\n            throw PermissionManagerError.roleNotAssigned(userID: userID, roleID: roleID)\n        }\n        userRoles[userID]!.remove(roleID)\n    }\n\n    public func hasPermission(_ permission: Permission, userID: String) -> Bool {\n        allPermissions(for: userID).contains(permission)\n    }\n\n    public func allPermissions(for userID: String) -> Set<Permission> {\n        (userRoles[userID] ?? []).reduce(into: []) { result, roleID in\n            if let permissions = try? permissions(forRole: roleID) { result.formUnion(permissions) }\n        }\n    }\n\n    public func permissions(forRole roleID: String) throws(PermissionManagerError) -> Set<Permission> {\n        guard let role = roles[roleID] else { throw PermissionManagerError.unknownRole(roleID) }\n        guard let parentID = role.parentID else { return role.permissions }\n        return try role.permissions.union(permissions(forRole: parentID))\n    }\n\n    public mutating func setParentRole(_ parentRoleID: String, for roleID: String) throws(PermissionManagerError) {\n        guard roles[roleID] != nil else { throw PermissionManagerError.unknownRole(roleID) }\n        guard roles[parentRoleID] != nil else { throw PermissionManagerError.unknownRole(parentRoleID) }\n        roles[roleID]!.parentID = parentRoleID\n    }\n\n    public func hasScopedPermission(userID: String, resource: String, action: String) -> Bool {\n        allPermissions(for: userID).contains { permission in\n            PermissionPattern(permission)?.matches(resource: resource, action: action) == true\n        }\n    }\n}\n"
     }
   },
   "swift-22": {
@@ -2584,6 +3283,69 @@
           "check": "Walk the transaction commands from newest to oldest during revert."
         }
       ]
+    },
+    "execution": {
+      "timeBudget": {
+        "navigation": 5,
+        "solution": 10,
+        "coding": 24,
+        "verification": 6
+      },
+      "navigation": {
+        "say": "I’ll confirm the behavioral contract for Undo/Redo Command Stack before choosing storage.",
+        "questions": [
+          "Can I confirm redo invalidation, coalescing compatibility, and nested group reversal?",
+          "Which ordering guarantees are observable at the API boundary?"
+        ],
+        "assumptions": [
+          "The supplied domain types and typed failures are the public contract.",
+          "Injected timestamps are authoritative and equality follows the stated boundary."
+        ],
+        "edgeCases": [
+          "redo invalidation",
+          "coalescing compatibility",
+          "and nested group reversal"
+        ],
+        "restate": "Build a value-semantic command history with redo clearing, time-window coalescing, and nested transaction groups. Later parts will compose earlier behavior."
+      },
+      "solution": {
+        "pitch": "Value-semantic state uses dictionaries for identity, sets for uniqueness, and sorting only at deterministic output boundaries.",
+        "dataStructures": [
+          "Dictionaries provide identity lookup; sets enforce uniqueness.",
+          "Arrays preserve audit/event/history order; derived views are computed by shared helpers."
+        ],
+        "types": [
+          "Domain structs and exhaustive enums prevent invalid stringly-typed states.",
+          "Rich Result/error/outcome values preserve the reason later parts need."
+        ],
+        "composition": "Part 1: Which history record lets one command move cleanly between undo and redo without copying mutation logic? → Part 2: What metadata is needed to decide whether the newest two history entries may become one? → Part 3: How can nesting change history ownership without introducing another document mutation path?",
+        "tradeoff": "Prefer clear invariants and deterministic scans; add indexes behind the interface only after measuring scale.",
+        "trap": "Spot the composition trap early: Which history record lets one command move cleanly between undo and redo without copying mutation logic? must return or preserve enough evidence for How can nesting change history ownership without introducing another document mutation path?; otherwise later code would duplicate the decision."
+      },
+      "coding": {
+        "order": [
+          "Part 1: Keep the document and both histories inside each stack value.",
+          "Part 2: Validate the supplied window before mutation.",
+          "Part 3: Collect executed history in the innermost open group."
+        ],
+        "commentary": [
+          "I’m establishing the canonical lookup/reduction first.",
+          "Every mutation validates before committing, and later APIs delegate to the earlier boundary.",
+          "Copies remain independent because mutable state is stored on the value instance."
+        ],
+        "checkIn": "Pause after Part 1 tests: ‘Does this result preserve the evidence we need for the later parts?’"
+      },
+      "verification": {
+        "walkthroughs": [
+          "Walk the stub example and name every state change.",
+          "Walk the boundary cases: redo invalidation, coalescing compatibility, and nested group reversal.",
+          "Mutate one copy/instance and prove a second remains unchanged."
+        ],
+        "tests": "Run the Swift suite for swift/Tests/Problem22UndoRedoCommandStackTests/Problem22UndoRedoCommandStackTests.swift and map each ordered suite to its part.",
+        "complexity": "State lookup is O(1) average; derived scans are O(n), with O(n log n) only where deterministic sorting is required.",
+        "moreTime": "Add property-based invariant tests, measured indexes, persistence, and observability without changing the public contract."
+      },
+      "code": "// Problem 22: Undo/Redo Command Stack\n// Swift 6, macOS 14+ | Mid-level | approximately 45 minutes\n//\n// Build the history engine behind a small document editor. Commands know how to\n// apply and revert themselves, while UndoRedoStack owns the current document and\n// its history. You choose the internal data structures; the public interface is\n// the contract. Store all mutable state in instance properties initialized by\n// init. Never use mutable global or static state.\n//\n/*\n# Example\nstruct RenameCommand: Command {\n    let from: String; let to: String\n    var actionDescription: String { \"Rename\" }\n    func apply(to document: inout Document) { document.title = to }\n    func revert(on document: inout Document) { document.title = from }\n}\nstruct AppendCommand: Command {\n    let text: String\n    var actionDescription: String { \"Typing\" }\n    func apply(to document: inout Document) { document.body += text }\n    func revert(on document: inout Document) { document.body.removeLast(text.count) }\n    func coalesced(with newer: any Command) -> (any Command)? {\n        guard let newer = newer as? AppendCommand else { return nil }\n        return AppendCommand(text: text + newer.text)\n    }\n}\nstruct DeleteSuffixCommand: Command {\n    let text: String\n    var actionDescription: String { \"Delete\" }\n    func apply(to document: inout Document) { document.body.removeLast(text.count) }\n    func revert(on document: inout Document) { document.body += text }\n}\nvar history = UndoRedoStack(document: Document(title: \"Draft\", body: \"\"))\nhistory.execute(RenameCommand(from: \"Draft\", to: \"Plan\"))\nhistory.executeCoalescing(AppendCommand(text: \"H\"), at: 10, within: 2)\nhistory.executeCoalescing(AppendCommand(text: \"i\"), at: 11, within: 2)\nhistory.execute(DeleteSuffixCommand(text: \"i\"))\nhistory.undoCount // -> 3\ntry history.undo()\ntry history.undo()\nhistory.execute(AppendCommand(text: \"!\"))\nhistory.canRedo // -> false\nhistory.beginGroup(description: \"Format section\")\nhistory.executeCoalescing(AppendCommand(text: \"A\"), at: 20, within: 2)\nhistory.executeCoalescing(AppendCommand(text: \"B\"), at: 21, within: 2)\nhistory.execute(RenameCommand(from: \"Plan\", to: \"Final\"))\ntry history.endGroup()\ntry history.undo() // -> reverts all three grouped edits\n*/\n//\n// PART 1 — Execute, undo, and redo  (~18 min)\n// Implement Command and the basic history stack. execute is the one method that\n// applies a command to the document. undo and redo move commands between their\n// respective histories. Executing a new command always clears redo history.\n// nextUndoDescription describes the command that undo() would revert.\n//\n// PART 2 — Coalesce compatible commands  (~12 min)\n// executeCoalescing(_:at:within:) must call execute(_:) for the mutation. When\n// this command and the immediately preceding command are compatible, within the\n// inclusive injected time window, ask the older command to coalesce(with:) the\n// newer one and replace those two history entries with the returned command.\n// A negative window is invalid. Never read the system clock.\n//\n// PART 3 — Group commands into transactions  (~15 min)\n// beginGroup opens an explicit transaction and endGroup closes it. Commands in a\n// group still travel through execute or executeCoalescing, but the completed\n// outer group becomes one undoable command. Nested groups become one command in\n// their parent. Undo a group in reverse order and redo it in forward order. Empty\n// groups add no history. An unmatched endGroup is a typed failure.\n\npublic struct Document: Equatable, Sendable {\n    public var title: String\n    public var body: String\n\n    public init(title: String, body: String) {\n        self.title = title\n        self.body = body\n    }\n}\n\npublic protocol Command: Sendable {\n    var actionDescription: String { get }\n    func apply(to document: inout Document)\n    func revert(on document: inout Document)\n\n    /// Return one command representing `self` followed by `newer`, or nil when\n    /// the commands are incompatible and must remain separate undo steps.\n    func coalesced(with newer: any Command) -> (any Command)?\n}\n\npublic extension Command {\n    func coalesced(with newer: any Command) -> (any Command)? { nil }\n}\n\npublic enum UndoRedoError: Error, Equatable, Sendable {\n    case nothingToUndo\n    case nothingToRedo\n    case invalidCoalescingWindow\n    case noOpenGroup\n    case notImplemented\n}\n\npublic struct UndoRedoStack: Sendable {\n    public private(set) var document: Document\n\n    public init(document: Document) {\n        self.document = document\n    }\n\n    // MARK: Part 1 — execute, undo, and redo\n    public var canUndo: Bool { false }\n    public var canRedo: Bool { false }\n    public var undoCount: Int { 0 }\n    public var redoCount: Int { 0 }\n    public var nextUndoDescription: String? { nil }\n\n    public mutating func execute(_ command: any Command) {}\n    public mutating func undo() throws(UndoRedoError) { throw .notImplemented }\n    public mutating func redo() throws(UndoRedoError) { throw .notImplemented }\n\n    // MARK: Part 2 — command-directed coalescing\n    public mutating func executeCoalescing(\n        _ command: any Command,\n        at timestamp: Int,\n        within window: Int\n    ) throws(UndoRedoError) {\n        throw .notImplemented\n    }\n\n    // MARK: Part 3 — nested transaction groups\n    public mutating func beginGroup(description: String) {}\n    public mutating func endGroup() throws(UndoRedoError) { throw .notImplemented }\n}\n"
     }
   }
 }

@@ -161,6 +161,27 @@ class JourneyGeneratorTests(unittest.TestCase):
         (self.root / "journey-lessons/python-03.js").write_text("stale\n")
         self.assertIn("journey-lessons/python-03.js differs", self.check_error())
 
+    def test_every_swift_problem_has_valid_execution_sheet(self):
+        guides = self.guides()
+        swift_keys = {
+            builder.problem_identity(problem)[0]
+            for problem in builder.parse_problems(self.root / "index.html")
+            if problem["language"] == "swift"
+        }
+        self.assertEqual(swift_keys, {key for key, guide in guides.items() if "execution" in guide})
+        for key in swift_keys:
+            builder.validate_execution(key, guides[key]["execution"])
+
+    def test_check_rejects_stale_execution_sheet(self):
+        path = self.root / "journey-execution/swift-18.js"
+        path.write_text("stale\n")
+        self.assertIn("journey-execution/swift-18.js differs", self.check_error())
+
+    def test_practice_journey_cannot_load_or_link_execution_sheets(self):
+        source = (ROOT / "journey.html").read_text()
+        self.assertNotIn("journey-execution", source)
+        self.assertNotIn("interview-execution.html", source)
+
     def test_source_payload_contains_stub_tests_and_part_excerpts(self):
         data = builder.build_data(self.root)
         rendered = builder.render_source("python-03", builder.build_source_records(self.root)["python-03"], self.root)

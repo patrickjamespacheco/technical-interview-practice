@@ -867,6 +867,9 @@ function renderCards() {
     const journeyBtn = window.JOURNEY_PROBLEMS?.[journeyKey]
       ? `<a href="journey.html?problem=${journeyKey}" class="action-btn action-secondary">Start journey →</a>`
       : "";
+    const prepBtn = p.language === "swift"
+      ? `<a href="interview-execution.html?problem=${journeyKey}" class="action-btn action-secondary" title="Opens a separate prep-only page containing the full solution">Interview prep sheet ⚠</a>`
+      : "";
 
     return `
 <article class="problem-card${state.expanded === problemKey(p) ? " expanded" : ""}" data-card-key="${problemKey(p)}">
@@ -887,6 +890,7 @@ function renderCards() {
     <button type="button" class="action-btn action-secondary" data-read-source>Read problem</button>
     <a href="${vscodeProblem}" class="action-btn action-primary">Open in VS Code ↗</a>
     ${journeyBtn}
+    ${prepBtn}
     ${testBtn}
     <button class="action-btn action-secondary" onclick="copyPath('${p.path}')">Copy path</button>
   </div>
