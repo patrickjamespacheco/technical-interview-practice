@@ -1077,6 +1077,129 @@ window.JOURNEY_PROBLEMS = {
       }
     }
   },
+  "swift-19": {
+    "id": "swift-19",
+    "title": "Offline Telemetry Batch Processor",
+    "description": "Deduplicate and batch offline IoT readings, classify delivery failures, and coordinate bounded concurrent delivery with ordered checkpoints.",
+    "language": "swift",
+    "industry": "iot",
+    "tags": [
+      "batching",
+      "deduplication",
+      "backpressure",
+      "structured-concurrency",
+      "checkpointing"
+    ],
+    "level": "staff",
+    "stubPath": "swift/practice_problems/problem_19_offline_telemetry_batch_processor.swift",
+    "testPath": "swift/Tests/Problem19OfflineTelemetryBatchProcessorTests/Problem19OfflineTelemetryBatchProcessorTests.swift",
+    "example": "let readings = (1...5).map { TelemetryReading(id: \"r\\($0)\", payload: \"v\\($0)\") }\nvar processor = TelemetryBatchProcessor(readings: readings)\ntry processor.makeBatch(maxCount: 2)?.readings.map(\\.id) // -> [\"r1\", \"r2\"]\ntry processor.makeBatch(maxCount: 2)?.readings.map(\\.id) // -> [\"r3\", \"r4\"]\ntry processor.makeBatch(maxCount: 2)?.readings.map(\\.id) // -> [\"r5\"]\nWith a sink that fails batch 2 retryably once, the coordinator retries it,\nand its checkpoint still advances in order through all five unique readings.\n/\n\npublic struct TelemetryReading: Equatable, Sendable {\n    public let id: String\n    public let payload: String\n    public init(id: String, payload: String) { self.id = id; self.payload = payload }\n}\n\npublic struct TelemetryBatch: Equatable, Sendable {\n    public let sequence: Int\n    public let readings: [TelemetryReading]\n    public init(sequence: Int, readings: [TelemetryReading]) {\n        self.sequence = sequence; self.readings = readings\n    }\n}\n\npublic enum TelemetryProcessorError: Error, Equatable, Sendable {\n    case invalidBatchSize\n    case invalidRetryLimit\n    case notImplemented\n}\n\npublic enum TelemetrySinkError: Error, Equatable, Sendable {\n    case retryable(reason: String)\n    case permanent(reason: String)\n}\n\npublic protocol TelemetrySink: Sendable {\n    func send(_ batch: TelemetryBatch) async throws(TelemetrySinkError)\n}\n\npublic enum DeliveryOutcome: Equatable, Sendable {\n    case delivered(batch: TelemetryBatch, attempts: Int)\n    case failed(batch: TelemetryBatch, attempts: Int, error: TelemetrySinkError)\n\n    public var batch: TelemetryBatch {\n        switch self {\n        case let .delivered(batch, _), let .failed(batch, _, _): batch\n        }\n    }\n}\n\npublic struct TelemetryBatchProcessor: Sendable {\n    public init(readings: [TelemetryReading] = []) {}\n\nMARK: Part 1 — deterministic ingestion and batching\n    public mutating func ingest(_ readings: [TelemetryReading]) {}\n    public mutating func makeBatch(maxCount: Int) throws(TelemetryProcessorError) -> TelemetryBatch? {\n        throw .notImplemented\n    }\n    public var pendingCount: Int { 0 }\n\nMARK: Part 2 — typed delivery and retry policy\n    public func deliver<S: TelemetrySink>(\n        batch: TelemetryBatch,\n        to sink: S,\n        maxRetries: Int\n    ) async throws(TelemetryProcessorError) -> DeliveryOutcome {\n        throw .notImplemented\n    }\n}\n\npublic struct TelemetryCheckpoint: Equatable, Sendable {\n    public let deliveredReadingIDs: [String]\n    public init(deliveredReadingIDs: [String] = []) { self.deliveredReadingIDs = deliveredReadingIDs }\n}\n\npublic actor TelemetryCoordinator {\n    public init(readings: [TelemetryReading], batchSize: Int, maxInFlight: Int, maxRetries: Int) {}\n\nMARK: Part 3 — bounded concurrency and ordered checkpointing\n    public func run<S: TelemetrySink>(sink: S) async throws(TelemetryProcessorError) -> TelemetryCheckpoint {\n        throw .notImplemented\n    }\n    public func checkpoint() -> TelemetryCheckpoint { TelemetryCheckpoint() }\n}",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Deduplicate and batch readings",
+        "contract": "Ingest readings in arrival order, ignoring repeated IDs. makeBatch removes and\nreturns at most maxCount pending readings without reordering them. It returns\nnil when none remain. maxCount must be positive."
+      },
+      {
+        "part": 2,
+        "title": "Classify delivery outcomes",
+        "contract": "Implement deliver(batch:to:maxRetries:). A retryable sink failure may be tried\nagain up to maxRetries times; a permanent failure returns immediately. Report\nthe batch and attempt count in every outcome. Callers must feed this method\nbatches produced by Part 1 rather than chunking readings a second way."
+      },
+      {
+        "part": 3,
+        "title": "Coordinate bounded concurrent delivery",
+        "contract": "TelemetryCoordinator owns a processor and schedules no more than maxInFlight\nbatch deliveries concurrently. Cooperatively stop scheduling when its task is\ncancelled. Advance the checkpoint only across contiguous successful outcomes,\neven when later batches finish first. Derive advancement solely from the\nDeliveryOutcome values returned by Part 2.\n\n\nExample\nlet readings = (1...5).map { TelemetryReading(id: \"r\\($0)\", payload: \"v\\($0)\") }\nvar processor = TelemetryBatchProcessor(readings: readings)\ntry processor.makeBatch(maxCount: 2)?.readings.map(\\.id) // -> [\"r1\", \"r2\"]\ntry processor.makeBatch(maxCount: 2)?.readings.map(\\.id) // -> [\"r3\", \"r4\"]\ntry processor.makeBatch(maxCount: 2)?.readings.map(\\.id) // -> [\"r5\"]\nWith a sink that fails batch 2 retryably once, the coordinator retries it,\nand its checkpoint still advances in order through all five unique readings.\n/\n\npublic struct TelemetryReading: Equatable, Sendable {\n    public let id: String\n    public let payload: String\n    public init(id: String, payload: String) { self.id = id; self.payload = payload }\n}\n\npublic struct TelemetryBatch: Equatable, Sendable {\n    public let sequence: Int\n    public let readings: [TelemetryReading]\n    public init(sequence: Int, readings: [TelemetryReading]) {\n        self.sequence = sequence; self.readings = readings\n    }\n}\n\npublic enum TelemetryProcessorError: Error, Equatable, Sendable {\n    case invalidBatchSize\n    case invalidRetryLimit\n    case notImplemented\n}\n\npublic enum TelemetrySinkError: Error, Equatable, Sendable {\n    case retryable(reason: String)\n    case permanent(reason: String)\n}\n\npublic protocol TelemetrySink: Sendable {\n    func send(_ batch: TelemetryBatch) async throws(TelemetrySinkError)\n}\n\npublic enum DeliveryOutcome: Equatable, Sendable {\n    case delivered(batch: TelemetryBatch, attempts: Int)\n    case failed(batch: TelemetryBatch, attempts: Int, error: TelemetrySinkError)\n\n    public var batch: TelemetryBatch {\n        switch self {\n        case let .delivered(batch, _), let .failed(batch, _, _): batch\n        }\n    }\n}\n\npublic struct TelemetryBatchProcessor: Sendable {\n    public init(readings: [TelemetryReading] = []) {}\n\nMARK: Part 1 — deterministic ingestion and batching\n    public mutating func ingest(_ readings: [TelemetryReading]) {}\n    public mutating func makeBatch(maxCount: Int) throws(TelemetryProcessorError) -> TelemetryBatch? {\n        throw .notImplemented\n    }\n    public var pendingCount: Int { 0 }\n\nMARK: Part 2 — typed delivery and retry policy\n    public func deliver<S: TelemetrySink>(\n        batch: TelemetryBatch,\n        to sink: S,\n        maxRetries: Int\n    ) async throws(TelemetryProcessorError) -> DeliveryOutcome {\n        throw .notImplemented\n    }\n}\n\npublic struct TelemetryCheckpoint: Equatable, Sendable {\n    public let deliveredReadingIDs: [String]\n    public init(deliveredReadingIDs: [String] = []) { self.deliveredReadingIDs = deliveredReadingIDs }\n}\n\npublic actor TelemetryCoordinator {\n    public init(readings: [TelemetryReading], batchSize: Int, maxInFlight: Int, maxRetries: Int) {}\n\nMARK: Part 3 — bounded concurrency and ordered checkpointing\n    public func run<S: TelemetrySink>(sink: S) async throws(TelemetryProcessorError) -> TelemetryCheckpoint {\n        throw .notImplemented\n    }\n    public func checkpoint() -> TelemetryCheckpoint { TelemetryCheckpoint() }\n}"
+      }
+    ],
+    "testSuites": [
+      "Part 1 — Deduplicate and batch readings",
+      "Part 2 — Typed delivery outcomes",
+      "Part 3 — Bounded coordination and checkpoints"
+    ],
+    "commands": {
+      "answerPath": "swift/practice_problem_answers/my_answer_19_offline_telemetry_batch_processor.swift",
+      "copyCommand": "cp swift/practice_problems/problem_19_offline_telemetry_batch_processor.swift swift/practice_problem_answers/my_answer_19_offline_telemetry_batch_processor.swift",
+      "openCommand": "code swift/practice_problems/problem_19_offline_telemetry_batch_processor.swift",
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_19_offline_telemetry_batch_processor.swift -c swift test"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Which state preserves first-seen order while making duplicate detection efficient?",
+          "concepts": [
+            "ordered pending queue",
+            "set-backed deduplication",
+            "monotonic batch sequence"
+          ],
+          "steps": [
+            "Record an ID the first time it arrives.",
+            "Remove only a bounded prefix when forming each batch."
+          ],
+          "pitfalls": [
+            "replacing the first payload with a duplicate",
+            "renumbering batches after consumption"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "What outcome contains everything the coordinator needs without inspecting processor internals?",
+          "concepts": [
+            "associated-value errors",
+            "explicit delivery outcomes",
+            "bounded retries"
+          ],
+          "steps": [
+            "Count every sink invocation as an attempt.",
+            "Retry only retryable failures and return the original batch in the outcome."
+          ],
+          "pitfalls": [
+            "retrying permanent failures",
+            "treating maxRetries as total attempts"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "How can completed work be concurrent while checkpoint commitment remains ordered?",
+          "concepts": [
+            "bounded task groups",
+            "out-of-order completion buffer",
+            "cooperative cancellation"
+          ],
+          "steps": [
+            "Seed only the allowed number of delivery tasks.",
+            "Buffer successful outcomes by sequence and drain the contiguous prefix.",
+            "Stop adding work as soon as cancellation is observed."
+          ],
+          "pitfalls": [
+            "advancing from task completion order",
+            "reading processor state to infer success",
+            "using elapsed time to coordinate tests"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "A duplicate reading appears in a later batch",
+            "cause": "Deduplication only checks the current batch",
+            "check": "Keep first-seen IDs for the processor's whole lifetime."
+          },
+          {
+            "symptom": "The checkpoint skips an unfinished batch",
+            "cause": "Every successful completion advances immediately",
+            "check": "Buffer successes and commit only the next contiguous sequence."
+          },
+          {
+            "symptom": "Cancellation still starts queued sends",
+            "cause": "Replacement work is scheduled without checking cancellation",
+            "check": "Check cancellation before every task-group add."
+          }
+        ]
+      }
+    }
+  },
   "swift-11": {
     "id": "swift-11",
     "title": "Coverage Tracker (Swift)",
