@@ -1314,5 +1314,128 @@ window.JOURNEY_PROBLEMS = {
         ]
       }
     }
+  },
+  "swift-21": {
+    "id": "swift-21",
+    "title": "Versioned Payload Migration",
+    "description": "Decode persisted mobile payloads with typed failures, compose pure schema migrations, and report batch outcomes.",
+    "language": "swift",
+    "industry": "dev-tools",
+    "tags": [
+      "codable",
+      "schema-migration",
+      "versioning",
+      "error-handling",
+      "protocols"
+    ],
+    "level": "senior",
+    "stubPath": "swift/practice_problems/problem_21_versioned_payload_migration.swift",
+    "testPath": "swift/Tests/Problem21VersionedPayloadMigrationTests/Problem21VersionedPayloadMigrationTests.swift",
+    "example": "let v1 = #\"{\"version\":1,\"body\":{\"name\":\"Ada Lovelace\"}}\"#.data(using: .utf8)!\nlet v3 = #\"{\"version\":3,\"body\":{\"firstName\":\"Grace\",\"lastName\":\"Hopper\",\"locale\":\"en-US\"}}\"#.data(using: .utf8)!\nlet v9 = #\"{\"version\":9,\"body\":{}}\"#.data(using: .utf8)!\nregistry.migrate(v1) // -> migrated from 1 through 2 to a DecodedPayload at 3\nregistry.migrate(v3) // -> alreadyCurrent with Grace Hopper unchanged\nregistry.migrate(v9) // -> failure(.unknownVersion(9))\n/\n\npublic enum PayloadError: Error, Equatable, Sendable {\n    case malformedEnvelope\n    case malformedBody(version: Int)\n    case missingRequiredField(field: String, version: Int)\n    case unknownVersion(Int)\n    case notImplemented\n}\n\npublic struct PayloadDocument: Equatable, Sendable {\n    public let version: Int\n    public let fields: [String: String]\n    public init(version: Int, fields: [String: String]) {\n        self.version = version\n        self.fields = fields\n    }\n}\n\npublic struct DecodedPayload: Equatable, Sendable {\n    public let version: Int\n    public let firstName: String\n    public let lastName: String\n    public let locale: String\n    public init(version: Int, firstName: String, lastName: String, locale: String) {\n        self.version = version\n        self.firstName = firstName\n        self.lastName = lastName\n        self.locale = locale\n    }\n}\n\npublic struct PayloadDecoder: Sendable {\n    public let currentVersion: Int\n    public init(currentVersion: Int = 3) { self.currentVersion = currentVersion }\n\n    public func detectVersion(_ data: Data) -> Result<Int, PayloadError> {\n        .failure(.notImplemented)\n    }\n\n    public func payloadDocument(_ data: Data) -> Result<PayloadDocument, PayloadError> {\n        .failure(.notImplemented)\n    }\n\n    public func decodeCurrent(_ data: Data) -> Result<DecodedPayload, PayloadError> {\n        .failure(.notImplemented)\n    }\n}\n\npublic enum MigrationError: Error, Equatable, Sendable {\n    case payload(PayloadError)\n    case invalidStep(from: Int, to: Int)\n    case missingStep(from: Int, to: Int)\n    case stepFailed(from: Int, to: Int, reason: String)\n    case notImplemented\n}\n\npublic protocol Migration: Sendable {\n    var fromVersion: Int { get }\n    var toVersion: Int { get }\n    func apply(to document: PayloadDocument) -> Result<PayloadDocument, MigrationError>\n}\n\npublic enum MigrationOutcome: Equatable, Sendable {\n    case migrated(fromVersion: Int, payload: DecodedPayload)\n    case alreadyCurrent(DecodedPayload)\n    case failed(MigrationError)\n}\n\npublic struct MigrationRegistry: Sendable {\n    public let decoder: PayloadDecoder\n    public init(decoder: PayloadDecoder = PayloadDecoder(), migrations: [any Migration] = []) {\n        self.decoder = decoder\n    }\n\n    public mutating func register(_ migration: any Migration) {}\n\n    public func migrationChain(from data: Data) -> Result<[any Migration], MigrationError> {\n        .failure(.notImplemented)\n    }\n\n    public func migrate(_ data: Data) -> MigrationOutcome {\n        .failed(.notImplemented)\n    }\n\n    public func registeredVersions() -> [Int] { [] }\n}\n\npublic struct BatchPayload: Equatable, Sendable {\n    public let id: String\n    public let data: Data\n    public init(id: String, data: Data) { self.id = id; self.data = data }\n}\n\npublic struct BatchPayloadResult: Equatable, Sendable {\n    public let id: String\n    public let outcome: MigrationOutcome\n    public init(id: String, outcome: MigrationOutcome) { self.id = id; self.outcome = outcome }\n}\n\npublic struct MigrationReport: Equatable, Sendable {\n    public let results: [BatchPayloadResult]\n    public let migratedCount: Int\n    public let alreadyCurrentCount: Int\n    public let failedCount: Int\n    public init(results: [BatchPayloadResult], migratedCount: Int, alreadyCurrentCount: Int, failedCount: Int) {\n        self.results = results\n        self.migratedCount = migratedCount\n        self.alreadyCurrentCount = alreadyCurrentCount\n        self.failedCount = failedCount\n    }\n}\n\npublic extension MigrationRegistry {\n    func migrateBatch(_ payloads: [BatchPayload]) -> MigrationReport {\n        MigrationReport(results: [], migratedCount: 0, alreadyCurrentCount: 0, failedCount: 0)\n    }\n}",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Decode a versioned envelope",
+        "contract": "detectVersion reads the envelope version without validating a version-specific\nbody. payloadDocument uses detectVersion and parses the body as string fields.\ndecodeCurrent accepts only currentVersion and requires firstName, lastName, and\nlocale. Preserve the distinct typed failures below."
+      },
+      {
+        "part": 2,
+        "title": "Compose migration steps",
+        "contract": "Migration describes one forward version step. MigrationRegistry stores steps\nby instance, accepts them in any order, and builds a contiguous chain by calling\nthe Part 1 detectVersion query. migrate must consume that chain, apply each step\nonce, then decode the resulting current document. Name any missing version gap."
+      },
+      {
+        "part": 3,
+        "title": "Migrate a batch and report",
+        "contract": "migrateBatch calls migrate for every input in its original order. Return one\nresult per payload plus aggregate counts for migrated, already-current, and\nfailed items. Do not mutate the input collection or reorder the report.\n\n\nExample\nlet v1 = #\"{\"version\":1,\"body\":{\"name\":\"Ada Lovelace\"}}\"#.data(using: .utf8)!\nlet v3 = #\"{\"version\":3,\"body\":{\"firstName\":\"Grace\",\"lastName\":\"Hopper\",\"locale\":\"en-US\"}}\"#.data(using: .utf8)!\nlet v9 = #\"{\"version\":9,\"body\":{}}\"#.data(using: .utf8)!\nregistry.migrate(v1) // -> migrated from 1 through 2 to a DecodedPayload at 3\nregistry.migrate(v3) // -> alreadyCurrent with Grace Hopper unchanged\nregistry.migrate(v9) // -> failure(.unknownVersion(9))\n/\n\npublic enum PayloadError: Error, Equatable, Sendable {\n    case malformedEnvelope\n    case malformedBody(version: Int)\n    case missingRequiredField(field: String, version: Int)\n    case unknownVersion(Int)\n    case notImplemented\n}\n\npublic struct PayloadDocument: Equatable, Sendable {\n    public let version: Int\n    public let fields: [String: String]\n    public init(version: Int, fields: [String: String]) {\n        self.version = version\n        self.fields = fields\n    }\n}\n\npublic struct DecodedPayload: Equatable, Sendable {\n    public let version: Int\n    public let firstName: String\n    public let lastName: String\n    public let locale: String\n    public init(version: Int, firstName: String, lastName: String, locale: String) {\n        self.version = version\n        self.firstName = firstName\n        self.lastName = lastName\n        self.locale = locale\n    }\n}\n\npublic struct PayloadDecoder: Sendable {\n    public let currentVersion: Int\n    public init(currentVersion: Int = 3) { self.currentVersion = currentVersion }\n\n    public func detectVersion(_ data: Data) -> Result<Int, PayloadError> {\n        .failure(.notImplemented)\n    }\n\n    public func payloadDocument(_ data: Data) -> Result<PayloadDocument, PayloadError> {\n        .failure(.notImplemented)\n    }\n\n    public func decodeCurrent(_ data: Data) -> Result<DecodedPayload, PayloadError> {\n        .failure(.notImplemented)\n    }\n}\n\npublic enum MigrationError: Error, Equatable, Sendable {\n    case payload(PayloadError)\n    case invalidStep(from: Int, to: Int)\n    case missingStep(from: Int, to: Int)\n    case stepFailed(from: Int, to: Int, reason: String)\n    case notImplemented\n}\n\npublic protocol Migration: Sendable {\n    var fromVersion: Int { get }\n    var toVersion: Int { get }\n    func apply(to document: PayloadDocument) -> Result<PayloadDocument, MigrationError>\n}\n\npublic enum MigrationOutcome: Equatable, Sendable {\n    case migrated(fromVersion: Int, payload: DecodedPayload)\n    case alreadyCurrent(DecodedPayload)\n    case failed(MigrationError)\n}\n\npublic struct MigrationRegistry: Sendable {\n    public let decoder: PayloadDecoder\n    public init(decoder: PayloadDecoder = PayloadDecoder(), migrations: [any Migration] = []) {\n        self.decoder = decoder\n    }\n\n    public mutating func register(_ migration: any Migration) {}\n\n    public func migrationChain(from data: Data) -> Result<[any Migration], MigrationError> {\n        .failure(.notImplemented)\n    }\n\n    public func migrate(_ data: Data) -> MigrationOutcome {\n        .failed(.notImplemented)\n    }\n\n    public func registeredVersions() -> [Int] { [] }\n}\n\npublic struct BatchPayload: Equatable, Sendable {\n    public let id: String\n    public let data: Data\n    public init(id: String, data: Data) { self.id = id; self.data = data }\n}\n\npublic struct BatchPayloadResult: Equatable, Sendable {\n    public let id: String\n    public let outcome: MigrationOutcome\n    public init(id: String, outcome: MigrationOutcome) { self.id = id; self.outcome = outcome }\n}\n\npublic struct MigrationReport: Equatable, Sendable {\n    public let results: [BatchPayloadResult]\n    public let migratedCount: Int\n    public let alreadyCurrentCount: Int\n    public let failedCount: Int\n    public init(results: [BatchPayloadResult], migratedCount: Int, alreadyCurrentCount: Int, failedCount: Int) {\n        self.results = results\n        self.migratedCount = migratedCount\n        self.alreadyCurrentCount = alreadyCurrentCount\n        self.failedCount = failedCount\n    }\n}\n\npublic extension MigrationRegistry {\n    func migrateBatch(_ payloads: [BatchPayload]) -> MigrationReport {\n        MigrationReport(results: [], migratedCount: 0, alreadyCurrentCount: 0, failedCount: 0)\n    }\n}"
+      }
+    ],
+    "testSuites": [
+      "Part 1 — Decode a versioned envelope",
+      "Part 2 — Compose migration steps",
+      "Part 3 — Migrate a batch and report"
+    ],
+    "commands": {
+      "answerPath": "swift/practice_problem_answers/my_answer_21_versioned_payload_migration.swift",
+      "copyCommand": "cp swift/practice_problems/problem_21_versioned_payload_migration.swift swift/practice_problem_answers/my_answer_21_versioned_payload_migration.swift",
+      "openCommand": "code swift/practice_problems/problem_21_versioned_payload_migration.swift",
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_21_versioned_payload_migration.swift -c swift test"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Which decoding boundaries preserve the detected version while keeping structural and field failures distinct?",
+          "concepts": [
+            "Codable envelopes",
+            "associated-value errors",
+            "reusable version queries"
+          ],
+          "steps": [
+            "Decode only enough envelope structure for version detection.",
+            "Parse body fields into a reusable value before validating the current schema."
+          ],
+          "pitfalls": [
+            "collapsing every decoding error into one case",
+            "validating the body inside version detection"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "How can an unordered registry produce one deterministic contiguous path to the current schema?",
+          "concepts": [
+            "protocol existentials",
+            "step-indexed lookup",
+            "method composition"
+          ],
+          "steps": [
+            "Start the chain from the Part 1 detected version.",
+            "Advance exactly one version per registered step and fail at the first gap."
+          ],
+          "pitfalls": [
+            "re-parsing the version in the registry",
+            "depending on registration order",
+            "allowing a step to skip versions"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "Which Part 2 outcome contains enough information to classify every batch item without repeating migration logic?",
+          "concepts": [
+            "per-item outcomes",
+            "stable folds",
+            "value semantics"
+          ],
+          "steps": [
+            "Map each input to the existing single-payload migration operation.",
+            "Fold outcome cases into counts while preserving input order."
+          ],
+          "pitfalls": [
+            "aborting after the first failure",
+            "sorting report entries",
+            "mutating caller-owned inputs"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "An unsupported payload is reported as malformed",
+            "cause": "Current-schema decoding runs before the version is checked",
+            "check": "Trace the detected integer into the unknown-version branch before body requirements."
+          },
+          {
+            "symptom": "A v1 payload fails even though both steps are registered",
+            "cause": "The chain follows registry insertion order",
+            "check": "Index steps by their source version and walk upward from the detected version."
+          },
+          {
+            "symptom": "Batch counts disagree with item results",
+            "cause": "Aggregation reclassifies raw payloads independently",
+            "check": "Fold only over the MigrationOutcome returned for each item."
+          }
+        ]
+      }
+    }
   }
 };
