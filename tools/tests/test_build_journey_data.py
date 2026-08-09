@@ -88,7 +88,9 @@ class JourneyGeneratorTests(unittest.TestCase):
 
     def test_parses_catalogue_parts_examples_and_suite_names(self):
         data = builder.build_data(self.root)
-        self.assertEqual(set(data), {"python-01", "python-03", "python-16", "react-02", "swift-02", "swift-05", "swift-10", "swift-11", "swift-13", "swift-15", "swift-18", "swift-19", "swift-20", "swift-21", "swift-22"})
+        catalogue = builder.parse_problems(self.root / "index.html")
+        expected_keys = {builder.problem_identity(problem)[0] for problem in catalogue}
+        self.assertEqual(set(data), expected_keys)
         self.assertEqual([part["title"] for part in data["python-03"]["parts"]], [
             "Flat role/permission model", "Role inheritance", "Scoped permissions with wildcards"
         ])

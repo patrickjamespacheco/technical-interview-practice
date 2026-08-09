@@ -351,6 +351,7 @@
 <div class="toast" id="toast">Path copied!</div>
 
 <script src="problem-source-viewer.js"></script>
+<script src="journey-data.js"></script>
 <script>
 // ============================================================
 // PROBLEM INDEX
@@ -378,7 +379,7 @@ const PROBLEMS = [
     language: "python",
     industry: "general",
     tags: ["rate-limiting", "sliding-window", "tiered-plans", "time-series", "api-platform"],
-    parts: 3,
+    parts: 4,
     level: "senior"
   },
   {
@@ -411,7 +412,7 @@ const PROBLEMS = [
     language: "python",
     industry: "health-tech",
     tags: ["time-series", "consecutive-tracking", "clinical-monitoring", "alert-system"],
-    parts: 3,
+    parts: 4,
     level: "senior"
   },
   {
@@ -422,7 +423,7 @@ const PROBLEMS = [
     language: "python",
     industry: "health-tech",
     tags: ["event-sourcing", "out-of-order-events", "medication", "clinical"],
-    parts: 3,
+    parts: 4,
     level: "senior"
   },
   {
@@ -433,7 +434,7 @@ const PROBLEMS = [
     language: "python",
     industry: "health-tech",
     tags: ["deadline-tracking", "compliance", "scheduling", "clinical"],
-    parts: 3,
+    parts: 4,
     level: "senior"
   },
   {
@@ -460,7 +461,7 @@ const PROBLEMS = [
   },
   {
     path: "react/practice_problems/problem_01_activity_feed.jsx",
-    test: null,
+    test: "react/tests/test_problem_01_activity_feed.spec.js",
     title: "Activity Feed with Filtering & Optimistic Updates",
     description: "Build a real-time event feed with client-side filtering and optimistic acknowledgement with automatic rollback on failure.",
     language: "react",
@@ -862,12 +863,8 @@ function renderCards() {
       ? `<a href="${vscodeTest}" class="action-btn action-secondary">Test file ↗</a>`
       : "";
 
-    const journeyKey = {
-      "python/practice_problems/problem_01_geofence_alert_engine.py": "python-01",
-      "python/practice_problems/problem_03_permission_manager.py": "python-03",
-      "react/practice_problems/problem_02_incident_dashboard.jsx": "react-02"
-    }[p.path];
-    const journeyBtn = journeyKey
+    const journeyKey = problemKey(p);
+    const journeyBtn = window.JOURNEY_PROBLEMS?.[journeyKey]
       ? `<a href="journey.html?problem=${journeyKey}" class="action-btn action-secondary">Start journey →</a>`
       : "";
 

@@ -186,11 +186,12 @@ hint-only guide. Use these exact machine-readable markers in every new stub:
   concrete calls and their `# -> result` outcomes. Do not put the example only
   in a test file.
 
-Legacy exceptions are recorded rather than silently rewritten: Python 01
-Geofence Alert Engine has four stub parts while its index record says three and
-has no usage-example block; React 02 Incident Dashboard has no usage-example
-block. The generator preserves these pilots with an explicit `legacy-missing`
-example status. New problems receive no exception.
+Legacy exceptions are recorded rather than silently rewriting existing stubs.
+Python 01 Geofence Alert Engine has four stub parts while its index record says
+three. The explicit usage-example allowlist covers `python-01`, `python-02`,
+`react-01` through `react-05`, and `swift-03`; these predate the canonical marker
+and retain an explicit `legacy-missing` example status. Every new problem must
+include the canonical usage example and receives no exception.
 
 When adding a problem:
 

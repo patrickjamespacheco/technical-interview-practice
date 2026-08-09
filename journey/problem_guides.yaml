@@ -1,225 +1,2589 @@
 {
   "python-03": {
     "approach": [
-      {"part": 1, "prompt": "Which mappings make role updates and a user's permission union straightforward?", "concepts": ["role IDs map to permission sets", "user IDs map to assigned role IDs"], "steps": ["Validate role IDs at mutation boundaries.", "Return permission snapshots rather than internal collections."], "pitfalls": ["class-level mutable state", "returning an internal set by reference"]},
-      {"part": 2, "prompt": "How can inherited permissions extend the same effective-permission query?", "concepts": ["parent links", "transitive traversal"], "steps": ["Store one parent link per role.", "Make existing permission queries include ancestors."], "pitfalls": ["checking only the immediate parent", "duplicating permission logic"]},
-      {"part": 3, "prompt": "How can wildcard matching stay separate from permission collection?", "concepts": ["resource/action pairs", "exact and wildcard candidates"], "steps": ["Reuse the effective permission set.", "Compare it with the finite set of patterns that cover the request."], "pitfalls": ["treating malformed permissions as wildcards", "forgetting inherited wildcard permissions"]}
+      {
+        "part": 1,
+        "prompt": "Which mappings make role updates and a user's permission union straightforward?",
+        "concepts": [
+          "role IDs map to permission sets",
+          "user IDs map to assigned role IDs"
+        ],
+        "steps": [
+          "Validate role IDs at mutation boundaries.",
+          "Return permission snapshots rather than internal collections."
+        ],
+        "pitfalls": [
+          "class-level mutable state",
+          "returning an internal set by reference"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "How can inherited permissions extend the same effective-permission query?",
+        "concepts": [
+          "parent links",
+          "transitive traversal"
+        ],
+        "steps": [
+          "Store one parent link per role.",
+          "Make existing permission queries include ancestors."
+        ],
+        "pitfalls": [
+          "checking only the immediate parent",
+          "duplicating permission logic"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "How can wildcard matching stay separate from permission collection?",
+        "concepts": [
+          "resource/action pairs",
+          "exact and wildcard candidates"
+        ],
+        "steps": [
+          "Reuse the effective permission set.",
+          "Compare it with the finite set of patterns that cover the request."
+        ],
+        "pitfalls": [
+          "treating malformed permissions as wildcards",
+          "forgetting inherited wildcard permissions"
+        ]
+      }
     ],
-    "lesson": {"parts": [
-      {"part": 1, "steps": [
-        {"explanation": "Start with two indexes: roles map to permission sets, and users map to role-ID sets. Sets make grants and assignments naturally idempotent, while returning unions and copies keeps callers from mutating the manager's state.", "code": "def __init__(self):\n    self._roles = {}\n    self._user_roles = {}\n    self._parents = {}\n\ndef create_role(self, role_id, permissions=None):\n    if role_id in self._roles:\n        raise ValueError(f\"role already exists: {role_id}\")\n    self._roles[role_id] = set(permissions or [])\n\ndef _role(self, role_id):\n    if role_id not in self._roles:\n        raise KeyError(role_id)\n    return self._roles[role_id]\n\ndef grant_permission(self, role_id, permission):\n    self._role(role_id).add(permission)\n\ndef revoke_permission(self, role_id, permission):\n    self._role(role_id).discard(permission)\n\ndef assign_role(self, user_id, role_id):\n    self._role(role_id)\n    self._user_roles.setdefault(user_id, set()).add(role_id)\n\ndef unassign_role(self, user_id, role_id):\n    self._role(role_id)\n    roles = self._user_roles.get(user_id, set())\n    if role_id not in roles:\n        raise KeyError(role_id)\n    roles.remove(role_id)\n\ndef get_role_permissions(self, role_id):\n    return set(self._role(role_id))\n\ndef get_all_permissions(self, user_id):\n    result = set()\n    for role_id in self._user_roles.get(user_id, set()):\n        result.update(self.get_role_permissions(role_id))\n    return result\n\ndef has_permission(self, user_id, permission):\n    return permission in self.get_all_permissions(user_id)", "rejected": "Separate Role and User objects add identity and mutability without helping this public contract. Class-level registries are especially dangerous because they leak between manager instances."}
-      ]},
-      {"part": 2, "steps": [
-        {"explanation": "Inheritance belongs in the role-permission query. Walking parent links there means every higher-level user query automatically gains transitive inheritance without a second implementation.", "code": "def set_parent_role(self, role_id, parent_role_id):\n    self._role(role_id)\n    self._role(parent_role_id)\n    self._parents[role_id] = parent_role_id\n\ndef get_role_permissions(self, role_id):\n    permissions = set()\n    current = role_id\n    while current is not None:\n        permissions.update(self._role(current))\n        current = self._parents.get(current)\n    return permissions", "rejected": "Copying parent permissions into the child at assignment time looks simple, but later grants and parent replacement would leave stale copies. Traversing the live links preserves one source of truth."}
-      ]},
-      {"part": 3, "steps": [
-        {"explanation": "Collection and matching stay separate. First reuse the effective permission union, then compare against the only four patterns that can cover one resource/action request. Malformed strings cannot match because none equals a valid candidate.", "code": "def has_scoped_permission(self, user_id, resource, action):\n    candidates = {\n        f\"{resource}:{action}\",\n        f\"{resource}:*\",\n        f\"*:{action}\",\n        \"*:*\",\n    }\n    return bool(self.get_all_permissions(user_id) & candidates)", "rejected": "Splitting every stored permission and branching on wildcard positions is longer and easier to get wrong. Generating four candidates makes the finite matching rule explicit."}
-      ]}
-    ], "reflection": "The transferable idea is to build one authoritative query at the lowest useful layer. Role permissions own inheritance; user permissions compose role permissions; scoped checks consume user permissions. Each new requirement extends the chain instead of creating parallel truth."},
-    "verify": {"commonFailures": [
-      {"symptom": "Tests pass alone but fail as a suite", "cause": "Mutable role or user state is shared", "check": "Initialize every collection on each manager instance."},
-      {"symptom": "Direct permissions pass but inherited checks fail", "cause": "Queries inspect only a role's own set", "check": "Trace the effective-permission query through every ancestor."}
-    ]}
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "Tests pass alone but fail as a suite",
+          "cause": "Mutable role or user state is shared",
+          "check": "Initialize every collection on each manager instance."
+        },
+        {
+          "symptom": "Direct permissions pass but inherited checks fail",
+          "cause": "Queries inspect only a role's own set",
+          "check": "Trace the effective-permission query through every ancestor."
+        }
+      ]
+    },
+    "lesson": {
+      "parts": [
+        {
+          "part": 1,
+          "steps": [
+            {
+              "explanation": "Start with two indexes: roles map to permission sets, and users map to role-ID sets. Sets make grants and assignments naturally idempotent, while returning unions and copies keeps callers from mutating the manager's state.",
+              "code": "def __init__(self):\n    self._roles = {}\n    self._user_roles = {}\n    self._parents = {}\n\ndef create_role(self, role_id, permissions=None):\n    if role_id in self._roles:\n        raise ValueError(f\"role already exists: {role_id}\")\n    self._roles[role_id] = set(permissions or [])\n\ndef _role(self, role_id):\n    if role_id not in self._roles:\n        raise KeyError(role_id)\n    return self._roles[role_id]\n\ndef grant_permission(self, role_id, permission):\n    self._role(role_id).add(permission)\n\ndef revoke_permission(self, role_id, permission):\n    self._role(role_id).discard(permission)\n\ndef assign_role(self, user_id, role_id):\n    self._role(role_id)\n    self._user_roles.setdefault(user_id, set()).add(role_id)\n\ndef unassign_role(self, user_id, role_id):\n    self._role(role_id)\n    roles = self._user_roles.get(user_id, set())\n    if role_id not in roles:\n        raise KeyError(role_id)\n    roles.remove(role_id)\n\ndef get_role_permissions(self, role_id):\n    return set(self._role(role_id))\n\ndef get_all_permissions(self, user_id):\n    result = set()\n    for role_id in self._user_roles.get(user_id, set()):\n        result.update(self.get_role_permissions(role_id))\n    return result\n\ndef has_permission(self, user_id, permission):\n    return permission in self.get_all_permissions(user_id)",
+              "rejected": "Separate Role and User objects add identity and mutability without helping this public contract. Class-level registries are especially dangerous because they leak between manager instances."
+            }
+          ]
+        },
+        {
+          "part": 2,
+          "steps": [
+            {
+              "explanation": "Inheritance belongs in the role-permission query. Walking parent links there means every higher-level user query automatically gains transitive inheritance without a second implementation.",
+              "code": "def set_parent_role(self, role_id, parent_role_id):\n    self._role(role_id)\n    self._role(parent_role_id)\n    self._parents[role_id] = parent_role_id\n\ndef get_role_permissions(self, role_id):\n    permissions = set()\n    current = role_id\n    while current is not None:\n        permissions.update(self._role(current))\n        current = self._parents.get(current)\n    return permissions",
+              "rejected": "Copying parent permissions into the child at assignment time looks simple, but later grants and parent replacement would leave stale copies. Traversing the live links preserves one source of truth."
+            }
+          ]
+        },
+        {
+          "part": 3,
+          "steps": [
+            {
+              "explanation": "Collection and matching stay separate. First reuse the effective permission union, then compare against the only four patterns that can cover one resource/action request. Malformed strings cannot match because none equals a valid candidate.",
+              "code": "def has_scoped_permission(self, user_id, resource, action):\n    candidates = {\n        f\"{resource}:{action}\",\n        f\"{resource}:*\",\n        f\"*:{action}\",\n        \"*:*\",\n    }\n    return bool(self.get_all_permissions(user_id) & candidates)",
+              "rejected": "Splitting every stored permission and branching on wildcard positions is longer and easier to get wrong. Generating four candidates makes the finite matching rule explicit."
+            }
+          ]
+        }
+      ],
+      "reflection": "The transferable idea is to build one authoritative query at the lowest useful layer. Role permissions own inheritance; user permissions compose role permissions; scoped checks consume user permissions. Each new requirement extends the chain instead of creating parallel truth."
+    }
   },
   "react-02": {
     "approach": [
-      {"part": 1, "prompt": "What state and lifecycle boundary should own streamed incidents?", "concepts": ["effect cleanup", "immutable state updates"], "steps": ["Subscribe once when the dashboard mounts.", "Derive the active newest-first view from received incidents."], "pitfalls": ["leaking a subscription on unmount", "mutating the shared seed records"]},
-      {"part": 2, "prompt": "Which values are source state and which are derived display state?", "concepts": ["controlled filters", "memoized derivation"], "steps": ["Keep incidents and filter selections as separate state.", "Derive the visible list without reconnecting the feed."], "pitfalls": ["filtering incidents out of source state", "placing filter state in the subscription effect dependencies"]},
-      {"part": 3, "prompt": "What snapshot is needed to roll back one optimistic containment request?", "concepts": ["optimistic updates", "per-item pending and error state"], "steps": ["Mark only the selected incident optimistically.", "On rejection, restore it and expose a retryable error."], "pitfalls": ["one global loading flag", "rollback that overwrites newer streamed state"]}
+      {
+        "part": 1,
+        "prompt": "What state and lifecycle boundary should own streamed incidents?",
+        "concepts": [
+          "effect cleanup",
+          "immutable state updates"
+        ],
+        "steps": [
+          "Subscribe once when the dashboard mounts.",
+          "Derive the active newest-first view from received incidents."
+        ],
+        "pitfalls": [
+          "leaking a subscription on unmount",
+          "mutating the shared seed records"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "Which values are source state and which are derived display state?",
+        "concepts": [
+          "controlled filters",
+          "memoized derivation"
+        ],
+        "steps": [
+          "Keep incidents and filter selections as separate state.",
+          "Derive the visible list without reconnecting the feed."
+        ],
+        "pitfalls": [
+          "filtering incidents out of source state",
+          "placing filter state in the subscription effect dependencies"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "What snapshot is needed to roll back one optimistic containment request?",
+        "concepts": [
+          "optimistic updates",
+          "per-item pending and error state"
+        ],
+        "steps": [
+          "Mark only the selected incident optimistically.",
+          "On rejection, restore it and expose a retryable error."
+        ],
+        "pitfalls": [
+          "one global loading flag",
+          "rollback that overwrites newer streamed state"
+        ]
+      }
     ],
-    "lesson": {"parts": [
-      {"part": 1, "steps": [
-        {"explanation": "Keep the stream as source state and subscribe exactly once. A functional state update avoids closing over a stale array; deriving and sorting active rows leaves the received records untouched.", "code": "const [incidents, setIncidents] = useState([])\n\nuseEffect(() => {\n  return incidentFeed.subscribe(incident => {\n    setIncidents(current => [incident, ...current])\n  })\n}, [])\n\nconst activeIncidents = incidents\n  .filter(incident => !incident.contained)\n  .sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts))\n\nfunction relativeTime(ts) {\n  const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(ts)) / 60_000))\n  return `${minutes} min ago`\n}", "rejected": "Putting the feed connection in this component would duplicate App's ownership. Mutating SEED_INCIDENTS or sorting the state array in place would corrupt shared/source data."},
-        {"explanation": "Render the contract directly, including the required test IDs. The severity map is presentation data, so it can style the badge without adding another state variable.", "code": "{activeIncidents.map(incident => (\n  <article key={incident.id} data-testid=\"incident-row\">\n    <span data-testid=\"severity-badge\" style={SEVERITY_COLORS[incident.severity]}>\n      {incident.severity}\n    </span>\n    <strong>{incident.type}</strong> · {incident.location}\n    <small>{relativeTime(incident.ts)}</small>\n  </article>\n))}\n{activeIncidents.length === 0 && <p>No incidents yet.</p>}"}
-      ]},
-      {"part": 2, "steps": [
-        {"explanation": "Filters describe the view, not the feed. Store each selection independently and memoize a projection from incidents plus those selections; the subscription effect still has no filter dependency and therefore never restarts.", "code": "const [severityFilter, setSeverityFilter] = useState('all')\nconst [typeFilter, setTypeFilter] = useState('all')\n\nconst visibleIncidents = useMemo(() => incidents\n  .filter(incident => !incident.contained)\n  .filter(incident => severityFilter === 'all' || incident.severity === severityFilter)\n  .filter(incident => typeFilter === 'all' || incident.type === typeFilter)\n  .sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts)),\n  [incidents, severityFilter, typeFilter]\n)", "rejected": "Deleting nonmatching incidents from state loses information and makes changing a filter irreversible. Adding filters to the effect dependency list tears down and recreates the subscription."},
-        {"explanation": "Controlled selects make the state-to-view relationship visible and give the count for free from the memoized array.", "code": "<label>Severity <select data-testid=\"filter-severity\" value={severityFilter} onChange={event => setSeverityFilter(event.target.value)}>\n  <option value=\"all\">all</option>\n  {SEVERITIES.map(value => <option key={value} value={value}>{value}</option>)}\n</select></label>\n<label>Type <select data-testid=\"filter-type\" value={typeFilter} onChange={event => setTypeFilter(event.target.value)}>\n  <option value=\"all\">all</option>\n  {INCIDENT_TYPES.map(value => <option key={value} value={value}>{value}</option>)}\n</select></label>\n<span>{visibleIncidents.length} visible</span>"}
-      ]},
-      {"part": 3, "steps": [
-        {"explanation": "Pending and errors are per incident because requests can overlap. Optimistically flip only the chosen record, then merge success or rollback into the latest state with functional updates.", "code": "const [pendingIds, setPendingIds] = useState(() => new Set())\nconst [errors, setErrors] = useState({})\n\nconst handleContain = useCallback(async id => {\n  setPendingIds(current => new Set(current).add(id))\n  setErrors(current => ({ ...current, [id]: undefined }))\n  setIncidents(current => current.map(item => item.id === id ? { ...item, contained: true } : item))\n  try {\n    await containIncident(id)\n  } catch (_) {\n    setIncidents(current => current.map(item => item.id === id ? { ...item, contained: false } : item))\n    setErrors(current => ({ ...current, [id]: 'Failed — retry' }))\n  } finally {\n    setPendingIds(current => { const next = new Set(current); next.delete(id); return next })\n  }\n}, [])", "rejected": "A single loading Boolean disables every row. Restoring a captured incidents array on failure can erase records that arrived while the request was in flight."},
-        {"explanation": "Revise the active projection to retain an optimistically contained row while its request is pending; otherwise the disabled button disappears immediately. Confirmed records then move to the separate derived section.", "code": "// In visibleIncidents, replace the active filter with:\n.filter(incident => !incident.contained || pendingIds.has(incident.id))\n\nconst confirmedContained = incidents.filter(item => item.contained && !pendingIds.has(item.id))\n\n<button data-testid=\"contain-btn\" disabled={pendingIds.has(incident.id)} onClick={() => handleContain(incident.id)}>\n  {pendingIds.has(incident.id) ? 'Containing…' : 'Contain'}\n</button>\n{errors[incident.id] && <span>{errors[incident.id]}</span>}\n\n<section><h3>Contained</h3>{confirmedContained.map(incident => (\n  <article key={incident.id} data-testid=\"contained-row\">{incident.type} · {incident.location}</article>\n))}</section>"}
-      ]}
-    ], "reflection": "The core React lesson is to separate source state, derived display state, and transient request state. Effects own external lifecycles, memoized projections own filtering, and functional updates make asynchronous optimistic work compose safely with a continuing stream."},
-    "verify": {"commonFailures": [
-      {"symptom": "Rows never appear", "cause": "The feed was not connected or subscribed", "check": "Confirm mount setup and unmount cleanup are both wired."},
-      {"symptom": "Playwright cannot find a control", "cause": "A required data-testid changed", "check": "Compare the rendered attribute with the stub contract."}
-    ]}
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "Rows never appear",
+          "cause": "The feed was not connected or subscribed",
+          "check": "Confirm mount setup and unmount cleanup are both wired."
+        },
+        {
+          "symptom": "Playwright cannot find a control",
+          "cause": "A required data-testid changed",
+          "check": "Compare the rendered attribute with the stub contract."
+        }
+      ]
+    },
+    "lesson": {
+      "parts": [
+        {
+          "part": 1,
+          "steps": [
+            {
+              "explanation": "Keep the stream as source state and subscribe exactly once. A functional state update avoids closing over a stale array; deriving and sorting active rows leaves the received records untouched.",
+              "code": "const [incidents, setIncidents] = useState([])\n\nuseEffect(() => {\n  return incidentFeed.subscribe(incident => {\n    setIncidents(current => [incident, ...current])\n  })\n}, [])\n\nconst activeIncidents = incidents\n  .filter(incident => !incident.contained)\n  .sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts))\n\nfunction relativeTime(ts) {\n  const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(ts)) / 60_000))\n  return `${minutes} min ago`\n}",
+              "rejected": "Putting the feed connection in this component would duplicate App's ownership. Mutating SEED_INCIDENTS or sorting the state array in place would corrupt shared/source data."
+            },
+            {
+              "explanation": "Render the contract directly, including the required test IDs. The severity map is presentation data, so it can style the badge without adding another state variable.",
+              "code": "{activeIncidents.map(incident => (\n  <article key={incident.id} data-testid=\"incident-row\">\n    <span data-testid=\"severity-badge\" style={SEVERITY_COLORS[incident.severity]}>\n      {incident.severity}\n    </span>\n    <strong>{incident.type}</strong> · {incident.location}\n    <small>{relativeTime(incident.ts)}</small>\n  </article>\n))}\n{activeIncidents.length === 0 && <p>No incidents yet.</p>}"
+            }
+          ]
+        },
+        {
+          "part": 2,
+          "steps": [
+            {
+              "explanation": "Filters describe the view, not the feed. Store each selection independently and memoize a projection from incidents plus those selections; the subscription effect still has no filter dependency and therefore never restarts.",
+              "code": "const [severityFilter, setSeverityFilter] = useState('all')\nconst [typeFilter, setTypeFilter] = useState('all')\n\nconst visibleIncidents = useMemo(() => incidents\n  .filter(incident => !incident.contained)\n  .filter(incident => severityFilter === 'all' || incident.severity === severityFilter)\n  .filter(incident => typeFilter === 'all' || incident.type === typeFilter)\n  .sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts)),\n  [incidents, severityFilter, typeFilter]\n)",
+              "rejected": "Deleting nonmatching incidents from state loses information and makes changing a filter irreversible. Adding filters to the effect dependency list tears down and recreates the subscription."
+            },
+            {
+              "explanation": "Controlled selects make the state-to-view relationship visible and give the count for free from the memoized array.",
+              "code": "<label>Severity <select data-testid=\"filter-severity\" value={severityFilter} onChange={event => setSeverityFilter(event.target.value)}>\n  <option value=\"all\">all</option>\n  {SEVERITIES.map(value => <option key={value} value={value}>{value}</option>)}\n</select></label>\n<label>Type <select data-testid=\"filter-type\" value={typeFilter} onChange={event => setTypeFilter(event.target.value)}>\n  <option value=\"all\">all</option>\n  {INCIDENT_TYPES.map(value => <option key={value} value={value}>{value}</option>)}\n</select></label>\n<span>{visibleIncidents.length} visible</span>"
+            }
+          ]
+        },
+        {
+          "part": 3,
+          "steps": [
+            {
+              "explanation": "Pending and errors are per incident because requests can overlap. Optimistically flip only the chosen record, then merge success or rollback into the latest state with functional updates.",
+              "code": "const [pendingIds, setPendingIds] = useState(() => new Set())\nconst [errors, setErrors] = useState({})\n\nconst handleContain = useCallback(async id => {\n  setPendingIds(current => new Set(current).add(id))\n  setErrors(current => ({ ...current, [id]: undefined }))\n  setIncidents(current => current.map(item => item.id === id ? { ...item, contained: true } : item))\n  try {\n    await containIncident(id)\n  } catch (_) {\n    setIncidents(current => current.map(item => item.id === id ? { ...item, contained: false } : item))\n    setErrors(current => ({ ...current, [id]: 'Failed — retry' }))\n  } finally {\n    setPendingIds(current => { const next = new Set(current); next.delete(id); return next })\n  }\n}, [])",
+              "rejected": "A single loading Boolean disables every row. Restoring a captured incidents array on failure can erase records that arrived while the request was in flight."
+            },
+            {
+              "explanation": "Revise the active projection to retain an optimistically contained row while its request is pending; otherwise the disabled button disappears immediately. Confirmed records then move to the separate derived section.",
+              "code": "// In visibleIncidents, replace the active filter with:\n.filter(incident => !incident.contained || pendingIds.has(incident.id))\n\nconst confirmedContained = incidents.filter(item => item.contained && !pendingIds.has(item.id))\n\n<button data-testid=\"contain-btn\" disabled={pendingIds.has(incident.id)} onClick={() => handleContain(incident.id)}>\n  {pendingIds.has(incident.id) ? 'Containing…' : 'Contain'}\n</button>\n{errors[incident.id] && <span>{errors[incident.id]}</span>}\n\n<section><h3>Contained</h3>{confirmedContained.map(incident => (\n  <article key={incident.id} data-testid=\"contained-row\">{incident.type} · {incident.location}</article>\n))}</section>"
+            }
+          ]
+        }
+      ],
+      "reflection": "The core React lesson is to separate source state, derived display state, and transient request state. Effects own external lifecycles, memoized projections own filtering, and functional updates make asynchronous optimistic work compose safely with a continuing stream."
+    }
   },
   "swift-18": {
     "approach": [
-      {"part": 1, "prompt": "What snapshot can carry both the stock facts and the reason an availability check failed?", "concepts": ["actor-isolated state", "typed Result outcomes", "available versus reserved units"], "steps": ["Derive one immutable snapshot from on-hand and reserved counts.", "Make adjustment validation reuse the same availability boundary."], "pitfalls": ["allowing negative available stock", "returning an opaque Bool or thrown string"]},
-      {"part": 2, "prompt": "Where must idempotency lookup, availability validation, and reservation mutation occur to make overselling impossible?", "concepts": ["actor serialization", "idempotency-key replay", "single mutation boundary"], "steps": ["Check the idempotency key before validating replay arguments.", "Consume the Part 1 availability result before recording one reservation."], "pitfalls": ["checking availability outside the actor", "incrementing stock twice on key replay"]},
-      {"part": 3, "prompt": "How can expiry and commit share reservation transitions while preserving all-or-nothing order behavior?", "concepts": ["injected time", "validate-then-apply", "terminal reservation states"], "steps": ["Collect eligible IDs, then expire them through release.", "Resolve and validate every commit member before applying any terminal transition."], "pitfalls": ["using the wall clock", "partially committing before a later reservation fails"]}
+      {
+        "part": 1,
+        "prompt": "What snapshot can carry both the stock facts and the reason an availability check failed?",
+        "concepts": [
+          "actor-isolated state",
+          "typed Result outcomes",
+          "available versus reserved units"
+        ],
+        "steps": [
+          "Derive one immutable snapshot from on-hand and reserved counts.",
+          "Make adjustment validation reuse the same availability boundary."
+        ],
+        "pitfalls": [
+          "allowing negative available stock",
+          "returning an opaque Bool or thrown string"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "Where must idempotency lookup, availability validation, and reservation mutation occur to make overselling impossible?",
+        "concepts": [
+          "actor serialization",
+          "idempotency-key replay",
+          "single mutation boundary"
+        ],
+        "steps": [
+          "Check the idempotency key before validating replay arguments.",
+          "Consume the Part 1 availability result before recording one reservation."
+        ],
+        "pitfalls": [
+          "checking availability outside the actor",
+          "incrementing stock twice on key replay"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "How can expiry and commit share reservation transitions while preserving all-or-nothing order behavior?",
+        "concepts": [
+          "injected time",
+          "validate-then-apply",
+          "terminal reservation states"
+        ],
+        "steps": [
+          "Collect eligible IDs, then expire them through release.",
+          "Resolve and validate every commit member before applying any terminal transition."
+        ],
+        "pitfalls": [
+          "using the wall clock",
+          "partially committing before a later reservation fails"
+        ]
+      }
     ],
-    "lesson": {"parts": [
-      {"part": 1, "steps": [
-        {"explanation": "Inside the actor, two integer dictionaries are sufficient: on-hand stock and active reserved totals. Every public answer is an immutable snapshot derived from those stores, so no mutable actor state escapes.", "code": "private var stock: [String: Int]\nprivate var reserved: [String: Int] = [:]\nprivate var reservations: [String: Reservation] = [:]\nprivate var reservationIDByKey: [String: String] = [:]\nprivate var orders: [String: CommittedOrder] = [:]\n\npublic init(initialStock: [String: Int] = [:]) { self.stock = initialStock }\n\npublic func snapshot(for sku: String) -> Result<InventorySnapshot, InventoryError> {\n    guard let onHand = stock[sku] else { return .failure(.unknownSKU(sku)) }\n    let held = reserved[sku, default: 0]\n    return .success(.init(sku: sku, onHand: onHand, reserved: held, available: onHand - held))\n}\n\npublic func availability(for sku: String, quantity: Int) -> Result<InventorySnapshot, InventoryError> {\n    guard quantity > 0 else { return .failure(.invalidQuantity(quantity)) }\n    return snapshot(for: sku).flatMap { value in\n        value.available >= quantity ? .success(value) : .failure(.insufficientAvailable(sku: sku, requested: quantity, available: value.available))\n    }\n}", "rejected": "Storing available as a third mutable counter creates an invariant that every operation must maintain. Deriving it as onHand minus reserved makes disagreement impossible."},
-        {"explanation": "A negative adjustment is really an availability request. Reuse that typed decision before changing stock, so held units can never be consumed.", "code": "public func adjustStock(sku: String, by quantity: Int) -> Result<InventorySnapshot, InventoryError> {\n    guard stock[sku] != nil else { return .failure(.unknownSKU(sku)) }\n    if quantity < 0, case let .failure(error) = availability(for: sku, quantity: -quantity) { return .failure(error) }\n    stock[sku, default: 0] += quantity\n    return snapshot(for: sku)\n}", "rejected": "Checking only that onHand stays nonnegative ignores reservations; it can leave available stock below zero."}
-      ]},
-      {"part": 2, "steps": [
-        {"explanation": "Idempotency is the first branch: a replay returns the original value even when every new argument is invalid. Only a new key proceeds through unique-ID and Part 1 availability validation, all within one actor turn.", "code": "public func reservation(id: String) -> Result<Reservation, InventoryError> {\n    reservations[id].map(Result.success) ?? .failure(.unknownReservation(id))\n}\n\npublic func reserve(id: String, idempotencyKey: String, sku: String, quantity: Int, expiresAt: Date) -> Result<Reservation, InventoryError> {\n    if let existingID = reservationIDByKey[idempotencyKey], let existing = reservations[existingID] { return .success(existing) }\n    guard reservations[id] == nil else { return .failure(.duplicateReservationID(id)) }\n    if case let .failure(error) = availability(for: sku, quantity: quantity) { return .failure(error) }\n    let value = Reservation(id: id, idempotencyKey: idempotencyKey, sku: sku, quantity: quantity, expiresAt: expiresAt)\n    reservations[id] = value\n    reservationIDByKey[idempotencyKey] = id\n    reserved[sku, default: 0] += quantity\n    return .success(value)\n}", "rejected": "A nonisolated check followed by actor mutation can oversell under concurrency. Actor isolation matters because the availability decision and counter update are one serialized operation."},
-        {"explanation": "Centralize terminal bookkeeping in a private transition. Release uses the public lookup seam, then the helper changes the record and decrements reserved exactly once.", "code": "private func finish(_ value: Reservation, as state: ReservationState, consumeStock: Bool) -> Reservation {\n    let updated = Reservation(id: value.id, idempotencyKey: value.idempotencyKey, sku: value.sku, quantity: value.quantity, expiresAt: value.expiresAt, state: state)\n    reservations[value.id] = updated\n    reserved[value.sku, default: 0] -= value.quantity\n    if consumeStock { stock[value.sku, default: 0] -= value.quantity }\n    return updated\n}\n\npublic func release(reservationID: String) -> Result<Reservation, InventoryError> {\n    guard case let .success(value) = reservation(id: reservationID) else { return .failure(.unknownReservation(reservationID)) }\n    guard value.state == .active else { return .failure(.reservationNotActive(reservationID)) }\n    return .success(finish(value, as: .released, consumeStock: false))\n}"}
-      ]},
-      {"part": 3, "steps": [
-        {"explanation": "Expiry selects a deterministic snapshot of eligible active IDs, delegates each transition to release, then relabels the released result as expired without touching counters a second time.", "code": "public func expireReservations(at instant: Date) -> [Reservation] {\n    let ids = reservations.values.filter { $0.state == .active && $0.expiresAt <= instant }.map(\\.id).sorted()\n    return ids.compactMap { id in\n        guard case let .success(released) = release(reservationID: id) else { return nil }\n        let expired = Reservation(id: released.id, idempotencyKey: released.idempotencyKey, sku: released.sku, quantity: released.quantity, expiresAt: released.expiresAt, state: .expired)\n        reservations[id] = expired\n        return expired\n    }\n}", "rejected": "Duplicating reserved-counter changes in expiry would make release and expiry drift. Calling release establishes one terminal bookkeeping path."},
-        {"explanation": "Commit is a two-phase operation: validate the order ID, nonempty input, and every reservation first; only then apply all transitions and record the order. Actor serialization makes the validate-then-apply section atomic against expiry.", "code": "public func commit(orderID: String, reservationIDs: [String]) -> Result<CommittedOrder, InventoryError> {\n    guard orders[orderID] == nil else { return .failure(.duplicateOrderID(orderID)) }\n    guard !reservationIDs.isEmpty else { return .failure(.emptyOrder) }\n    var active: [Reservation] = []\n    for id in reservationIDs {\n        guard case let .success(value) = reservation(id: id) else { return .failure(.unknownReservation(id)) }\n        guard value.state == .active else { return .failure(.reservationNotActive(id)) }\n        active.append(value)\n    }\n    for value in active { _ = finish(value, as: .committed(orderID: orderID), consumeStock: true) }\n    let order = CommittedOrder(id: orderID, reservationIDs: reservationIDs)\n    orders[orderID] = order\n    return .success(order)\n}", "rejected": "Validating and committing in the same loop can permanently consume early reservations before a later ID fails. The full validation pass is what gives the method transaction-like behavior."}
-      ]}
-    ], "reflection": "The transferable concurrency lesson is that an actor protects only code that stays within its isolation boundary. Rich Part 1 results let reservation logic reuse decisions, a single terminal-transition helper protects counters, and validate-then-apply turns serialized access into atomic business behavior."},
-    "verify": {"commonFailures": [
-      {"symptom": "Concurrent attempts reserve more than the SKU owns", "cause": "Availability and mutation are split across isolation boundaries", "check": "Trace both operations through one uninterrupted actor method."},
-      {"symptom": "A replay changes counters or returns a new ID", "cause": "The key lookup happens after request validation or mutation", "check": "Make an existing idempotency key the first successful return path."},
-      {"symptom": "A failed multi-reservation commit changes earlier reservations", "cause": "Validation and mutation are interleaved", "check": "Resolve the complete active set before closing any reservation."}
-    ]}
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "Concurrent attempts reserve more than the SKU owns",
+          "cause": "Availability and mutation are split across isolation boundaries",
+          "check": "Trace both operations through one uninterrupted actor method."
+        },
+        {
+          "symptom": "A replay changes counters or returns a new ID",
+          "cause": "The key lookup happens after request validation or mutation",
+          "check": "Make an existing idempotency key the first successful return path."
+        },
+        {
+          "symptom": "A failed multi-reservation commit changes earlier reservations",
+          "cause": "Validation and mutation are interleaved",
+          "check": "Resolve the complete active set before closing any reservation."
+        }
+      ]
+    },
+    "lesson": {
+      "parts": [
+        {
+          "part": 1,
+          "steps": [
+            {
+              "explanation": "Inside the actor, two integer dictionaries are sufficient: on-hand stock and active reserved totals. Every public answer is an immutable snapshot derived from those stores, so no mutable actor state escapes.",
+              "code": "private var stock: [String: Int]\nprivate var reserved: [String: Int] = [:]\nprivate var reservations: [String: Reservation] = [:]\nprivate var reservationIDByKey: [String: String] = [:]\nprivate var orders: [String: CommittedOrder] = [:]\n\npublic init(initialStock: [String: Int] = [:]) { self.stock = initialStock }\n\npublic func snapshot(for sku: String) -> Result<InventorySnapshot, InventoryError> {\n    guard let onHand = stock[sku] else { return .failure(.unknownSKU(sku)) }\n    let held = reserved[sku, default: 0]\n    return .success(.init(sku: sku, onHand: onHand, reserved: held, available: onHand - held))\n}\n\npublic func availability(for sku: String, quantity: Int) -> Result<InventorySnapshot, InventoryError> {\n    guard quantity > 0 else { return .failure(.invalidQuantity(quantity)) }\n    return snapshot(for: sku).flatMap { value in\n        value.available >= quantity ? .success(value) : .failure(.insufficientAvailable(sku: sku, requested: quantity, available: value.available))\n    }\n}",
+              "rejected": "Storing available as a third mutable counter creates an invariant that every operation must maintain. Deriving it as onHand minus reserved makes disagreement impossible."
+            },
+            {
+              "explanation": "A negative adjustment is really an availability request. Reuse that typed decision before changing stock, so held units can never be consumed.",
+              "code": "public func adjustStock(sku: String, by quantity: Int) -> Result<InventorySnapshot, InventoryError> {\n    guard stock[sku] != nil else { return .failure(.unknownSKU(sku)) }\n    if quantity < 0, case let .failure(error) = availability(for: sku, quantity: -quantity) { return .failure(error) }\n    stock[sku, default: 0] += quantity\n    return snapshot(for: sku)\n}",
+              "rejected": "Checking only that onHand stays nonnegative ignores reservations; it can leave available stock below zero."
+            }
+          ]
+        },
+        {
+          "part": 2,
+          "steps": [
+            {
+              "explanation": "Idempotency is the first branch: a replay returns the original value even when every new argument is invalid. Only a new key proceeds through unique-ID and Part 1 availability validation, all within one actor turn.",
+              "code": "public func reservation(id: String) -> Result<Reservation, InventoryError> {\n    reservations[id].map(Result.success) ?? .failure(.unknownReservation(id))\n}\n\npublic func reserve(id: String, idempotencyKey: String, sku: String, quantity: Int, expiresAt: Date) -> Result<Reservation, InventoryError> {\n    if let existingID = reservationIDByKey[idempotencyKey], let existing = reservations[existingID] { return .success(existing) }\n    guard reservations[id] == nil else { return .failure(.duplicateReservationID(id)) }\n    if case let .failure(error) = availability(for: sku, quantity: quantity) { return .failure(error) }\n    let value = Reservation(id: id, idempotencyKey: idempotencyKey, sku: sku, quantity: quantity, expiresAt: expiresAt)\n    reservations[id] = value\n    reservationIDByKey[idempotencyKey] = id\n    reserved[sku, default: 0] += quantity\n    return .success(value)\n}",
+              "rejected": "A nonisolated check followed by actor mutation can oversell under concurrency. Actor isolation matters because the availability decision and counter update are one serialized operation."
+            },
+            {
+              "explanation": "Centralize terminal bookkeeping in a private transition. Release uses the public lookup seam, then the helper changes the record and decrements reserved exactly once.",
+              "code": "private func finish(_ value: Reservation, as state: ReservationState, consumeStock: Bool) -> Reservation {\n    let updated = Reservation(id: value.id, idempotencyKey: value.idempotencyKey, sku: value.sku, quantity: value.quantity, expiresAt: value.expiresAt, state: state)\n    reservations[value.id] = updated\n    reserved[value.sku, default: 0] -= value.quantity\n    if consumeStock { stock[value.sku, default: 0] -= value.quantity }\n    return updated\n}\n\npublic func release(reservationID: String) -> Result<Reservation, InventoryError> {\n    guard case let .success(value) = reservation(id: reservationID) else { return .failure(.unknownReservation(reservationID)) }\n    guard value.state == .active else { return .failure(.reservationNotActive(reservationID)) }\n    return .success(finish(value, as: .released, consumeStock: false))\n}"
+            }
+          ]
+        },
+        {
+          "part": 3,
+          "steps": [
+            {
+              "explanation": "Expiry selects a deterministic snapshot of eligible active IDs, delegates each transition to release, then relabels the released result as expired without touching counters a second time.",
+              "code": "public func expireReservations(at instant: Date) -> [Reservation] {\n    let ids = reservations.values.filter { $0.state == .active && $0.expiresAt <= instant }.map(\\.id).sorted()\n    return ids.compactMap { id in\n        guard case let .success(released) = release(reservationID: id) else { return nil }\n        let expired = Reservation(id: released.id, idempotencyKey: released.idempotencyKey, sku: released.sku, quantity: released.quantity, expiresAt: released.expiresAt, state: .expired)\n        reservations[id] = expired\n        return expired\n    }\n}",
+              "rejected": "Duplicating reserved-counter changes in expiry would make release and expiry drift. Calling release establishes one terminal bookkeeping path."
+            },
+            {
+              "explanation": "Commit is a two-phase operation: validate the order ID, nonempty input, and every reservation first; only then apply all transitions and record the order. Actor serialization makes the validate-then-apply section atomic against expiry.",
+              "code": "public func commit(orderID: String, reservationIDs: [String]) -> Result<CommittedOrder, InventoryError> {\n    guard orders[orderID] == nil else { return .failure(.duplicateOrderID(orderID)) }\n    guard !reservationIDs.isEmpty else { return .failure(.emptyOrder) }\n    var active: [Reservation] = []\n    for id in reservationIDs {\n        guard case let .success(value) = reservation(id: id) else { return .failure(.unknownReservation(id)) }\n        guard value.state == .active else { return .failure(.reservationNotActive(id)) }\n        active.append(value)\n    }\n    for value in active { _ = finish(value, as: .committed(orderID: orderID), consumeStock: true) }\n    let order = CommittedOrder(id: orderID, reservationIDs: reservationIDs)\n    orders[orderID] = order\n    return .success(order)\n}",
+              "rejected": "Validating and committing in the same loop can permanently consume early reservations before a later ID fails. The full validation pass is what gives the method transaction-like behavior."
+            }
+          ]
+        }
+      ],
+      "reflection": "The transferable concurrency lesson is that an actor protects only code that stays within its isolation boundary. Rich Part 1 results let reservation logic reuse decisions, a single terminal-transition helper protects counters, and validate-then-apply turns serialized access into atomic business behavior."
+    }
   },
   "python-01": {
     "approach": [
-      {"part": 1, "prompt": "How will boundary coordinates and missing locations be handled consistently?", "concepts": ["inclusive bounds", "missing-coordinate guard"], "steps": ["Reject incomplete locations first.", "Check both axes against their inclusive ranges."], "pitfalls": ["exclusive edge comparisons", "truthiness checks that reject zero coordinates"]},
-      {"part": 2, "prompt": "How can zone lookup reuse the membership rule without changing insertion-order behavior?", "concepts": ["ordered dictionary iteration", "first match"], "steps": ["Resolve the asset safely.", "Return the first zone whose membership check succeeds."], "pitfalls": ["duplicating coordinate comparisons", "raising for an unknown asset"]},
-      {"part": 3, "prompt": "Which old values must be captured before applying a location update?", "concepts": ["state transition", "three-field rule matching"], "steps": ["Preserve the old zone before updating coordinates.", "Recompute through the Part 2 lookup and evaluate rules only on a transition."], "pitfalls": ["losing the previous zone", "firing alerts when the zone is unchanged"]},
-      {"part": 4, "prompt": "Where should uniqueness and referential cleanup be enforced?", "concepts": ["mutation boundaries", "stable string identifiers"], "steps": ["Validate duplicate IDs before mutation.", "When removing a zone, clear affected asset references without generating alerts."], "pitfalls": ["partially mutating before validation", "treating administrative removal as a GPS transition"]}
+      {
+        "part": 1,
+        "prompt": "How will boundary coordinates and missing locations be handled consistently?",
+        "concepts": [
+          "inclusive bounds",
+          "missing-coordinate guard"
+        ],
+        "steps": [
+          "Reject incomplete locations first.",
+          "Check both axes against their inclusive ranges."
+        ],
+        "pitfalls": [
+          "exclusive edge comparisons",
+          "truthiness checks that reject zero coordinates"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "How can zone lookup reuse the membership rule without changing insertion-order behavior?",
+        "concepts": [
+          "ordered dictionary iteration",
+          "first match"
+        ],
+        "steps": [
+          "Resolve the asset safely.",
+          "Return the first zone whose membership check succeeds."
+        ],
+        "pitfalls": [
+          "duplicating coordinate comparisons",
+          "raising for an unknown asset"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "Which old values must be captured before applying a location update?",
+        "concepts": [
+          "state transition",
+          "three-field rule matching"
+        ],
+        "steps": [
+          "Preserve the old zone before updating coordinates.",
+          "Recompute through the Part 2 lookup and evaluate rules only on a transition."
+        ],
+        "pitfalls": [
+          "losing the previous zone",
+          "firing alerts when the zone is unchanged"
+        ]
+      },
+      {
+        "part": 4,
+        "prompt": "Where should uniqueness and referential cleanup be enforced?",
+        "concepts": [
+          "mutation boundaries",
+          "stable string identifiers"
+        ],
+        "steps": [
+          "Validate duplicate IDs before mutation.",
+          "When removing a zone, clear affected asset references without generating alerts."
+        ],
+        "pitfalls": [
+          "partially mutating before validation",
+          "treating administrative removal as a GPS transition"
+        ]
+      }
     ],
-    "verify": {"commonFailures": [
-      {"symptom": "Edge coordinates are classified outside", "cause": "Bounds use strict comparisons", "check": "Review both minimum and maximum comparisons for inclusivity."},
-      {"symptom": "Unexpected alerts accumulate", "cause": "Rules run without a real zone transition", "check": "Compare old and recomputed zone IDs before matching rules."}
-    ]}
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "Edge coordinates are classified outside",
+          "cause": "Bounds use strict comparisons",
+          "check": "Review both minimum and maximum comparisons for inclusivity."
+        },
+        {
+          "symptom": "Unexpected alerts accumulate",
+          "cause": "Rules run without a real zone transition",
+          "check": "Compare old and recomputed zone IDs before matching rules."
+        }
+      ]
+    }
   },
   "swift-10": {
     "approach": [
-      {"part": 1, "prompt": "Which keyed stores and one canonical ordering rule make registration and matching predictable?", "concepts": ["typed identifiers", "deterministic multi-key sorting"], "steps": ["Validate uniqueness before inserting records.", "Centralize severity, timestamp, and ID ordering."], "pitfalls": ["using names as identity", "different ordering rules across queries"]},
-      {"part": 2, "prompt": "What should manual assignment return so automatic assignment can reuse both its mutation and resulting capacity facts?", "concepts": ["typed expected failures", "rich assignment snapshot"], "steps": ["Count only assigned unresolved incidents.", "Return the updated incident, responder, and capacity snapshot together."], "pitfalls": ["counting resolved work", "returning only a Boolean or responder ID"]},
-      {"part": 3, "prompt": "Where should eligibility selection end and authoritative assignment begin?", "concepts": ["strategy protocol", "composition boundary"], "steps": ["Build candidates from subscriptions and current capacity.", "Ask the strategy to choose, then delegate to manual assignment."], "pitfalls": ["letting the strategy mutate manager state", "duplicating manual validation in auto-assignment"]}
+      {
+        "part": 1,
+        "prompt": "Which keyed stores and one canonical ordering rule make registration and matching predictable?",
+        "concepts": [
+          "typed identifiers",
+          "deterministic multi-key sorting"
+        ],
+        "steps": [
+          "Validate uniqueness before inserting records.",
+          "Centralize severity, timestamp, and ID ordering."
+        ],
+        "pitfalls": [
+          "using names as identity",
+          "different ordering rules across queries"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "What should manual assignment return so automatic assignment can reuse both its mutation and resulting capacity facts?",
+        "concepts": [
+          "typed expected failures",
+          "rich assignment snapshot"
+        ],
+        "steps": [
+          "Count only assigned unresolved incidents.",
+          "Return the updated incident, responder, and capacity snapshot together."
+        ],
+        "pitfalls": [
+          "counting resolved work",
+          "returning only a Boolean or responder ID"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "Where should eligibility selection end and authoritative assignment begin?",
+        "concepts": [
+          "strategy protocol",
+          "composition boundary"
+        ],
+        "steps": [
+          "Build candidates from subscriptions and current capacity.",
+          "Ask the strategy to choose, then delegate to manual assignment."
+        ],
+        "pitfalls": [
+          "letting the strategy mutate manager state",
+          "duplicating manual validation in auto-assignment"
+        ]
+      }
     ],
-    "verify": {"commonFailures": [
-      {"symptom": "Automatic assignment chooses a full or unrelated responder", "cause": "The strategy received unfiltered candidates", "check": "Inspect the candidate boundary for both subscription and available capacity."},
-      {"symptom": "Manual and automatic results drift apart", "cause": "Automatic assignment mutates incidents independently", "check": "Trace the selected ID into the public manual-assignment method."}
-    ]}
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "Automatic assignment chooses a full or unrelated responder",
+          "cause": "The strategy received unfiltered candidates",
+          "check": "Inspect the candidate boundary for both subscription and available capacity."
+        },
+        {
+          "symptom": "Manual and automatic results drift apart",
+          "cause": "Automatic assignment mutates incidents independently",
+          "check": "Trace the selected ID into the public manual-assignment method."
+        }
+      ]
+    }
   },
   "swift-05": {
     "approach": [
-      {"part": 1, "prompt": "How can one chronological history reduction produce each active medication snapshot?", "concepts": ["immutable events", "latest-event reduction"], "steps": ["Filter by typed patient and medication IDs.", "Sort by the comparable timestamp before selecting the latest event."], "pitfalls": ["trusting arrival order", "treating a stop event as an active zero dose"]},
-      {"part": 2, "prompt": "Which patient-level counts can be expressed directly over the Part 1 history?", "concepts": ["composed reductions", "enum filtering"], "steps": ["Reuse chronological history for optional direction counts.", "Accumulate only decrease and stop directions for the summary."], "pitfalls": ["parallel event filtering logic", "including medications with no de-escalation"]},
-      {"part": 3, "prompt": "How can population queries reuse patient snapshots while remaining deterministic?", "concepts": ["set uniqueness", "stable ranking"], "steps": ["Derive unique typed patient and medication IDs from events.", "Sort patient IDs and break equal counts by medication ID."], "pitfalls": ["returning duplicate patients", "depending on dictionary iteration order"]},
-      {"part": 4, "prompt": "What event identity enables last-write-wins without mutating either the input collection or existing tracker?", "concepts": ["value semantics", "composite event identity"], "steps": ["Remove an event matching patient, medication, and timestamp.", "Return a new tracker containing the replacement event."], "pitfalls": ["mutating shared storage", "treating direction as part of replacement identity"]}
+      {
+        "part": 1,
+        "prompt": "How can one chronological history reduction produce each active medication snapshot?",
+        "concepts": [
+          "immutable events",
+          "latest-event reduction"
+        ],
+        "steps": [
+          "Filter by typed patient and medication IDs.",
+          "Sort by the comparable timestamp before selecting the latest event."
+        ],
+        "pitfalls": [
+          "trusting arrival order",
+          "treating a stop event as an active zero dose"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "Which patient-level counts can be expressed directly over the Part 1 history?",
+        "concepts": [
+          "composed reductions",
+          "enum filtering"
+        ],
+        "steps": [
+          "Reuse chronological history for optional direction counts.",
+          "Accumulate only decrease and stop directions for the summary."
+        ],
+        "pitfalls": [
+          "parallel event filtering logic",
+          "including medications with no de-escalation"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "How can population queries reuse patient snapshots while remaining deterministic?",
+        "concepts": [
+          "set uniqueness",
+          "stable ranking"
+        ],
+        "steps": [
+          "Derive unique typed patient and medication IDs from events.",
+          "Sort patient IDs and break equal counts by medication ID."
+        ],
+        "pitfalls": [
+          "returning duplicate patients",
+          "depending on dictionary iteration order"
+        ]
+      },
+      {
+        "part": 4,
+        "prompt": "What event identity enables last-write-wins without mutating either the input collection or existing tracker?",
+        "concepts": [
+          "value semantics",
+          "composite event identity"
+        ],
+        "steps": [
+          "Remove an event matching patient, medication, and timestamp.",
+          "Return a new tracker containing the replacement event."
+        ],
+        "pitfalls": [
+          "mutating shared storage",
+          "treating direction as part of replacement identity"
+        ]
+      }
     ],
-    "verify": {"commonFailures": [
-      {"symptom": "Out-of-order inputs produce an old current dose", "cause": "Arrival order was used as chronology", "check": "Confirm every latest-event decision follows comparable timestamp ordering."},
-      {"symptom": "Adding an event changes the original tracker", "cause": "Mutable reference-backed storage is shared", "check": "Verify ingestion constructs and returns a new value snapshot."}
-    ]}
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "Out-of-order inputs produce an old current dose",
+          "cause": "Arrival order was used as chronology",
+          "check": "Confirm every latest-event decision follows comparable timestamp ordering."
+        },
+        {
+          "symptom": "Adding an event changes the original tracker",
+          "cause": "Mutable reference-backed storage is shared",
+          "check": "Verify ingestion constructs and returns a new value snapshot."
+        }
+      ]
+    }
   },
   "swift-13": {
     "approach": [
-      {"part": 1, "prompt": "How can the compiler prove every source state has an explicit transition decision?", "concepts": ["exhaustive enum switching", "typed expected failures", "immutable snapshots"], "steps": ["Keep mutable storage private to the lifecycle value.", "Decide allowed destinations with a switch over every source state before appending audit history."], "pitfalls": ["stringly typed states", "mutating state before validation", "forgetting the initial audit entry"]},
-      {"part": 2, "prompt": "How can bulk advancement preserve exactly the behavior of a single transition?", "concepts": ["method composition", "partial success", "deterministic ordering"], "steps": ["Call the single-contract transition for each requested ID.", "Capture typed failures and continue processing later IDs."], "pitfalls": ["duplicating transition rules", "aborting the whole batch on one failure"]},
-      {"part": 3, "prompt": "Which existing snapshots contain enough information for metrics and overdue reporting?", "concepts": ["state aggregation", "latest audit event", "whole-day arithmetic"], "steps": ["Aggregate current contract snapshots by enum case.", "Use the latest audit timestamp and exclude terminal states before sorting."], "pitfalls": ["using creation time after later transitions", "including contracts stuck exactly 30 days"]}
+      {
+        "part": 1,
+        "prompt": "How can the compiler prove every source state has an explicit transition decision?",
+        "concepts": [
+          "exhaustive enum switching",
+          "typed expected failures",
+          "immutable snapshots"
+        ],
+        "steps": [
+          "Keep mutable storage private to the lifecycle value.",
+          "Decide allowed destinations with a switch over every source state before appending audit history."
+        ],
+        "pitfalls": [
+          "stringly typed states",
+          "mutating state before validation",
+          "forgetting the initial audit entry"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "How can bulk advancement preserve exactly the behavior of a single transition?",
+        "concepts": [
+          "method composition",
+          "partial success",
+          "deterministic ordering"
+        ],
+        "steps": [
+          "Call the single-contract transition for each requested ID.",
+          "Capture typed failures and continue processing later IDs."
+        ],
+        "pitfalls": [
+          "duplicating transition rules",
+          "aborting the whole batch on one failure"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "Which existing snapshots contain enough information for metrics and overdue reporting?",
+        "concepts": [
+          "state aggregation",
+          "latest audit event",
+          "whole-day arithmetic"
+        ],
+        "steps": [
+          "Aggregate current contract snapshots by enum case.",
+          "Use the latest audit timestamp and exclude terminal states before sorting."
+        ],
+        "pitfalls": [
+          "using creation time after later transitions",
+          "including contracts stuck exactly 30 days"
+        ]
+      }
     ],
-    "verify": {"commonFailures": [
-      {"symptom": "A legal transition is unexpectedly rejected", "cause": "One branch of the lifecycle switch omits a documented destination", "check": "Walk every source enum case and compare its allowed destinations with the state diagram."},
-      {"symptom": "Bulk and single transitions produce different audit trails", "cause": "Bulk logic implements a second state machine", "check": "Confirm each bulk item delegates to the single transition method."}
-    ]}
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "A legal transition is unexpectedly rejected",
+          "cause": "One branch of the lifecycle switch omits a documented destination",
+          "check": "Walk every source enum case and compare its allowed destinations with the state diagram."
+        },
+        {
+          "symptom": "Bulk and single transitions produce different audit trails",
+          "cause": "Bulk logic implements a second state machine",
+          "check": "Confirm each bulk item delegates to the single transition method."
+        }
+      ]
+    }
   },
   "swift-15": {
     "approach": [
-      {"part": 1, "prompt": "How can one directional scan express rows, columns, and both diagonal families?", "concepts": ["generic hashable players", "typed game outcomes", "direction vectors"], "steps": ["Represent occupied cells by Position.", "Return the first complete winning run, otherwise distinguish available cells from a full board."], "pitfalls": ["treating empty lines as wins", "hard-coding X and O"]},
-      {"part": 2, "prompt": "Which operation should be the single source of truth for the result after a move?", "concepts": ["mutating value types", "copy independence", "method composition"], "steps": ["Validate the position before changing storage.", "After storing a mark, return the existing board result."], "pitfalls": ["reference-backed shared storage", "partially mutating on an invalid move"]},
-      {"part": 3, "prompt": "How does winLength change a full-line check into a consecutive-run check?", "concepts": ["configurable dimensions", "consecutive tracking", "four canonical directions"], "steps": ["Validate size and win length together.", "Search bounded starts and stop a run when the player changes."], "pitfalls": ["counting nonconsecutive marks", "missing descending diagonals", "accepting impossible configurations"]}
+      {
+        "part": 1,
+        "prompt": "How can one directional scan express rows, columns, and both diagonal families?",
+        "concepts": [
+          "generic hashable players",
+          "typed game outcomes",
+          "direction vectors"
+        ],
+        "steps": [
+          "Represent occupied cells by Position.",
+          "Return the first complete winning run, otherwise distinguish available cells from a full board."
+        ],
+        "pitfalls": [
+          "treating empty lines as wins",
+          "hard-coding X and O"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "Which operation should be the single source of truth for the result after a move?",
+        "concepts": [
+          "mutating value types",
+          "copy independence",
+          "method composition"
+        ],
+        "steps": [
+          "Validate the position before changing storage.",
+          "After storing a mark, return the existing board result."
+        ],
+        "pitfalls": [
+          "reference-backed shared storage",
+          "partially mutating on an invalid move"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "How does winLength change a full-line check into a consecutive-run check?",
+        "concepts": [
+          "configurable dimensions",
+          "consecutive tracking",
+          "four canonical directions"
+        ],
+        "steps": [
+          "Validate size and win length together.",
+          "Search bounded starts and stop a run when the player changes."
+        ],
+        "pitfalls": [
+          "counting nonconsecutive marks",
+          "missing descending diagonals",
+          "accepting impossible configurations"
+        ]
+      }
     ],
-    "verify": {"commonFailures": [
-      {"symptom": "Changing a copied board changes the original", "cause": "Board storage is shared through a reference", "check": "Create two copies, place different marks, and inspect both positions."},
-      {"symptom": "Large boards report wins across gaps", "cause": "The algorithm counts a player's marks without tracking adjacency", "check": "Trace one direction and reset the run at every different or empty cell."}
-    ]}
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "Changing a copied board changes the original",
+          "cause": "Board storage is shared through a reference",
+          "check": "Create two copies, place different marks, and inspect both positions."
+        },
+        {
+          "symptom": "Large boards report wins across gaps",
+          "cause": "The algorithm counts a player's marks without tracking adjacency",
+          "check": "Trace one direction and reset the run at every different or empty cell."
+        }
+      ]
+    }
   },
   "swift-02": {
     "approach": [
-      {"part": 1, "prompt": "What single decision type can carry both permission to proceed and precise denial context?", "concepts": ["actor isolation", "associated-value outcomes", "sliding windows"], "steps": ["Keep plans, keys, and logs inside the actor.", "Compute current usage once, then apply minute-before-day precedence."], "pitfalls": ["returning Bool and losing denial context", "including the left window boundary"]},
-      {"part": 2, "prompt": "How can checking and recording remain one atomic actor operation?", "concepts": ["actor serialization", "decision composition", "bounded logs"], "steps": ["Call the Part 1 decision method first.", "Record and prune only after an allowed result."], "pitfalls": ["duplicating limit checks", "mutating the log on denial"]},
-      {"part": 3, "prompt": "Which immutable values let callers inspect usage without exposing actor storage?", "concepts": ["value snapshots", "deterministic ordering"], "steps": ["Build Usage from the same window-counting logic.", "Return sorted copies of key records and dates."], "pitfalls": ["leaking mutable backing storage", "using wall-clock time instead of the injected source"]}
+      {
+        "part": 1,
+        "prompt": "What single decision type can carry both permission to proceed and precise denial context?",
+        "concepts": [
+          "actor isolation",
+          "associated-value outcomes",
+          "sliding windows"
+        ],
+        "steps": [
+          "Keep plans, keys, and logs inside the actor.",
+          "Compute current usage once, then apply minute-before-day precedence."
+        ],
+        "pitfalls": [
+          "returning Bool and losing denial context",
+          "including the left window boundary"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "How can checking and recording remain one atomic actor operation?",
+        "concepts": [
+          "actor serialization",
+          "decision composition",
+          "bounded logs"
+        ],
+        "steps": [
+          "Call the Part 1 decision method first.",
+          "Record and prune only after an allowed result."
+        ],
+        "pitfalls": [
+          "duplicating limit checks",
+          "mutating the log on denial"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "Which immutable values let callers inspect usage without exposing actor storage?",
+        "concepts": [
+          "value snapshots",
+          "deterministic ordering"
+        ],
+        "steps": [
+          "Build Usage from the same window-counting logic.",
+          "Return sorted copies of key records and dates."
+        ],
+        "pitfalls": [
+          "leaking mutable backing storage",
+          "using wall-clock time instead of the injected source"
+        ]
+      }
     ],
-    "verify": {"commonFailures": [
-      {"symptom": "Concurrent requests exceed the configured cap", "cause": "The check and record steps are not one actor-isolated operation", "check": "Trace handleRequest from its decision through its append without leaving actor isolation."},
-      {"symptom": "A day denial is returned when both limits are full", "cause": "Limit precedence is reversed", "check": "Evaluate the minute dimension before the day dimension."}
-    ]}
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "Concurrent requests exceed the configured cap",
+          "cause": "The check and record steps are not one actor-isolated operation",
+          "check": "Trace handleRequest from its decision through its append without leaving actor isolation."
+        },
+        {
+          "symptom": "A day denial is returned when both limits are full",
+          "cause": "Limit precedence is reversed",
+          "check": "Evaluate the minute dimension before the day dimension."
+        }
+      ]
+    }
   },
   "swift-19": {
     "approach": [
-      {"part": 1, "prompt": "Which state preserves first-seen order while making duplicate detection efficient?", "concepts": ["ordered pending queue", "set-backed deduplication", "monotonic batch sequence"], "steps": ["Record an ID the first time it arrives.", "Remove only a bounded prefix when forming each batch."], "pitfalls": ["replacing the first payload with a duplicate", "renumbering batches after consumption"]},
-      {"part": 2, "prompt": "What outcome contains everything the coordinator needs without inspecting processor internals?", "concepts": ["associated-value errors", "explicit delivery outcomes", "bounded retries"], "steps": ["Count every sink invocation as an attempt.", "Retry only retryable failures and return the original batch in the outcome."], "pitfalls": ["retrying permanent failures", "treating maxRetries as total attempts"]},
-      {"part": 3, "prompt": "How can completed work be concurrent while checkpoint commitment remains ordered?", "concepts": ["bounded task groups", "out-of-order completion buffer", "cooperative cancellation"], "steps": ["Seed only the allowed number of delivery tasks.", "Buffer successful outcomes by sequence and drain the contiguous prefix.", "Stop adding work as soon as cancellation is observed."], "pitfalls": ["advancing from task completion order", "reading processor state to infer success", "using elapsed time to coordinate tests"]}
+      {
+        "part": 1,
+        "prompt": "Which state preserves first-seen order while making duplicate detection efficient?",
+        "concepts": [
+          "ordered pending queue",
+          "set-backed deduplication",
+          "monotonic batch sequence"
+        ],
+        "steps": [
+          "Record an ID the first time it arrives.",
+          "Remove only a bounded prefix when forming each batch."
+        ],
+        "pitfalls": [
+          "replacing the first payload with a duplicate",
+          "renumbering batches after consumption"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "What outcome contains everything the coordinator needs without inspecting processor internals?",
+        "concepts": [
+          "associated-value errors",
+          "explicit delivery outcomes",
+          "bounded retries"
+        ],
+        "steps": [
+          "Count every sink invocation as an attempt.",
+          "Retry only retryable failures and return the original batch in the outcome."
+        ],
+        "pitfalls": [
+          "retrying permanent failures",
+          "treating maxRetries as total attempts"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "How can completed work be concurrent while checkpoint commitment remains ordered?",
+        "concepts": [
+          "bounded task groups",
+          "out-of-order completion buffer",
+          "cooperative cancellation"
+        ],
+        "steps": [
+          "Seed only the allowed number of delivery tasks.",
+          "Buffer successful outcomes by sequence and drain the contiguous prefix.",
+          "Stop adding work as soon as cancellation is observed."
+        ],
+        "pitfalls": [
+          "advancing from task completion order",
+          "reading processor state to infer success",
+          "using elapsed time to coordinate tests"
+        ]
+      }
     ],
-    "verify": {"commonFailures": [
-      {"symptom": "A duplicate reading appears in a later batch", "cause": "Deduplication only checks the current batch", "check": "Keep first-seen IDs for the processor's whole lifetime."},
-      {"symptom": "The checkpoint skips an unfinished batch", "cause": "Every successful completion advances immediately", "check": "Buffer successes and commit only the next contiguous sequence."},
-      {"symptom": "Cancellation still starts queued sends", "cause": "Replacement work is scheduled without checking cancellation", "check": "Check cancellation before every task-group add."}
-    ]}
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "A duplicate reading appears in a later batch",
+          "cause": "Deduplication only checks the current batch",
+          "check": "Keep first-seen IDs for the processor's whole lifetime."
+        },
+        {
+          "symptom": "The checkpoint skips an unfinished batch",
+          "cause": "Every successful completion advances immediately",
+          "check": "Buffer successes and commit only the next contiguous sequence."
+        },
+        {
+          "symptom": "Cancellation still starts queued sends",
+          "cause": "Replacement work is scheduled without checking cancellation",
+          "check": "Check cancellation before every task-group add."
+        }
+      ]
+    }
   },
   "swift-20": {
     "approach": [
-      {"part": 1, "prompt": "Which snapshots preserve both the current local value and the clean ancestor needed by later reconciliation?", "concepts": ["value-semantic records", "dirty baselines", "injected time"], "steps": ["Keep the first clean baseline when a record becomes dirty.", "Return sorted copies of baseline and current records from the pending query."], "pitfalls": ["replacing the baseline after every edit", "reading the wall clock inside the store"]},
-      {"part": 2, "prompt": "What context must each outcome carry so resolution never compares ordering metadata again?", "concepts": ["lexicographic precedence", "associated-value outcomes", "deterministic ties"], "steps": ["Use the pending snapshot to identify dirty local records.", "Compare version, timestamp, and origin in order while retaining all three record perspectives."], "pitfalls": ["recomputing dirty state", "silently choosing a side when every ordering key ties"]},
-      {"part": 3, "prompt": "How can baseline-relative field choices and deletion precedence be derived only from reconciliation outcomes?", "concepts": ["three-way merge", "tombstones", "idempotent application"], "steps": ["Classify each field as unchanged, one-sided, or divergent against the baseline.", "Resolve tombstone-versus-live pairs before field merging and preserve the recorded reason."], "pitfalls": ["letting an edit resurrect a tombstone", "re-inspecting versions during application", "bumping a synthesized result on replay"]}
+      {
+        "part": 1,
+        "prompt": "Which snapshots preserve both the current local value and the clean ancestor needed by later reconciliation?",
+        "concepts": [
+          "value-semantic records",
+          "dirty baselines",
+          "injected time"
+        ],
+        "steps": [
+          "Keep the first clean baseline when a record becomes dirty.",
+          "Return sorted copies of baseline and current records from the pending query."
+        ],
+        "pitfalls": [
+          "replacing the baseline after every edit",
+          "reading the wall clock inside the store"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "What context must each outcome carry so resolution never compares ordering metadata again?",
+        "concepts": [
+          "lexicographic precedence",
+          "associated-value outcomes",
+          "deterministic ties"
+        ],
+        "steps": [
+          "Use the pending snapshot to identify dirty local records.",
+          "Compare version, timestamp, and origin in order while retaining all three record perspectives."
+        ],
+        "pitfalls": [
+          "recomputing dirty state",
+          "silently choosing a side when every ordering key ties"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "How can baseline-relative field choices and deletion precedence be derived only from reconciliation outcomes?",
+        "concepts": [
+          "three-way merge",
+          "tombstones",
+          "idempotent application"
+        ],
+        "steps": [
+          "Classify each field as unchanged, one-sided, or divergent against the baseline.",
+          "Resolve tombstone-versus-live pairs before field merging and preserve the recorded reason."
+        ],
+        "pitfalls": [
+          "letting an edit resurrect a tombstone",
+          "re-inspecting versions during application",
+          "bumping a synthesized result on replay"
+        ]
+      }
     ],
-    "verify": {"commonFailures": [
-      {"symptom": "A second local edit loses the original merge ancestor", "cause": "Dirty baseline is overwritten with the latest local value", "check": "Capture a baseline only on the clean-to-dirty transition."},
-      {"symptom": "Equal metadata produces nondeterministic results", "cause": "Dictionary order or arrival order acts as an undocumented tie-break", "check": "Apply the documented origin ordering and emit conflict only when all keys tie."},
-      {"symptom": "A deleted note returns after sync", "cause": "The winning live edit is applied before tombstone semantics", "check": "Inspect the outcome's record contents and resolve deletion precedence first."}
-    ]}
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "A second local edit loses the original merge ancestor",
+          "cause": "Dirty baseline is overwritten with the latest local value",
+          "check": "Capture a baseline only on the clean-to-dirty transition."
+        },
+        {
+          "symptom": "Equal metadata produces nondeterministic results",
+          "cause": "Dictionary order or arrival order acts as an undocumented tie-break",
+          "check": "Apply the documented origin ordering and emit conflict only when all keys tie."
+        },
+        {
+          "symptom": "A deleted note returns after sync",
+          "cause": "The winning live edit is applied before tombstone semantics",
+          "check": "Inspect the outcome's record contents and resolve deletion precedence first."
+        }
+      ]
+    }
   },
   "swift-11": {
     "approach": [
-      {"part": 1, "prompt": "Which typed values should be stored separately from changing heartbeat state?", "concepts": ["value records", "Date ordering", "immutable snapshots"], "steps": ["Index stations by readable ID.", "Reject a heartbeat unless it is strictly newer than the stored date."], "pitfalls": ["string timestamps", "returning dictionary storage order"]},
-      {"part": 2, "prompt": "How do Date and Duration express the stale boundary and open outage invariant?", "concepts": ["temporal boundaries", "single open interval", "snapshot arrays"], "steps": ["Resolve omitted query time through the injected source.", "Treat equality with the stale threshold as healthy."], "pitfalls": ["using system time directly", "allowing an outage end before its start"]},
-      {"part": 3, "prompt": "How can associated-value coverage states make impossible summaries unrepresentable?", "concepts": ["enum state modelling", "method composition", "duration reduction"], "steps": ["Intersect regional stations with the Part 2 stale snapshot.", "Reduce Part 2 outage snapshots into a Duration."], "pitfalls": ["reimplementing station or stale filtering", "forgetting to extend an open outage to the query time"]}
+      {
+        "part": 1,
+        "prompt": "Which typed values should be stored separately from changing heartbeat state?",
+        "concepts": [
+          "value records",
+          "Date ordering",
+          "immutable snapshots"
+        ],
+        "steps": [
+          "Index stations by readable ID.",
+          "Reject a heartbeat unless it is strictly newer than the stored date."
+        ],
+        "pitfalls": [
+          "string timestamps",
+          "returning dictionary storage order"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "How do Date and Duration express the stale boundary and open outage invariant?",
+        "concepts": [
+          "temporal boundaries",
+          "single open interval",
+          "snapshot arrays"
+        ],
+        "steps": [
+          "Resolve omitted query time through the injected source.",
+          "Treat equality with the stale threshold as healthy."
+        ],
+        "pitfalls": [
+          "using system time directly",
+          "allowing an outage end before its start"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "How can associated-value coverage states make impossible summaries unrepresentable?",
+        "concepts": [
+          "enum state modelling",
+          "method composition",
+          "duration reduction"
+        ],
+        "steps": [
+          "Intersect regional stations with the Part 2 stale snapshot.",
+          "Reduce Part 2 outage snapshots into a Duration."
+        ],
+        "pitfalls": [
+          "reimplementing station or stale filtering",
+          "forgetting to extend an open outage to the query time"
+        ]
+      }
     ],
-    "verify": {"commonFailures": [
-      {"symptom": "A station exactly at the threshold is stale", "cause": "The comparison is inclusive", "check": "Compare heartbeat age using greater-than, not greater-than-or-equal."},
-      {"symptom": "Open outage totals change with wall time", "cause": "The injected time source was bypassed", "check": "Resolve every omitted asOf value from the initializer closure."}
-    ]}
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "A station exactly at the threshold is stale",
+          "cause": "The comparison is inclusive",
+          "check": "Compare heartbeat age using greater-than, not greater-than-or-equal."
+        },
+        {
+          "symptom": "Open outage totals change with wall time",
+          "cause": "The injected time source was bypassed",
+          "check": "Resolve every omitted asOf value from the initializer closure."
+        }
+      ]
+    }
   },
   "swift-21": {
     "approach": [
-      {"part": 1, "prompt": "Which decoding boundaries preserve the detected version while keeping structural and field failures distinct?", "concepts": ["Codable envelopes", "associated-value errors", "reusable version queries"], "steps": ["Decode only enough envelope structure for version detection.", "Parse body fields into a reusable value before validating the current schema."], "pitfalls": ["collapsing every decoding error into one case", "validating the body inside version detection"]},
-      {"part": 2, "prompt": "How can an unordered registry produce one deterministic contiguous path to the current schema?", "concepts": ["protocol existentials", "step-indexed lookup", "method composition"], "steps": ["Start the chain from the Part 1 detected version.", "Advance exactly one version per registered step and fail at the first gap."], "pitfalls": ["re-parsing the version in the registry", "depending on registration order", "allowing a step to skip versions"]},
-      {"part": 3, "prompt": "Which Part 2 outcome contains enough information to classify every batch item without repeating migration logic?", "concepts": ["per-item outcomes", "stable folds", "value semantics"], "steps": ["Map each input to the existing single-payload migration operation.", "Fold outcome cases into counts while preserving input order."], "pitfalls": ["aborting after the first failure", "sorting report entries", "mutating caller-owned inputs"]}
+      {
+        "part": 1,
+        "prompt": "Which decoding boundaries preserve the detected version while keeping structural and field failures distinct?",
+        "concepts": [
+          "Codable envelopes",
+          "associated-value errors",
+          "reusable version queries"
+        ],
+        "steps": [
+          "Decode only enough envelope structure for version detection.",
+          "Parse body fields into a reusable value before validating the current schema."
+        ],
+        "pitfalls": [
+          "collapsing every decoding error into one case",
+          "validating the body inside version detection"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "How can an unordered registry produce one deterministic contiguous path to the current schema?",
+        "concepts": [
+          "protocol existentials",
+          "step-indexed lookup",
+          "method composition"
+        ],
+        "steps": [
+          "Start the chain from the Part 1 detected version.",
+          "Advance exactly one version per registered step and fail at the first gap."
+        ],
+        "pitfalls": [
+          "re-parsing the version in the registry",
+          "depending on registration order",
+          "allowing a step to skip versions"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "Which Part 2 outcome contains enough information to classify every batch item without repeating migration logic?",
+        "concepts": [
+          "per-item outcomes",
+          "stable folds",
+          "value semantics"
+        ],
+        "steps": [
+          "Map each input to the existing single-payload migration operation.",
+          "Fold outcome cases into counts while preserving input order."
+        ],
+        "pitfalls": [
+          "aborting after the first failure",
+          "sorting report entries",
+          "mutating caller-owned inputs"
+        ]
+      }
     ],
-    "verify": {"commonFailures": [
-      {"symptom": "An unsupported payload is reported as malformed", "cause": "Current-schema decoding runs before the version is checked", "check": "Trace the detected integer into the unknown-version branch before body requirements."},
-      {"symptom": "A v1 payload fails even though both steps are registered", "cause": "The chain follows registry insertion order", "check": "Index steps by their source version and walk upward from the detected version."},
-      {"symptom": "Batch counts disagree with item results", "cause": "Aggregation reclassifies raw payloads independently", "check": "Fold only over the MigrationOutcome returned for each item."}
-    ]}
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "An unsupported payload is reported as malformed",
+          "cause": "Current-schema decoding runs before the version is checked",
+          "check": "Trace the detected integer into the unknown-version branch before body requirements."
+        },
+        {
+          "symptom": "A v1 payload fails even though both steps are registered",
+          "cause": "The chain follows registry insertion order",
+          "check": "Index steps by their source version and walk upward from the detected version."
+        },
+        {
+          "symptom": "Batch counts disagree with item results",
+          "cause": "Aggregation reclassifies raw payloads independently",
+          "check": "Fold only over the MigrationOutcome returned for each item."
+        }
+      ]
+    }
+  },
+  "python-02": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "Which validations belong before each key mutation so rejected changes leave the gateway untouched?",
+        "concepts": [
+          "dict-backed registry",
+          "validate-before-mutate"
+        ],
+        "steps": [
+          "Keep plans and keys as separate keyed stores.",
+          "Preserve the request log when changing only a plan or enabled flag."
+        ],
+        "pitfalls": [
+          "sharing the default plans object with caller mutations",
+          "resetting usage during a plan change"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "How does the half-open time window affect a request exactly on its left boundary?",
+        "concepts": [
+          "sliding-window counting",
+          "unlimited dimensions"
+        ],
+        "steps": [
+          "Centralize window counting for both limit dimensions.",
+          "Short-circuit unknown and disabled keys before looking up limits."
+        ],
+        "pitfalls": [
+          "including the left window boundary",
+          "comparing an integer count with a None limit"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "What can be discarded without changing either rate-limit window?",
+        "concepts": [
+          "bounded event logs",
+          "mutation after authorization"
+        ],
+        "steps": [
+          "Append only after the caller has authorized the request.",
+          "Prune entries beyond the documented retention horizon."
+        ],
+        "pitfalls": [
+          "recording denied requests",
+          "pruning to the minute window and corrupting daily usage"
+        ]
+      },
+      {
+        "part": 4,
+        "prompt": "Can the Boolean decision support a precise denial reason, or must both public operations share richer internal reasoning?",
+        "concepts": [
+          "decision composition",
+          "denial precedence"
+        ],
+        "steps": [
+          "Keep one source of truth for the limit calculation.",
+          "Record only an allowed result and derive usage through the same window helper."
+        ],
+        "pitfalls": [
+          "duplicating checks until is_allowed and handle_request drift",
+          "reporting the daily reason when the minute cap is also exceeded"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "A request exactly one minute old still consumes capacity",
+          "cause": "The left edge was treated as inclusive",
+          "check": "Trace the comparison for now minus the window length."
+        },
+        {
+          "symptom": "Denied requests increase later usage",
+          "cause": "The handler records before reaching its final allowed decision",
+          "check": "Compare the log before and after every denial path."
+        },
+        {
+          "symptom": "The handler cannot distinguish minute and day failures cleanly",
+          "cause": "Its reusable decision contains only a Boolean",
+          "check": "Inspect whether one internal evaluation can serve both public return shapes."
+        }
+      ]
+    }
+  },
+  "python-04": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "Which reading types have inclusive target bounds, and which type deliberately has no range?",
+        "concepts": [
+          "domain classification",
+          "inclusive boundaries"
+        ],
+        "steps": [
+          "Dispatch classification by reading type.",
+          "Treat values equal to either bound as in range."
+        ],
+        "pitfalls": [
+          "flagging boundary values",
+          "inventing a target range for weight"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "What daily representation collapses duplicates yet still exposes gaps between calendar dates?",
+        "concepts": [
+          "date-set normalization",
+          "consecutive streak scan"
+        ],
+        "steps": [
+          "Reuse single-reading classification to collect qualifying dates.",
+          "Sort unique dates and reset the running streak across a gap."
+        ],
+        "pitfalls": [
+          "counting readings instead of days",
+          "letting an in-range reading erase another out-of-range reading on the same day"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "Which patient/type pairs should be evaluated, and which reading supplies latest_value?",
+        "concepts": [
+          "composed aggregation",
+          "urgency ordering"
+        ],
+        "steps": [
+          "Evaluate distinct patient and type pairs through the streak method.",
+          "Choose the chronologically latest qualifying reading and sort by urgency."
+        ],
+        "pitfalls": [
+          "using the latest reading even when it is in range",
+          "deduplicating by patient and losing a second qualifying type"
+        ]
+      },
+      {
+        "part": 4,
+        "prompt": "What composite identity and numeric tolerance define a duplicate without suppressing valid readings?",
+        "concepts": [
+          "tolerance matching",
+          "live ingestion"
+        ],
+        "steps": [
+          "Compare only readings sharing patient, type, and date.",
+          "Mutate instance storage only after all duplicate checks fail."
+        ],
+        "pitfalls": [
+          "using a global value-only tolerance",
+          "storing the caller's list by reference and mutating fixture data"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "Two abnormal readings on one day create a two-day streak",
+          "cause": "The scan operates on readings rather than unique dates",
+          "check": "Inspect the normalized date collection before counting adjacency."
+        },
+        {
+          "symptom": "Outreach reports an in-range latest value",
+          "cause": "Latest selection was not restricted to abnormal readings",
+          "check": "Trace the candidate readings used for latest_value."
+        }
+      ]
+    }
+  },
+  "python-05": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "How can one chronological history reduction produce each active medication snapshot?",
+        "concepts": [
+          "event history",
+          "latest-event reduction"
+        ],
+        "steps": [
+          "Filter by patient and medication, then sort by date.",
+          "Build active snapshots only when the latest direction is not stop."
+        ],
+        "pitfalls": [
+          "trusting arrival order",
+          "counting only active events in total_changes"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "Which counts can reuse the Part 1 history boundary instead of filtering storage again?",
+        "concepts": [
+          "method composition",
+          "directional aggregation"
+        ],
+        "steps": [
+          "Count the returned history with an optional direction filter.",
+          "Include only medications with at least one decrease or stop in the summary."
+        ],
+        "pitfalls": [
+          "parallel history filtering logic",
+          "including zero-count medications"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "How can population queries reuse patient snapshots while producing stable, unique results?",
+        "concepts": [
+          "set uniqueness",
+          "ranking aggregation"
+        ],
+        "steps": [
+          "Derive patient candidates from event identities and reuse current_medications.",
+          "Aggregate all events by medication before ranking."
+        ],
+        "pitfalls": [
+          "returning duplicate patient IDs",
+          "counting only currently active medication events"
+        ]
+      },
+      {
+        "part": 4,
+        "prompt": "Which fields form last-write-wins identity, and what existing queries should immediately reflect replacement?",
+        "concepts": [
+          "composite event identity",
+          "incremental consistency"
+        ],
+        "steps": [
+          "Remove a matching patient, medication, and date event before adding its replacement.",
+          "Keep one canonical event collection used by every query."
+        ],
+        "pitfalls": [
+          "treating direction as part of identity",
+          "updating a snapshot cache but not history"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "Out-of-order input selects an older dose",
+          "cause": "Arrival order acts as chronology",
+          "check": "Confirm latest-event choices follow recorded_on ordering."
+        },
+        {
+          "symptom": "Replacing a same-day event increases the count",
+          "cause": "The composite identity was not removed first",
+          "check": "Inspect storage for more than one event with the same patient, medication, and date."
+        }
+      ]
+    }
+  },
+  "python-06": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "Which nested keys let required labs remain unique per patient without leaking mutable sets?",
+        "concepts": [
+          "dict schema",
+          "defensive snapshots"
+        ],
+        "steps": [
+          "Create each patient's collections at registration time.",
+          "Return a copy of required labs rather than the stored set."
+        ],
+        "pitfalls": [
+          "reusing one set across patients",
+          "silently replacing an existing patient"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "Which deadline and submission facts determine overdue status at an arbitrary date?",
+        "concepts": [
+          "deadline state",
+          "on-time submission matching"
+        ],
+        "steps": [
+          "Validate patient and required-lab relationships at mutation boundaries.",
+          "Compare the relevant deadline with submissions without consuming their history."
+        ],
+        "pitfalls": [
+          "letting a late submission satisfy an earlier deadline",
+          "treating a missing deadline like an on-time lab"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "How can patient reports be assembled entirely from the single-lab overdue decision?",
+        "concepts": [
+          "method composition",
+          "deterministic reporting"
+        ],
+        "steps": [
+          "Call is_overdue for every required lab.",
+          "Sort lab names and patient report rows explicitly."
+        ],
+        "pitfalls": [
+          "reimplementing overdue logic in the report",
+          "including labs a patient does not require"
+        ]
+      },
+      {
+        "part": 4,
+        "prompt": "Which chronological history supports both a snapshot list and days-since calculation?",
+        "concepts": [
+          "sorted immutable history",
+          "optional absence"
+        ],
+        "steps": [
+          "Return a sorted copy of matching submissions.",
+          "Use its latest element for elapsed whole days, or represent absence explicitly."
+        ],
+        "pitfalls": [
+          "returning the internal list",
+          "using the earliest submission"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "Adding to a returned required-labs set changes monitor state",
+          "cause": "An internal collection escaped by reference",
+          "check": "Mutate the returned set and query the monitor again."
+        },
+        {
+          "symptom": "Compliance rows disagree with is_overdue",
+          "cause": "The report contains a second deadline algorithm",
+          "check": "Trace every reported lab through the public overdue predicate."
+        }
+      ]
+    }
+  },
+  "python-07": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "Which keys represent a patient's independent current assignment for each role?",
+        "concepts": [
+          "role-scoped identity",
+          "bidirectional lookup"
+        ],
+        "steps": [
+          "Index members by ID and current assignments by patient plus role.",
+          "On reassignment, remove the patient from the former member's current set."
+        ],
+        "pitfalls": [
+          "allowing only one member across all roles",
+          "leaving stale reverse membership after reassignment"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "When a member is full, which assignment case must remain a capacity no-op?",
+        "concepts": [
+          "capacity invariant",
+          "validate-before-mutate"
+        ],
+        "steps": [
+          "Count distinct currently assigned patients.",
+          "Check capacity before removing an existing role assignment."
+        ],
+        "pitfalls": [
+          "rejecting reassignment to the same member",
+          "freeing the old slot before discovering the new member is full"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "How can each reassignment close one interval while opening the next?",
+        "concepts": [
+          "half-open temporal intervals",
+          "audit history"
+        ],
+        "steps": [
+          "Record role-specific assignment intervals in chronological order.",
+          "Implement point-in-time lookup by consuming get_history."
+        ],
+        "pitfalls": [
+          "making both assignments active at the transition timestamp",
+          "duplicating historical lookup outside get_history"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "A failed move to a full member leaves the patient unassigned",
+          "cause": "Old state was removed before capacity validation",
+          "check": "Compare all current and reverse indexes before and after the exception."
+        },
+        {
+          "symptom": "The old member is returned exactly at reassignment time",
+          "cause": "Closed intervals use an inclusive end",
+          "check": "Verify assignment windows follow start-inclusive, end-exclusive semantics."
+        }
+      ]
+    }
+  },
+  "python-08": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "What append-only transition record preserves both current state and the full enrollment path?",
+        "concepts": [
+          "finite-state transitions",
+          "event history"
+        ],
+        "steps": [
+          "Validate each requested move against the current state.",
+          "Update current state and history as one mutation."
+        ],
+        "pitfalls": [
+          "accepting skipped or backward transitions",
+          "storing only the latest state"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "Which entry and exit timestamps define time in a state, including a currently open stay?",
+        "concepts": [
+          "state interval duration",
+          "cohort conversion"
+        ],
+        "steps": [
+          "Derive intervals from the Part 1 history.",
+          "Define conversion cohorts from patients who reached the source state."
+        ],
+        "pitfalls": [
+          "using patient creation time for every state",
+          "dividing by all registered patients instead of the source cohort"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "How can SLA and average-duration queries reuse the same state-duration meaning?",
+        "concepts": [
+          "threshold filtering",
+          "composed metrics"
+        ],
+        "steps": [
+          "Filter current-state patients by time_in_state.",
+          "Average the same duration measure over the documented population."
+        ],
+        "pitfalls": [
+          "including patients who already left the state in overdue results",
+          "using a different duration calculation for averages"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "A patient who left a stage is still reported overdue there",
+          "cause": "Historical membership was confused with current membership",
+          "check": "Intersect the SLA candidates with get_patients_in_state."
+        },
+        {
+          "symptom": "Conversion exceeds its logical cohort",
+          "cause": "The denominator does not represent patients who reached from_state",
+          "check": "Write down numerator and denominator membership before dividing."
+        }
+      ]
+    }
+  },
+  "python-09": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "Which canonical timestamp and severity ordering keeps report queries deterministic?",
+        "concepts": [
+          "validated ingestion",
+          "multi-key sorting"
+        ],
+        "steps": [
+          "Reject duplicate report IDs before storing a complete record.",
+          "Centralize filtering and ordering for report queries."
+        ],
+        "pitfalls": [
+          "sorting ISO timestamps inconsistently",
+          "returning mutable internal dicts"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "What invariant guarantees one report belongs to at most one incident?",
+        "concepts": [
+          "many-to-one grouping",
+          "referential integrity"
+        ],
+        "steps": [
+          "Validate both IDs and current ownership before mutation.",
+          "Derive unassigned reports from the same ownership mapping."
+        ],
+        "pitfalls": [
+          "adding a report to two incidents",
+          "partially mutating the incident before validation"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "Which existing active incident is the deterministic best match for a new report?",
+        "concepts": [
+          "deduplication window",
+          "method composition"
+        ],
+        "steps": [
+          "Ingest through the Part 1 method first.",
+          "Filter candidates by type, location, status, and time window, then group through Part 2 methods."
+        ],
+        "pitfalls": [
+          "building a parallel ingestion path",
+          "matching against resolved or expired incidents"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "One report appears in multiple incidents",
+          "cause": "Incident membership is stored independently without a global ownership check",
+          "check": "Trace a report ID through every grouping mutation."
+        },
+        {
+          "symptom": "Automatic and manual incidents have different record shapes",
+          "cause": "auto_ingest constructs records instead of composing public methods",
+          "check": "Confirm automatic ingestion delegates to ingest and grouping operations."
+        }
+      ]
+    }
+  },
+  "python-10": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "Which keyed records and one incident ordering rule make registration queries predictable?",
+        "concepts": [
+          "registry invariants",
+          "severity ordering"
+        ],
+        "steps": [
+          "Validate readable IDs before insertion.",
+          "Sort responder incidents by the documented severity, time, and ID keys."
+        ],
+        "pitfalls": [
+          "using responder names as identity",
+          "depending on dictionary order"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "Which incidents count toward capacity, and when should assignment validation occur?",
+        "concepts": [
+          "capacity accounting",
+          "state transitions"
+        ],
+        "steps": [
+          "Count assigned unresolved incidents only.",
+          "Validate incident and responder state before mutating either record."
+        ],
+        "pitfalls": [
+          "counting resolved incidents",
+          "allowing reassignment to silently overfill a responder"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "How should candidate selection compose with the authoritative manual assignment boundary?",
+        "concepts": [
+          "eligibility ranking",
+          "method composition"
+        ],
+        "steps": [
+          "Filter responders by subscription and available capacity.",
+          "Apply deterministic load and ID tie-breaks, then call assign_incident."
+        ],
+        "pitfalls": [
+          "duplicating assignment mutation",
+          "choosing unsubscribed or full responders"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "Resolved work still consumes capacity",
+          "cause": "Load counts every assigned incident",
+          "check": "Inspect the predicate used by open assignments and dispatch summaries."
+        },
+        {
+          "symptom": "Auto-assignment and manual assignment diverge",
+          "cause": "Automatic selection owns a second mutation path",
+          "check": "Trace the selected responder into assign_incident."
+        }
+      ]
+    }
+  },
+  "python-11": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "Which station facts are immutable, and which heartbeat rule rejects stale updates?",
+        "concepts": [
+          "instance registries",
+          "ISO timestamp ordering"
+        ],
+        "steps": [
+          "Keep station metadata and latest heartbeat keyed by station ID.",
+          "Accept only a strictly newer heartbeat and return sorted snapshots."
+        ],
+        "pitfalls": [
+          "accepting duplicate timestamps",
+          "exposing dictionary insertion order"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "What exact comparison defines stale, and how is one open outage represented?",
+        "concepts": [
+          "temporal boundary",
+          "open interval invariant"
+        ],
+        "steps": [
+          "Parse timestamps for elapsed-seconds comparisons.",
+          "Permit a new outage only after the previous one is closed."
+        ],
+        "pitfalls": [
+          "marking equality with the threshold stale",
+          "closing an arbitrary rather than the open outage"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "Which Part 1 and Part 2 snapshots already contain all facts for coverage and outage totals?",
+        "concepts": [
+          "method composition",
+          "duration aggregation"
+        ],
+        "steps": [
+          "Intersect regional stations with stale station IDs.",
+          "Reduce get_outages and extend an open interval only to as_of."
+        ],
+        "pitfalls": [
+          "reimplementing station filters",
+          "ignoring open-outage duration"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "A station exactly at the threshold is stale",
+          "cause": "The comparison is inclusive",
+          "check": "Compare elapsed seconds with a strict greater-than boundary."
+        },
+        {
+          "symptom": "Region totals include stations elsewhere",
+          "cause": "Global stale counts were used without regional intersection",
+          "check": "Compare IDs from get_stations(region) with get_stale_stations."
+        }
+      ]
+    }
+  },
+  "python-12": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "Which date parsing boundary supports inclusive range queries and stable ordering?",
+        "concepts": [
+          "ISO date arithmetic",
+          "keyed configuration"
+        ],
+        "steps": [
+          "Validate unique contract and config IDs before insertion.",
+          "Parse dates for comparisons and sort expiration results explicitly."
+        ],
+        "pitfalls": [
+          "excluding either range endpoint",
+          "sorting only by insertion order"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "How can every due-alert row originate from the canonical schedule for its contract?",
+        "concepts": [
+          "date offsets",
+          "method composition"
+        ],
+        "steps": [
+          "Apply each config as a date offset from expiration.",
+          "Call compute_alert_schedule per contract, enrich due rows, and apply both sort keys."
+        ],
+        "pitfalls": [
+          "duplicating alert date arithmetic",
+          "forgetting the contract-ID tie-break"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "What identity determines whether one scheduled alert has already been sent?",
+        "concepts": [
+          "delivery ledger",
+          "schedule enrichment"
+        ],
+        "steps": [
+          "Validate both referenced IDs before recording delivery.",
+          "Reuse compute_alert_schedule, filter past entries, and annotate by contract/config identity."
+        ],
+        "pitfalls": [
+          "treating any contract send as all configs sent",
+          "excluding an alert scheduled exactly as_of"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "Due dates differ between schedule and due-alert views",
+          "cause": "Date subtraction is implemented twice",
+          "check": "Confirm get_due_alerts consumes compute_alert_schedule output."
+        },
+        {
+          "symptom": "Sending one alert marks another configuration sent",
+          "cause": "The ledger key is too broad",
+          "check": "Inspect sent-state lookup for both contract_id and config_id."
+        }
+      ]
+    }
+  },
+  "python-13": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "How can every lifecycle transition be validated before state and audit history change together?",
+        "concepts": [
+          "finite-state machine",
+          "atomic audit mutation"
+        ],
+        "steps": [
+          "Keep contract fields, state, and audit records in instance storage.",
+          "Validate the source-to-destination edge before appending a transition event."
+        ],
+        "pitfalls": [
+          "mutating state before validation",
+          "forgetting the creation audit record"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "How can bulk advancement preserve the exact behavior of one transition while continuing after failures?",
+        "concepts": [
+          "method composition",
+          "partial success"
+        ],
+        "steps": [
+          "Return audit snapshots in chronological order.",
+          "Call transition for each requested contract and capture per-item outcomes."
+        ],
+        "pitfalls": [
+          "duplicating the state machine",
+          "aborting the batch on the first invalid contract"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "Which current snapshots and latest audit timestamps define metrics and overdue contracts?",
+        "concepts": [
+          "state aggregation",
+          "whole-day thresholds"
+        ],
+        "steps": [
+          "Aggregate current contracts by state.",
+          "Measure time from the latest transition and exclude terminal states."
+        ],
+        "pitfalls": [
+          "measuring from contract creation after later moves",
+          "including the exact threshold when the rule says more than"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "Bulk and single transitions create different audit trails",
+          "cause": "Bulk owns a second transition implementation",
+          "check": "Confirm each item delegates to transition."
+        },
+        {
+          "symptom": "Recently advanced contracts appear overdue",
+          "cause": "Age is measured from creation",
+          "check": "Use the timestamp of the latest audit event for the current state."
+        }
+      ]
+    }
+  },
+  "python-14": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "Which base fields form the immutable starting snapshot for all later amendments?",
+        "concepts": [
+          "canonical base record",
+          "defensive copies"
+        ],
+        "steps": [
+          "Validate unique contract IDs before storage.",
+          "Return snapshots that callers cannot use to mutate the base record."
+        ],
+        "pitfalls": [
+          "overwriting duplicate contracts",
+          "returning nested mutable fields by reference"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "How should effective fields be folded when amendments arrive out of order or after the query date?",
+        "concepts": [
+          "effective-dated overlay",
+          "chronological reduction"
+        ],
+        "steps": [
+          "Validate amendment identity and contract reference.",
+          "Sort applicable amendments and overlay only their changed fields onto a base copy."
+        ],
+        "pitfalls": [
+          "trusting insertion order",
+          "mutating the base contract while computing a view"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "Which amendment stream is sufficient for both one-field history and a contract-wide summary?",
+        "concepts": [
+          "audit projection",
+          "derived summary"
+        ],
+        "steps": [
+          "Project chronological amendments that touch the requested field.",
+          "Aggregate amendment counts and changed-field facts from get_amendments."
+        ],
+        "pitfalls": [
+          "including unrelated fields in value history",
+          "re-parsing raw storage instead of composing amendment queries"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "An as-of query includes a future amendment",
+          "cause": "All amendments are folded regardless of effective date",
+          "check": "Inspect the applicable-date filter before overlay."
+        },
+        {
+          "symptom": "Computing an effective contract changes later base lookups",
+          "cause": "The overlay mutates the stored base dict",
+          "check": "Compare get_base_contract before and after the effective query."
+        }
+      ]
+    }
+  },
+  "python-15": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "How can rows, columns, and both diagonal families share one line-analysis idea?",
+        "concepts": [
+          "board traversal",
+          "uniform-line detection"
+        ],
+        "steps": [
+          "Reject empty cells as candidate winners.",
+          "Inspect every required line without hard-coding player symbols."
+        ],
+        "pitfalls": [
+          "treating an all-empty line as a win",
+          "missing the descending diagonal"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "Which state must change atomically for a legal move, and how should reset recreate it?",
+        "concepts": [
+          "move validation",
+          "incremental counters"
+        ],
+        "steps": [
+          "Validate bounds and vacancy before writing the board.",
+          "Update only the moving player's relevant counters and return the resulting winner."
+        ],
+        "pitfalls": [
+          "partially updating counters for an invalid move",
+          "resetting the board but retaining counters"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "When win_length is smaller than board size, why are whole-row counters no longer sufficient?",
+        "concepts": [
+          "consecutive-run scan",
+          "configurable dimensions"
+        ],
+        "steps": [
+          "Validate size and win length together.",
+          "Scan outward through the last move or canonical directions while resetting across gaps."
+        ],
+        "pitfalls": [
+          "counting separated marks",
+          "using the Part 2 full-line shortcut for shorter wins"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "A larger board wins across an empty gap",
+          "cause": "The algorithm counts marks without adjacency",
+          "check": "Trace one directional run and reset at every different cell."
+        },
+        {
+          "symptom": "A new game wins too early after reset",
+          "cause": "Incremental state survived reset",
+          "check": "Inspect board and every counter immediately after reset."
+        }
+      ]
+    }
   },
   "python-16": {
     "approach": [
-      {"part": 1, "prompt": "What stored facts let one dependency query distinguish ready, waiting, and permanently blocked work?", "concepts": ["adjacency by readable ID", "rich dependency outcome", "defensive snapshots"], "steps": ["Store each job once with copied dependency order.", "Return waiting IDs or the first typed blocking reason from one dependency query."], "pitfalls": ["retaining the caller's list", "returning only a Boolean readiness flag"]},
-      {"part": 2, "prompt": "How can dispatch ordering remain stable while readiness stays owned by Part 1?", "concepts": ["stable priority ordering", "method composition"], "steps": ["Filter queued jobs by dependency_state.", "Sort by descending priority and ascending registration order before marking the bounded prefix running."], "pitfalls": ["duplicating dependency checks", "using job IDs as an undocumented tie-break"]},
-      {"part": 3, "prompt": "How can one failed job propagate cancellation without creating a second graph evaluator?", "concepts": ["fixed-point propagation", "typed blocked reason", "idempotent transitions"], "steps": ["Complete only running work and recognize exact replays.", "Repeatedly cancel queued jobs whose dependency_state is blocked until no state changes."], "pitfalls": ["cancelling running jobs", "performing only one cancellation pass"]}
+      {
+        "part": 1,
+        "prompt": "What stored facts let one dependency query distinguish ready, waiting, and permanently blocked work?",
+        "concepts": [
+          "adjacency by readable ID",
+          "rich dependency outcome",
+          "defensive snapshots"
+        ],
+        "steps": [
+          "Store each job once with copied dependency order.",
+          "Return waiting IDs or the first typed blocking reason from one dependency query."
+        ],
+        "pitfalls": [
+          "retaining the caller's list",
+          "returning only a Boolean readiness flag"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "How can dispatch ordering remain stable while readiness stays owned by Part 1?",
+        "concepts": [
+          "stable priority ordering",
+          "method composition"
+        ],
+        "steps": [
+          "Filter queued jobs by dependency_state.",
+          "Sort by descending priority and ascending registration order before marking the bounded prefix running."
+        ],
+        "pitfalls": [
+          "duplicating dependency checks",
+          "using job IDs as an undocumented tie-break"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "How can one failed job propagate cancellation without creating a second graph evaluator?",
+        "concepts": [
+          "fixed-point propagation",
+          "typed blocked reason",
+          "idempotent transitions"
+        ],
+        "steps": [
+          "Complete only running work and recognize exact replays.",
+          "Repeatedly cancel queued jobs whose dependency_state is blocked until no state changes."
+        ],
+        "pitfalls": [
+          "cancelling running jobs",
+          "performing only one cancellation pass"
+        ]
+      }
     ],
-    "lesson": {"parts": [
-      {"part": 1, "steps": [
-        {"explanation": "A dictionary gives direct identity lookup and Python's insertion order supplies the registration tie-break later. Each stored job owns a copied dependency list; status and blocking reason live beside it as the scheduler's single mutable record.", "code": "def __init__(self):\n    self._jobs = {}\n\ndef _job(self, job_id):\n    if job_id not in self._jobs:\n        raise KeyError(job_id)\n    return self._jobs[job_id]\n\ndef add_job(self, job_id, priority, dependencies):\n    if job_id in self._jobs:\n        raise ValueError(f\"duplicate job: {job_id}\")\n    if job_id in dependencies:\n        raise ValueError(\"dependency cycle\")\n    if any(dep not in self._jobs for dep in dependencies):\n        raise ValueError(\"unknown dependency\")\n    job = {\"job_id\": job_id, \"priority\": priority, \"dependencies\": list(dependencies), \"status\": \"queued\", \"blocked_reason\": None}\n    self._jobs[job_id] = job\n    return {key: value for key, value in job.items() if key != \"blocked_reason\"}\n\ndef get_job_status(self, job_id):\n    job = self._job(job_id)\n    return {\"status\": job[\"status\"], \"blocked_reason\": job[\"blocked_reason\"]}", "rejected": "A separate insertion counter is unnecessary when the chosen mapping already preserves order. Returning the internal job dictionary would let callers rewrite scheduler state."},
-        {"explanation": "Dependency state is deliberately richer than ready/not-ready because Part 3 will need the exact reason. Preserve declared order for both waiting IDs and the first terminal blocker.", "code": "def dependency_state(self, job_id):\n    job = self._job(job_id)\n    waiting = []\n    for dependency_id in job[\"dependencies\"]:\n        status = self._job(dependency_id)[\"status\"]\n        if status in {\"failed\", \"cancelled\"}:\n            return DependencyState(DependencyStateKind.BLOCKED, blocked_reason=BlockedReason(dependency_id, status))\n        if status != \"succeeded\":\n            waiting.append(dependency_id)\n    if waiting:\n        return DependencyState(DependencyStateKind.WAITING, tuple(waiting))\n    return DependencyState(DependencyStateKind.READY)"}
-      ]},
-      {"part": 2, "steps": [
-        {"explanation": "Dispatch asks the Part 1 query for readiness, then applies a stable sort. Because dictionary values arrive in registration order and Python's sort is stable, priority alone is enough: equal priorities retain their earlier order.", "code": "def next_ready_jobs(self, limit):\n    if limit < 0:\n        raise ValueError(\"limit must be nonnegative\")\n    ready = [job for job in self._jobs.values() if job[\"status\"] == \"queued\" and self.dependency_state(job[\"job_id\"]).kind is DependencyStateKind.READY]\n    ready.sort(key=lambda job: -job[\"priority\"])\n    dispatched = []\n    for job in ready[:limit]:\n        job[\"status\"] = \"running\"\n        dispatched.append({key: value for key, value in job.items() if key != \"blocked_reason\"})\n    return dispatched", "rejected": "Rechecking dependency statuses inline would create a second definition of readiness. Sorting by (-priority, job_id) is deterministic but violates registration-order ties."}
-      ]},
-      {"part": 3, "steps": [
-        {"explanation": "Completion first separates a valid running transition from an exact idempotent replay and a conflicting transition. On failure, repeatedly scan queued jobs and consume dependency_state's typed reason. The loop reaches a fixed point, so cancellation flows through newly cancelled intermediates to every descendant.", "code": "def complete_job(self, job_id, succeeded):\n    job = self._job(job_id)\n    target = \"succeeded\" if succeeded else \"failed\"\n    if job[\"status\"] == target:\n        return self.get_job_status(job_id)\n    if job[\"status\"] != \"running\":\n        raise ValueError(\"job is not running or completion conflicts\")\n    job[\"status\"] = target\n    if not succeeded:\n        changed = True\n        while changed:\n            changed = False\n            for candidate in self._jobs.values():\n                if candidate[\"status\"] != \"queued\":\n                    continue\n                state = self.dependency_state(candidate[\"job_id\"])\n                if state.kind is DependencyStateKind.BLOCKED:\n                    candidate[\"status\"] = \"cancelled\"\n                    candidate[\"blocked_reason\"] = state.blocked_reason\n                    changed = True\n    return self.get_job_status(job_id)", "rejected": "Walking only direct children requires a reverse graph and still risks one-level propagation. A single scan also misses descendants whose parent becomes cancelled later in that scan order; fixed-point iteration is simple and correct for this interview-sized in-memory graph."}
-      ]}
-    ], "reflection": "The central design is a rich, reusable dependency query. Dispatch consumes its READY case; cancellation consumes its BLOCKED case and reason. Once that seam exists, priority, idempotent completion, and transitive propagation stay small because none of them reimplement graph semantics."},
-    "verify": {"commonFailures": [
-      {"symptom": "Equal-priority jobs dispatch in the wrong order", "cause": "A secondary lexical sort replaced registration order", "check": "Confirm the candidate sequence begins in insertion order and the priority sort is stable."},
-      {"symptom": "A grandchild stays queued after its ancestor fails", "cause": "Cancellation propagation stopped after one pass", "check": "Continue evaluating queued jobs until an entire pass makes no changes."}
-    ]}
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "Equal-priority jobs dispatch in the wrong order",
+          "cause": "A secondary lexical sort replaced registration order",
+          "check": "Confirm the candidate sequence begins in insertion order and the priority sort is stable."
+        },
+        {
+          "symptom": "A grandchild stays queued after its ancestor fails",
+          "cause": "Cancellation propagation stopped after one pass",
+          "check": "Continue evaluating queued jobs until an entire pass makes no changes."
+        }
+      ]
+    },
+    "lesson": {
+      "parts": [
+        {
+          "part": 1,
+          "steps": [
+            {
+              "explanation": "A dictionary gives direct identity lookup and Python's insertion order supplies the registration tie-break later. Each stored job owns a copied dependency list; status and blocking reason live beside it as the scheduler's single mutable record.",
+              "code": "def __init__(self):\n    self._jobs = {}\n\ndef _job(self, job_id):\n    if job_id not in self._jobs:\n        raise KeyError(job_id)\n    return self._jobs[job_id]\n\ndef add_job(self, job_id, priority, dependencies):\n    if job_id in self._jobs:\n        raise ValueError(f\"duplicate job: {job_id}\")\n    if job_id in dependencies:\n        raise ValueError(\"dependency cycle\")\n    if any(dep not in self._jobs for dep in dependencies):\n        raise ValueError(\"unknown dependency\")\n    job = {\"job_id\": job_id, \"priority\": priority, \"dependencies\": list(dependencies), \"status\": \"queued\", \"blocked_reason\": None}\n    self._jobs[job_id] = job\n    return {key: value for key, value in job.items() if key != \"blocked_reason\"}\n\ndef get_job_status(self, job_id):\n    job = self._job(job_id)\n    return {\"status\": job[\"status\"], \"blocked_reason\": job[\"blocked_reason\"]}",
+              "rejected": "A separate insertion counter is unnecessary when the chosen mapping already preserves order. Returning the internal job dictionary would let callers rewrite scheduler state."
+            },
+            {
+              "explanation": "Dependency state is deliberately richer than ready/not-ready because Part 3 will need the exact reason. Preserve declared order for both waiting IDs and the first terminal blocker.",
+              "code": "def dependency_state(self, job_id):\n    job = self._job(job_id)\n    waiting = []\n    for dependency_id in job[\"dependencies\"]:\n        status = self._job(dependency_id)[\"status\"]\n        if status in {\"failed\", \"cancelled\"}:\n            return DependencyState(DependencyStateKind.BLOCKED, blocked_reason=BlockedReason(dependency_id, status))\n        if status != \"succeeded\":\n            waiting.append(dependency_id)\n    if waiting:\n        return DependencyState(DependencyStateKind.WAITING, tuple(waiting))\n    return DependencyState(DependencyStateKind.READY)"
+            }
+          ]
+        },
+        {
+          "part": 2,
+          "steps": [
+            {
+              "explanation": "Dispatch asks the Part 1 query for readiness, then applies a stable sort. Because dictionary values arrive in registration order and Python's sort is stable, priority alone is enough: equal priorities retain their earlier order.",
+              "code": "def next_ready_jobs(self, limit):\n    if limit < 0:\n        raise ValueError(\"limit must be nonnegative\")\n    ready = [job for job in self._jobs.values() if job[\"status\"] == \"queued\" and self.dependency_state(job[\"job_id\"]).kind is DependencyStateKind.READY]\n    ready.sort(key=lambda job: -job[\"priority\"])\n    dispatched = []\n    for job in ready[:limit]:\n        job[\"status\"] = \"running\"\n        dispatched.append({key: value for key, value in job.items() if key != \"blocked_reason\"})\n    return dispatched",
+              "rejected": "Rechecking dependency statuses inline would create a second definition of readiness. Sorting by (-priority, job_id) is deterministic but violates registration-order ties."
+            }
+          ]
+        },
+        {
+          "part": 3,
+          "steps": [
+            {
+              "explanation": "Completion first separates a valid running transition from an exact idempotent replay and a conflicting transition. On failure, repeatedly scan queued jobs and consume dependency_state's typed reason. The loop reaches a fixed point, so cancellation flows through newly cancelled intermediates to every descendant.",
+              "code": "def complete_job(self, job_id, succeeded):\n    job = self._job(job_id)\n    target = \"succeeded\" if succeeded else \"failed\"\n    if job[\"status\"] == target:\n        return self.get_job_status(job_id)\n    if job[\"status\"] != \"running\":\n        raise ValueError(\"job is not running or completion conflicts\")\n    job[\"status\"] = target\n    if not succeeded:\n        changed = True\n        while changed:\n            changed = False\n            for candidate in self._jobs.values():\n                if candidate[\"status\"] != \"queued\":\n                    continue\n                state = self.dependency_state(candidate[\"job_id\"])\n                if state.kind is DependencyStateKind.BLOCKED:\n                    candidate[\"status\"] = \"cancelled\"\n                    candidate[\"blocked_reason\"] = state.blocked_reason\n                    changed = True\n    return self.get_job_status(job_id)",
+              "rejected": "Walking only direct children requires a reverse graph and still risks one-level propagation. A single scan also misses descendants whose parent becomes cancelled later in that scan order; fixed-point iteration is simple and correct for this interview-sized in-memory graph."
+            }
+          ]
+        }
+      ],
+      "reflection": "The central design is a rich, reusable dependency query. Dispatch consumes its READY case; cancellation consumes its BLOCKED case and reason. Once that seam exists, priority, idempotent completion, and transitive propagation stay small because none of them reimplement graph semantics."
+    }
+  },
+  "python-17": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "Which canonical money and reference fields make charge and settlement lookups unambiguous?",
+        "concepts": [
+          "normalized ingestion",
+          "idempotent identifiers"
+        ],
+        "steps": [
+          "Validate each record before inserting it into its keyed store.",
+          "Keep charge and settlement namespaces and snapshots distinct."
+        ],
+        "pitfalls": [
+          "using floating-point arithmetic for currency",
+          "allowing duplicate IDs to overwrite history"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "What outcome should explain both a successful match and each mismatch without mutating either record?",
+        "concepts": [
+          "rich reconciliation result",
+          "matching precedence"
+        ],
+        "steps": [
+          "Resolve both canonical records through Part 1 lookups.",
+          "Compare the documented reference, currency, and amount facts in a deterministic order."
+        ],
+        "pitfalls": [
+          "returning a bare Boolean",
+          "matching amount while ignoring currency or external reference"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "How can batch reconciliation classify every settlement by folding only single-match outcomes?",
+        "concepts": [
+          "method composition",
+          "stable batch aggregation"
+        ],
+        "steps": [
+          "Call match_settlement once per requested settlement.",
+          "Preserve input order in item results while accumulating summary groups."
+        ],
+        "pitfalls": [
+          "aborting after one mismatch",
+          "reimplementing matching rules inside the batch"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "Single and batch reconciliation classify the same settlement differently",
+          "cause": "The batch has a parallel matching implementation",
+          "check": "Trace every batch item through match_settlement."
+        },
+        {
+          "symptom": "A same-amount settlement matches the wrong charge",
+          "cause": "Amount was treated as identity",
+          "check": "Inspect reference and currency checks before accepting a match."
+        }
+      ]
+    }
+  },
+  "react-01": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "Which component owns connection lifetime, and which owns subscription lifetime?",
+        "concepts": [
+          "effect cleanup",
+          "functional state updates"
+        ],
+        "steps": [
+          "Subscribe once when the feed mounts and retain the returned cleanup.",
+          "Prepend each emitted event without closing over a stale array."
+        ],
+        "pitfalls": [
+          "reconnecting from ActivityFeed",
+          "appending events oldest-first"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "Which values are source state and which are derived visible state?",
+        "concepts": [
+          "controlled filters",
+          "memoized derivation"
+        ],
+        "steps": [
+          "Keep every received event in source state.",
+          "Memoize filtering from events and both selected filters."
+        ],
+        "pitfalls": [
+          "deleting filtered-out events",
+          "putting filters in the subscription effect dependencies"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "What per-event state allows simultaneous acknowledgements to resolve independently?",
+        "concepts": [
+          "optimistic update",
+          "per-row pending and error state"
+        ],
+        "steps": [
+          "Mark only the selected event acknowledged and pending.",
+          "On rejection, restore that event and attach its retry error."
+        ],
+        "pitfalls": [
+          "one global loading flag",
+          "rollback that replaces the entire event list with a stale snapshot"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "Changing a filter restarts or duplicates incoming events",
+          "cause": "Filter state is coupled to the subscription effect",
+          "check": "Inspect the effect dependencies and cleanup lifetime."
+        },
+        {
+          "symptom": "One failed acknowledgement reverts newer feed changes",
+          "cause": "Rollback restores a captured array",
+          "check": "Use an ID-scoped functional state update for both optimistic change and rollback."
+        }
+      ]
+    }
+  },
+  "react-03": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "Which derived queue predicate and sort keys express operational priority?",
+        "concepts": [
+          "stream subscription",
+          "multi-key queue ordering"
+        ],
+        "steps": [
+          "Subscribe once and merge alerts by stable ID.",
+          "Derive unassigned, unacknowledged rows ordered by severity then age."
+        ],
+        "pitfalls": [
+          "sorting source state in place",
+          "reversing the oldest-first timestamp tie-break"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "Which row-local selection, pending, and error facts keep assignments independent?",
+        "concepts": [
+          "optimistic assignment",
+          "per-item async state"
+        ],
+        "steps": [
+          "Track the selected unit per alert.",
+          "Disable that row during the request and update only its assignment on success or failure."
+        ],
+        "pitfalls": [
+          "one selected unit shared by every row",
+          "leaving controls enabled for double submission"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "Can all tab counts and visible rows come from one canonical alert collection?",
+        "concepts": [
+          "derived tab views",
+          "parallel bulk actions"
+        ],
+        "steps": [
+          "Partition alerts by assigned and acknowledged facts.",
+          "Capture currently visible queued IDs, acknowledge them concurrently, then reconcile results by ID."
+        ],
+        "pitfalls": [
+          "maintaining three drifting arrays",
+          "acknowledging alerts hidden from the current queued view"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "An assigned alert remains counted as queued",
+          "cause": "Counts and rows use different predicates",
+          "check": "Derive every tab view from the same canonical alert objects."
+        },
+        {
+          "symptom": "Playwright cannot locate queue controls",
+          "cause": "Required data-testid attributes changed",
+          "check": "Compare row, badge, unit, assignment, tab, and bulk-action attributes with the stub contract."
+        }
+      ]
+    }
+  },
+  "react-04": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "What stable row structure presents every contract field and status semantics without mutating seed data?",
+        "concepts": [
+          "defensive initial state",
+          "semantic table rendering"
+        ],
+        "steps": [
+          "Initialize state from copied contract records.",
+          "Render one keyed row and status badge per contract."
+        ],
+        "pitfalls": [
+          "using array indexes as row identity",
+          "mutating SEED_CONTRACTS"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "How can filter, search, and ordering compose as one derived pipeline?",
+        "concepts": [
+          "controlled inputs",
+          "memoized sort/filter"
+        ],
+        "steps": [
+          "Filter by status and case-normalized title search.",
+          "Sort a copied result array and report its derived count."
+        ],
+        "pitfalls": [
+          "sorting state in place",
+          "applying search and status as mutually exclusive modes"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "What field-level snapshot supports optimistic save, rollback, and concurrent edits on different rows?",
+        "concepts": [
+          "inline edit state",
+          "optimistic rollback"
+        ],
+        "steps": [
+          "Enter editing from a stable contract-and-field identity.",
+          "Apply the draft optimistically, disable its editor during save, and roll back only that field on failure."
+        ],
+        "pitfalls": [
+          "one global editing or saving flag",
+          "rollback that overwrites other successful edits"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "Sorting changes the original order permanently across filters",
+          "cause": "Array.sort mutated source state",
+          "check": "Inspect whether the derived list is copied before sorting."
+        },
+        {
+          "symptom": "Saving one field disables every row",
+          "cause": "Pending state is not keyed by contract and field",
+          "check": "Trace the save identity through spinner and disabled conditions."
+        }
+      ]
+    }
+  },
+  "react-05": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "Which single active-index state can drive keyboard, pointer, ARIA, and selection behavior together?",
+        "concepts": [
+          "ARIA combobox pattern",
+          "roving active descendant"
+        ],
+        "steps": [
+          "Associate the visible label, input, and stable listbox/option IDs.",
+          "Route Enter and pointer clicks through one selection handler while preserving focus."
+        ],
+        "pitfalls": [
+          "moving DOM focus into options",
+          "letting aria-activedescendant reference a missing option"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "What request identity prevents an older response from replacing newer visible results?",
+        "concepts": [
+          "debounce cleanup",
+          "stale-response suppression"
+        ],
+        "steps": [
+          "Cancel the prior debounce when query inputs change.",
+          "Expose explicit loading, success, empty, and error states and commit only the latest request."
+        ],
+        "pitfalls": [
+          "debouncing response handling instead of request start",
+          "building a second option list outside Part 1"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "Which state belongs to one combobox instance, and what snapshot rolls back one failed recent selection?",
+        "concepts": [
+          "instance-local cache",
+          "optimistic recent items"
+        ],
+        "steps": [
+          "Cache defensive result arrays behind the search function consumed by Part 2.",
+          "Add a recent selection immediately and remove only that optimistic entry if persistence fails."
+        ],
+        "pitfalls": [
+          "module-global cache leaking between instances",
+          "caching rejected searches",
+          "rollback removing an earlier successful selection of the same label"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "A slow old query replaces current options",
+          "cause": "Every resolved promise commits without checking request identity",
+          "check": "Trace a monotonic request token or cancellation flag through response handling."
+        },
+        {
+          "symptom": "Keyboard and mouse selections produce different recent state",
+          "cause": "They bypass the shared Part 1 onSelect path",
+          "check": "Follow both interactions into the same selection callback."
+        },
+        {
+          "symptom": "A repeated successful query still reaches the network",
+          "cause": "The cached function is recreated or stores mutable results incorrectly",
+          "check": "Inspect cache lifetime and lookup before invoking search."
+        }
+      ]
+    }
+  },
+  "swift-03": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "Which value-semantic mappings make role updates and a user's effective permission union straightforward?",
+        "concepts": [
+          "typed role identifiers",
+          "Set-based permissions"
+        ],
+        "steps": [
+          "Keep roles and user assignments private to each manager value.",
+          "Return copied permission sets and typed failures at mutation boundaries."
+        ],
+        "pitfalls": [
+          "reference-backed storage shared by copied managers",
+          "returning mutable internal collections"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "How can one parent link extend the existing effective-permission query transitively?",
+        "concepts": [
+          "role inheritance",
+          "cycle-safe traversal"
+        ],
+        "steps": [
+          "Validate parent and child IDs before storing inheritance.",
+          "Make Part 1 permission queries traverse all ancestors without duplicating collection logic."
+        ],
+        "pitfalls": [
+          "checking only the immediate parent",
+          "allowing an inheritance cycle"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "How can scoped wildcard matching consume effective permissions without becoming a second inheritance algorithm?",
+        "concepts": [
+          "resource/action scopes",
+          "finite wildcard candidates"
+        ],
+        "steps": [
+          "Parse the requested permission at the matching boundary.",
+          "Compare exact and documented wildcard candidates against the Part 2 effective set."
+        ],
+        "pitfalls": [
+          "treating malformed strings as valid wildcards",
+          "forgetting inherited wildcard permissions"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "Mutating a copied manager changes the original",
+          "cause": "Mutable reference storage defeats value semantics",
+          "check": "Copy a seeded manager, grant a unique permission, and inspect both snapshots."
+        },
+        {
+          "symptom": "Direct permissions work but inherited wildcards do not",
+          "cause": "Wildcard matching reads only the role's local set",
+          "check": "Trace matching through the effective permission query and every ancestor."
+        }
+      ]
+    }
   },
   "swift-22": {
     "approach": [
-      {"part": 1, "prompt": "Which history record lets one command move cleanly between undo and redo without copying mutation logic?", "concepts": ["command protocol", "value semantics", "two-stack history"], "steps": ["Keep the document and both histories inside each stack value.", "Make execute the only path that applies a new command and clears the abandoned redo future.", "Move the same command value between histories during undo and redo."], "pitfalls": ["forgetting to clear redo after a new edit", "reversing the order of stack operations", "sharing reference-backed history between copies"]},
-      {"part": 2, "prompt": "What metadata is needed to decide whether the newest two history entries may become one?", "concepts": ["injected time", "command-directed compatibility", "history rewriting"], "steps": ["Validate the supplied window before mutation.", "Call execute for the new command, then inspect the newest pair and their timestamps.", "Let the older command decide compatibility and replace only the history records."], "pitfalls": ["applying a command a second time while merging", "using the wall clock", "merging merely because timestamps are close"]},
-      {"part": 3, "prompt": "How can nesting change history ownership without introducing another document mutation path?", "concepts": ["composite command", "nested transaction stack", "forward apply and reverse revert"], "steps": ["Collect executed history in the innermost open group.", "Close a nested group into one composite entry in its parent.", "Publish only the completed outer group to undo history and ignore empty groups."], "pitfalls": ["placing grouped commands directly in global undo history", "reverting a group in forward order", "flattening nested groups into separate undo steps"]}
+      {
+        "part": 1,
+        "prompt": "Which history record lets one command move cleanly between undo and redo without copying mutation logic?",
+        "concepts": [
+          "command protocol",
+          "value semantics",
+          "two-stack history"
+        ],
+        "steps": [
+          "Keep the document and both histories inside each stack value.",
+          "Make execute the only path that applies a new command and clears the abandoned redo future.",
+          "Move the same command value between histories during undo and redo."
+        ],
+        "pitfalls": [
+          "forgetting to clear redo after a new edit",
+          "reversing the order of stack operations",
+          "sharing reference-backed history between copies"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "What metadata is needed to decide whether the newest two history entries may become one?",
+        "concepts": [
+          "injected time",
+          "command-directed compatibility",
+          "history rewriting"
+        ],
+        "steps": [
+          "Validate the supplied window before mutation.",
+          "Call execute for the new command, then inspect the newest pair and their timestamps.",
+          "Let the older command decide compatibility and replace only the history records."
+        ],
+        "pitfalls": [
+          "applying a command a second time while merging",
+          "using the wall clock",
+          "merging merely because timestamps are close"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "How can nesting change history ownership without introducing another document mutation path?",
+        "concepts": [
+          "composite command",
+          "nested transaction stack",
+          "forward apply and reverse revert"
+        ],
+        "steps": [
+          "Collect executed history in the innermost open group.",
+          "Close a nested group into one composite entry in its parent.",
+          "Publish only the completed outer group to undo history and ignore empty groups."
+        ],
+        "pitfalls": [
+          "placing grouped commands directly in global undo history",
+          "reverting a group in forward order",
+          "flattening nested groups into separate undo steps"
+        ]
+      }
     ],
-    "verify": {"commonFailures": [
-      {"symptom": "Typing is coalesced but undo removes only the last character", "cause": "The merged history command does not represent the full edit sequence", "check": "Inspect the command returned by the older entry's coalescing method and verify its revert covers both edits."},
-      {"symptom": "An edit after undo can still redo the abandoned command", "cause": "The execute path retained redo history", "check": "Trace every new command, including grouped and coalescing calls, through execute's redo-clearing boundary."},
-      {"symptom": "Undoing a transaction leaves an earlier grouped edit applied", "cause": "The composite reverts children in execution order", "check": "Walk the transaction commands from newest to oldest during revert."}
-    ]}
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "Typing is coalesced but undo removes only the last character",
+          "cause": "The merged history command does not represent the full edit sequence",
+          "check": "Inspect the command returned by the older entry's coalescing method and verify its revert covers both edits."
+        },
+        {
+          "symptom": "An edit after undo can still redo the abandoned command",
+          "cause": "The execute path retained redo history",
+          "check": "Trace every new command, including grouped and coalescing calls, through execute's redo-clearing boundary."
+        },
+        {
+          "symptom": "Undoing a transaction leaves an earlier grouped edit applied",
+          "cause": "The composite reverts children in execution order",
+          "check": "Walk the transaction commands from newest to oldest during revert."
+        }
+      ]
+    }
   }
 }

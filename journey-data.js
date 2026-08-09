@@ -1599,6 +1599,1653 @@ window.JOURNEY_PROBLEMS = {
       }
     }
   },
+  "python-02": {
+    "id": "python-02",
+    "title": "Tiered API Rate Limiter",
+    "description": "Implement a sliding-window rate limiter with per-minute and per-day caps across multiple subscription tiers.",
+    "language": "python",
+    "industry": "general",
+    "tags": [
+      "rate-limiting",
+      "sliding-window",
+      "tiered-plans",
+      "time-series",
+      "api-platform"
+    ],
+    "level": "senior",
+    "stubPath": "python/practice_problems/problem_02_api_rate_limiter.py",
+    "testPath": "python/tests/test_problem_02_api_rate_limiter.py",
+    "sourceScript": "journey-sources/python-02.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": null,
+    "exampleStatus": "legacy-missing",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Key management",
+        "contract": "def create_key(state: dict, key_id: str, owner: str, plan: str) -> dict:\n    \"\"\"\n    Register a new API key. Return the key dict.\n    Raise ValueError if key_id already exists or plan is not in state[\"plans\"].\n    \"\"\"\n    raise NotImplementedError\n\n\ndef revoke_key(state: dict, key_id: str) -> None:\n    \"\"\"\n    Set key[\"enabled\"] = False. Raise KeyError if key_id not found.\n    (Keys are disabled rather than deleted so historical logs are preserved.)\n    \"\"\"\n    raise NotImplementedError\n\n\ndef update_plan(state: dict, key_id: str, new_plan: str) -> None:\n    \"\"\"\n    Change a key's plan. Raise KeyError if key_id not found.\n    Raise ValueError if new_plan is not in state[\"plans\"].\n    The request_log is preserved (no reset on plan change).\n    \"\"\"\n    raise NotImplementedError"
+      },
+      {
+        "part": 2,
+        "title": "Sliding-window rate check",
+        "contract": "def _count_in_window(request_log: list, now: float, window_seconds: int) -> int:\n    \"\"\"\n    Return the number of entries in request_log that fall within\n    the half-open window (now - window_seconds, now].\n\n    Helper — feel free to use this in Parts 2 and 3, or inline it.\n    \"\"\"\n    raise NotImplementedError\n\n\ndef is_allowed(state: dict, key_id: str, now: float) -> bool:\n    \"\"\"\n    Return True if the key is allowed to make a request at time `now`.\n\n    A request is NOT allowed if any of the following:\n      - key_id doesn't exist in state[\"keys\"]\n      - key[\"enabled\"] is False\n      - the per-minute sliding window is at or above the plan's rpm cap\n      - the per-day sliding window is at or above the plan's rpd cap\n\n    A None limit means that dimension is unlimited.\n    \"\"\"\n    raise NotImplementedError"
+      },
+      {
+        "part": 3,
+        "title": "Recording requests + pruning",
+        "contract": "def record_request(state: dict, key_id: str, now: float) -> None:\n    \"\"\"\n    Append `now` to key[\"request_log\"] and prune any entries older than\n    25 hours (90_000 seconds) to bound memory usage.\n\n    Raise KeyError if key_id not found.\n    Note: call this only AFTER confirming the request is allowed.\n    \"\"\"\n    raise NotImplementedError"
+      },
+      {
+        "part": 4,
+        "title": "Combined handler + usage stats",
+        "contract": "def handle_request(state: dict, key_id: str, now: float) -> dict:\n    \"\"\"\n    Attempt to process a request. Return a result dict:\n\n    On success (request allowed):\n      {\"allowed\": True, \"key_id\": key_id}\n      Side effect: records the request.\n\n    On failure:\n      {\"allowed\": False, \"reason\": <one of the strings below>}\n      No side effects.\n\n    Reason strings:\n      \"key_not_found\"   — key_id not in state[\"keys\"]\n      \"key_disabled\"    — key exists but enabled=False\n      \"rpm_exceeded\"    — per-minute cap hit\n      \"rpd_exceeded\"    — per-day cap hit (only if rpm is OK)\n    \"\"\"\n    raise NotImplementedError\n\n\ndef get_usage(state: dict, key_id: str, now: float) -> dict:\n    \"\"\"\n    Return current usage stats for a key:\n    {\n      \"key_id\":    str,\n      \"plan\":      str,\n      \"rpm_used\":  int,          # requests in the last 60 seconds\n      \"rpm_limit\": int | None,   # None if unlimited\n      \"rpd_used\":  int,          # requests in the last 24 hours\n      \"rpd_limit\": int | None,\n    }\n    Raise KeyError if key_id not found.\n    \"\"\"\n    raise NotImplementedError"
+      }
+    ],
+    "testSuites": [
+      "TestCreateKey",
+      "TestRevokeKey",
+      "TestUpdatePlan",
+      "TestCountInWindow",
+      "TestIsAllowed",
+      "TestRecordRequest",
+      "TestHandleRequest",
+      "TestGetUsage"
+    ],
+    "commands": {
+      "answerPath": "python/practice_problem_answers/my_answer_02_api_rate_limiter.py",
+      "copyCommand": "cp python/practice_problems/problem_02_api_rate_limiter.py python/practice_problem_answers/my_answer_02_api_rate_limiter.py",
+      "openCommand": "code python/practice_problems/problem_02_api_rate_limiter.py",
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_02_api_rate_limiter.py -c pytest python/tests/test_problem_02_api_rate_limiter.py -v"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Which validations belong before each key mutation so rejected changes leave the gateway untouched?",
+          "concepts": [
+            "dict-backed registry",
+            "validate-before-mutate"
+          ],
+          "steps": [
+            "Keep plans and keys as separate keyed stores.",
+            "Preserve the request log when changing only a plan or enabled flag."
+          ],
+          "pitfalls": [
+            "sharing the default plans object with caller mutations",
+            "resetting usage during a plan change"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "How does the half-open time window affect a request exactly on its left boundary?",
+          "concepts": [
+            "sliding-window counting",
+            "unlimited dimensions"
+          ],
+          "steps": [
+            "Centralize window counting for both limit dimensions.",
+            "Short-circuit unknown and disabled keys before looking up limits."
+          ],
+          "pitfalls": [
+            "including the left window boundary",
+            "comparing an integer count with a None limit"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "What can be discarded without changing either rate-limit window?",
+          "concepts": [
+            "bounded event logs",
+            "mutation after authorization"
+          ],
+          "steps": [
+            "Append only after the caller has authorized the request.",
+            "Prune entries beyond the documented retention horizon."
+          ],
+          "pitfalls": [
+            "recording denied requests",
+            "pruning to the minute window and corrupting daily usage"
+          ]
+        },
+        {
+          "part": 4,
+          "prompt": "Can the Boolean decision support a precise denial reason, or must both public operations share richer internal reasoning?",
+          "concepts": [
+            "decision composition",
+            "denial precedence"
+          ],
+          "steps": [
+            "Keep one source of truth for the limit calculation.",
+            "Record only an allowed result and derive usage through the same window helper."
+          ],
+          "pitfalls": [
+            "duplicating checks until is_allowed and handle_request drift",
+            "reporting the daily reason when the minute cap is also exceeded"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "A request exactly one minute old still consumes capacity",
+            "cause": "The left edge was treated as inclusive",
+            "check": "Trace the comparison for now minus the window length."
+          },
+          {
+            "symptom": "Denied requests increase later usage",
+            "cause": "The handler records before reaching its final allowed decision",
+            "check": "Compare the log before and after every denial path."
+          },
+          {
+            "symptom": "The handler cannot distinguish minute and day failures cleanly",
+            "cause": "Its reusable decision contains only a Boolean",
+            "check": "Inspect whether one internal evaluation can serve both public return shapes."
+          }
+        ]
+      }
+    }
+  },
+  "python-04": {
+    "id": "python-04",
+    "title": "Biomarker Alert Monitor",
+    "description": "Process patient readings to track consecutive out-of-range days and generate prioritized coach outreach lists.",
+    "language": "python",
+    "industry": "health-tech",
+    "tags": [
+      "time-series",
+      "consecutive-tracking",
+      "clinical-monitoring",
+      "alert-system"
+    ],
+    "level": "senior",
+    "stubPath": "python/practice_problems/problem_04_biomarker_alert.py",
+    "testPath": "python/tests/test_problem_04_biomarker_alert.py",
+    "sourceScript": "journey-sources/python-04.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": "readings = [\n      BiomarkerReading(\"alice\", \"glucose\", 195.0, date(2024, 1, 1)),\n      BiomarkerReading(\"alice\", \"glucose\", 202.0, date(2024, 1, 2)),\n      BiomarkerReading(\"alice\", \"glucose\", 188.0, date(2024, 1, 3)),\n  ]\n  m = BiomarkerMonitor(readings)\n  m.max_consecutive_out_of_range_days(\"alice\", \"glucose\")  # -> 3\n  m.get_outreach_list(min_consecutive_days=3)\n-> [{\"patient_id\": \"alice\", \"reading_type\": \"glucose\",\n      \"consecutive_days\": 3, \"latest_value\": 188.0}]\n\nNOTES\n  - Multiple readings on the same calendar day count as ONE day.\n    A day is \"out-of-range\" if ANY reading that day is out of range.\n  - All mutable state must be stored in instance variables set in __init__.",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "single-reading classification",
+        "contract": "def is_out_of_range(self, reading: BiomarkerReading) -> bool:\n        \"\"\"\n        Return True if the reading falls outside the target range for its type.\n        - Glucose: outside GLUCOSE_RANGE\n        - Ketone:  outside KETONE_RANGE\n        - Weight:  never out-of-range (return False)\n        \"\"\"\n        raise NotImplementedError"
+      },
+      {
+        "part": 2,
+        "title": "streak detection",
+        "contract": "def max_consecutive_out_of_range_days(\n        self, patient_id: str, reading_type: str\n    ) -> int:\n        \"\"\"\n        Return the length of the longest streak of *consecutive calendar days*\n        on which the patient had at least one out-of-range reading of the given type.\n\n        Return 0 if the patient has no out-of-range readings of that type.\n\n        Consecutive means no gap: Jan 1, Jan 2, Jan 3 is a streak of 3.\n        Jan 1, Jan 3 (skipping Jan 2) is two separate streaks of 1.\n        Multiple readings on the same day collapse to one day.\n\n        \"\"\"\n        raise NotImplementedError"
+      },
+      {
+        "part": 3,
+        "title": "outreach list",
+        "contract": "def get_outreach_list(self, min_consecutive_days: int = 3) -> list[dict]:\n        \"\"\"\n        Return a list of patients who need proactive coach outreach because\n        they have been out-of-range for at least min_consecutive_days in a row.\n\n        Each entry in the returned list is a dict:\n        {\n            \"patient_id\":       str,\n            \"reading_type\":     str,\n            \"consecutive_days\": int,   # their max streak length\n            \"latest_value\":     float, # most recent out-of-range reading value\n        }\n\n        A patient can appear more than once if multiple reading types cross the\n        threshold (e.g., both glucose and ketone streaks).\n\n        Sort the list by consecutive_days descending (most urgent first).\n\n        \"\"\"\n        raise NotImplementedError"
+      },
+      {
+        "part": 4,
+        "title": "deduplication on ingestion",
+        "contract": "def add_reading(self, reading: BiomarkerReading) -> bool:\n        \"\"\"\n        Add a new reading to the monitor's internal state.\n        Return True if the reading was added successfully.\n        Return False (without adding) if it is a duplicate.\n\n        A duplicate is: same patient_id, reading_type, and recorded_on,\n        with a value within ±0.5 of an existing reading on that day.\n        \"\"\"\n        raise NotImplementedError"
+      }
+    ],
+    "testSuites": [
+      "TestIsOutOfRange",
+      "TestMaxConsecutiveOutOfRangeDays",
+      "TestGetOutreachList",
+      "TestAddReading"
+    ],
+    "commands": {
+      "answerPath": "python/practice_problem_answers/my_answer_04_biomarker_alert.py",
+      "copyCommand": "cp python/practice_problems/problem_04_biomarker_alert.py python/practice_problem_answers/my_answer_04_biomarker_alert.py",
+      "openCommand": "code python/practice_problems/problem_04_biomarker_alert.py",
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_04_biomarker_alert.py -c pytest python/tests/test_problem_04_biomarker_alert.py -v"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Which reading types have inclusive target bounds, and which type deliberately has no range?",
+          "concepts": [
+            "domain classification",
+            "inclusive boundaries"
+          ],
+          "steps": [
+            "Dispatch classification by reading type.",
+            "Treat values equal to either bound as in range."
+          ],
+          "pitfalls": [
+            "flagging boundary values",
+            "inventing a target range for weight"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "What daily representation collapses duplicates yet still exposes gaps between calendar dates?",
+          "concepts": [
+            "date-set normalization",
+            "consecutive streak scan"
+          ],
+          "steps": [
+            "Reuse single-reading classification to collect qualifying dates.",
+            "Sort unique dates and reset the running streak across a gap."
+          ],
+          "pitfalls": [
+            "counting readings instead of days",
+            "letting an in-range reading erase another out-of-range reading on the same day"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "Which patient/type pairs should be evaluated, and which reading supplies latest_value?",
+          "concepts": [
+            "composed aggregation",
+            "urgency ordering"
+          ],
+          "steps": [
+            "Evaluate distinct patient and type pairs through the streak method.",
+            "Choose the chronologically latest qualifying reading and sort by urgency."
+          ],
+          "pitfalls": [
+            "using the latest reading even when it is in range",
+            "deduplicating by patient and losing a second qualifying type"
+          ]
+        },
+        {
+          "part": 4,
+          "prompt": "What composite identity and numeric tolerance define a duplicate without suppressing valid readings?",
+          "concepts": [
+            "tolerance matching",
+            "live ingestion"
+          ],
+          "steps": [
+            "Compare only readings sharing patient, type, and date.",
+            "Mutate instance storage only after all duplicate checks fail."
+          ],
+          "pitfalls": [
+            "using a global value-only tolerance",
+            "storing the caller's list by reference and mutating fixture data"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "Two abnormal readings on one day create a two-day streak",
+            "cause": "The scan operates on readings rather than unique dates",
+            "check": "Inspect the normalized date collection before counting adjacency."
+          },
+          {
+            "symptom": "Outreach reports an in-range latest value",
+            "cause": "Latest selection was not restricted to abnormal readings",
+            "check": "Trace the candidate readings used for latest_value."
+          }
+        ]
+      }
+    }
+  },
+  "python-05": {
+    "id": "python-05",
+    "title": "Medication Titration Tracker",
+    "description": "Track dosage adjustment events over time, handling out-of-order arrivals and querying active medication history.",
+    "language": "python",
+    "industry": "health-tech",
+    "tags": [
+      "event-sourcing",
+      "out-of-order-events",
+      "medication",
+      "clinical"
+    ],
+    "level": "senior",
+    "stubPath": "python/practice_problems/problem_05_medication_titration.py",
+    "testPath": "python/tests/test_problem_05_medication_titration.py",
+    "sourceScript": "journey-sources/python-05.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": "events = [\n      TitrationEvent(\"pt1\", \"metformin\",  \"start\",    500.0, date(2024, 1, 1)),\n      TitrationEvent(\"pt1\", \"metformin\",  \"increase\", 1000.0, date(2024, 2, 1)),\n      TitrationEvent(\"pt1\", \"metformin\",  \"decrease\",  500.0, date(2024, 3, 1)),\n      TitrationEvent(\"pt1\", \"metformin\",  \"stop\",        0.0, date(2024, 4, 1)),\n  ]\n  t = TitrationTracker(events)\n  t.current_medications(\"pt1\")\n-> []\n  t.titration_count(\"pt1\", \"metformin\", direction=\"decrease\")\n-> 1\n\nNOTES\n  - Events are not guaranteed to arrive in chronological order — sort by date.\n  - A medication is \"active\" if the most recent event for it is NOT \"stop\".\n  - All mutable state must be stored in instance variables set in __init__.\n  - You choose the internal data structures — the public interface is what matters.",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Current medication snapshot",
+        "contract": "def current_medications(self, patient_id: str) -> list[Medication]:\n        \"\"\"\n        Return a list of Medication objects for all currently active medications\n        for the given patient (i.e., medications whose latest event is NOT \"stop\").\n\n        Each Medication reflects:\n          - name:          the medication name\n          - current_dose:  dose_mg from the most recent event for that medication\n          - last_changed:  date of the most recent event\n          - total_changes: total number of TitrationEvents recorded for this medication\n\n        Return an empty list if the patient has no events or all medications have\n        been stopped.\n\n        The list may be returned in any order.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_medication_history(\n        self, patient_id: str, medication: str\n    ) -> list[TitrationEvent]:\n        \"\"\"\n        Return all TitrationEvents for (patient_id, medication), sorted\n        chronologically (earliest first).\n\n        Return an empty list if no events exist for that combination.\n        \"\"\"\n        raise NotImplementedError"
+      },
+      {
+        "part": 2,
+        "title": "Titration counts",
+        "contract": "def titration_count(\n        self,\n        patient_id: str,\n        medication: str,\n        direction: Optional[str] = None,\n    ) -> int:\n        \"\"\"\n        Return the number of titration events for (patient_id, medication).\n\n        If direction is provided (one of \"start\", \"increase\", \"decrease\", \"stop\"),\n        return only events with that direction.\n\n        Return 0 if the patient or medication is unknown.\n\n        \"\"\"\n        raise NotImplementedError\n\n    def de_escalation_summary(self, patient_id: str) -> dict[str, int]:\n        \"\"\"\n        Return a dict mapping each medication name to the number of \"decrease\" or\n        \"stop\" events recorded for that patient.\n\n        Only include medications that have at least one decrease or stop event.\n        Return an empty dict if the patient has no such events.\n\n        Example:\n            {\n                \"metformin\":       2,   # 1 decrease + 1 stop\n                \"glipizide\":       1,   # 1 stop only\n            }\n\n        \"\"\"\n        raise NotImplementedError"
+      },
+      {
+        "part": 3,
+        "title": "Population-level queries",
+        "contract": "def patients_on_medication(self, medication: str) -> list[str]:\n        \"\"\"\n        Return a sorted list of patient_ids who currently have the given\n        medication active (latest event is NOT \"stop\").\n\n        \"\"\"\n        raise NotImplementedError\n\n    def most_titrated_medications(self, top_n: int = 3) -> list[tuple[str, int]]:\n        \"\"\"\n        Return the top_n medications (by total titration event count across ALL\n        patients) as a list of (medication_name, total_count) tuples,\n        sorted descending by count.\n\n        If fewer than top_n medications exist, return all of them.\n        Ties may appear in any order.\n\n        \"\"\"\n        raise NotImplementedError"
+      },
+      {
+        "part": 4,
+        "title": "Live ingestion",
+        "contract": "def add_event(self, event: TitrationEvent) -> None:\n        \"\"\"\n        Add a new TitrationEvent to the tracker.\n\n        If an event with the same (patient_id, medication, recorded_on) already\n        exists in the tracker, overwrite it with the new event (last-write wins).\n        \"\"\"\n        raise NotImplementedError"
+      }
+    ],
+    "testSuites": [
+      "TestCurrentMedications",
+      "TestTitrationCount",
+      "TestDeEscalationSummary",
+      "TestPopulationQueries",
+      "TestAddEvent"
+    ],
+    "commands": {
+      "answerPath": "python/practice_problem_answers/my_answer_05_medication_titration.py",
+      "copyCommand": "cp python/practice_problems/problem_05_medication_titration.py python/practice_problem_answers/my_answer_05_medication_titration.py",
+      "openCommand": "code python/practice_problems/problem_05_medication_titration.py",
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_05_medication_titration.py -c pytest python/tests/test_problem_05_medication_titration.py -v"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "How can one chronological history reduction produce each active medication snapshot?",
+          "concepts": [
+            "event history",
+            "latest-event reduction"
+          ],
+          "steps": [
+            "Filter by patient and medication, then sort by date.",
+            "Build active snapshots only when the latest direction is not stop."
+          ],
+          "pitfalls": [
+            "trusting arrival order",
+            "counting only active events in total_changes"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "Which counts can reuse the Part 1 history boundary instead of filtering storage again?",
+          "concepts": [
+            "method composition",
+            "directional aggregation"
+          ],
+          "steps": [
+            "Count the returned history with an optional direction filter.",
+            "Include only medications with at least one decrease or stop in the summary."
+          ],
+          "pitfalls": [
+            "parallel history filtering logic",
+            "including zero-count medications"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "How can population queries reuse patient snapshots while producing stable, unique results?",
+          "concepts": [
+            "set uniqueness",
+            "ranking aggregation"
+          ],
+          "steps": [
+            "Derive patient candidates from event identities and reuse current_medications.",
+            "Aggregate all events by medication before ranking."
+          ],
+          "pitfalls": [
+            "returning duplicate patient IDs",
+            "counting only currently active medication events"
+          ]
+        },
+        {
+          "part": 4,
+          "prompt": "Which fields form last-write-wins identity, and what existing queries should immediately reflect replacement?",
+          "concepts": [
+            "composite event identity",
+            "incremental consistency"
+          ],
+          "steps": [
+            "Remove a matching patient, medication, and date event before adding its replacement.",
+            "Keep one canonical event collection used by every query."
+          ],
+          "pitfalls": [
+            "treating direction as part of identity",
+            "updating a snapshot cache but not history"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "Out-of-order input selects an older dose",
+            "cause": "Arrival order acts as chronology",
+            "check": "Confirm latest-event choices follow recorded_on ordering."
+          },
+          {
+            "symptom": "Replacing a same-day event increases the count",
+            "cause": "The composite identity was not removed first",
+            "check": "Inspect storage for more than one event with the same patient, medication, and date."
+          }
+        ]
+      }
+    }
+  },
+  "python-06": {
+    "id": "python-06",
+    "title": "Lab Cadence Compliance Monitor",
+    "description": "Track required lab submission deadlines per patient and surface overdue labs for health coach follow-up.",
+    "language": "python",
+    "industry": "health-tech",
+    "tags": [
+      "deadline-tracking",
+      "compliance",
+      "scheduling",
+      "clinical"
+    ],
+    "level": "senior",
+    "stubPath": "python/practice_problems/problem_06_lab_cadence.py",
+    "testPath": "python/tests/test_problem_06_lab_cadence.py",
+    "sourceScript": "journey-sources/python-06.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": "m = make_monitor()\n  register_patient(m, \"alice\", required_labs=[\"hba1c\", \"bmp\"])\n  set_lab_deadline(m, \"alice\", \"hba1c\", due_date=date(2024, 3, 31))\n  record_submission(m, \"alice\", \"hba1c\", submitted_on=date(2024, 3, 28))\n  is_overdue(m, \"alice\", \"hba1c\", as_of=date(2024, 4, 1))  # -> False (submitted on time)\n  is_overdue(m, \"alice\", \"bmp\",   as_of=date(2024, 4, 1))  # -> True  (no deadline set yet,\n         but bmp is required)\n\nNOTES\n  - \"overdue\" means: a required lab has a deadline that has passed (as_of > due_date)\n    AND no submission exists on or before the due_date.\n  - If a required lab has no deadline set, it is NOT considered overdue.\n  - A submission clears the specific deadline it satisfies (the earliest\n    uncleared deadline on or after the submission date).\n  - Patients can have multiple deadlines per lab type (e.g. quarterly HbA1c).\n  - All state lives inside the dict returned by make_monitor(). No global state.",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Patient & lab registration",
+        "contract": "def register_patient(monitor: dict, patient_id: str, required_labs: list[str]) -> None:\n    \"\"\"\n    Register a new patient with a list of required lab types.\n\n    If the patient already exists, add any new lab types to their required set\n    (do not remove existing ones). Idempotent for labs already in the set.\n\n    Raise ValueError if required_labs is empty.\n    \"\"\"\n    raise NotImplementedError\n\n\ndef add_required_lab(monitor: dict, patient_id: str, lab_type: str) -> None:\n    \"\"\"\n    Add a single required lab type to an existing patient's requirements.\n\n    Raise KeyError if the patient doesn't exist.\n    No-op if the lab is already required.\n    \"\"\"\n    raise NotImplementedError\n\n\ndef get_required_labs(monitor: dict, patient_id: str) -> set[str]:\n    \"\"\"\n    Return the set of required lab types for the patient.\n    Raise KeyError if the patient doesn't exist.\n    \"\"\"\n    raise NotImplementedError"
+      },
+      {
+        "part": 2,
+        "title": "Deadlines and submissions",
+        "contract": "def set_lab_deadline(\n    monitor: dict, patient_id: str, lab_type: str, due_date: date\n) -> None:\n    \"\"\"\n    Add a deadline for a specific lab type for the patient.\n\n    A patient may have multiple deadlines for the same lab (e.g. quarterly).\n    Duplicate deadlines (same patient + lab + date) are ignored.\n\n    Raise KeyError if the patient doesn't exist.\n    Raise ValueError if lab_type is not in the patient's required_labs.\n    \"\"\"\n    raise NotImplementedError\n\n\ndef record_submission(\n    monitor: dict, patient_id: str, lab_type: str, submitted_on: date\n) -> None:\n    \"\"\"\n    Record that the patient submitted a lab result on submitted_on.\n\n    Clears the earliest uncleared deadline for this lab type that is\n    >= submitted_on. If no such deadline exists, the submission is still\n    recorded (it may satisfy a future deadline or serve as history).\n\n    Raise KeyError if the patient doesn't exist.\n    Raise ValueError if lab_type is not in the patient's required_labs.\n    \"\"\"\n    raise NotImplementedError\n\n\ndef is_overdue(monitor: dict, patient_id: str, lab_type: str, as_of: date) -> bool:\n    \"\"\"\n    Return True if the patient has at least one uncleared deadline for\n    lab_type that has passed as of `as_of` (i.e., due_date < as_of).\n\n    Return False if:\n      - The patient doesn't exist.\n      - lab_type is not required for the patient.\n      - No deadline has been set for that lab.\n      - All past deadlines have been cleared by a submission.\n    \"\"\"\n    raise NotImplementedError"
+      },
+      {
+        "part": 3,
+        "title": "Compliance reporting",
+        "contract": "def overdue_labs(monitor: dict, patient_id: str, as_of: date) -> list[str]:\n    \"\"\"\n    Return a sorted list of lab type names that are currently overdue for\n    the patient as of `as_of`.\n\n    Return an empty list if the patient doesn't exist or has no overdue labs.\n\n    \"\"\"\n    raise NotImplementedError\n\n\ndef compliance_report(monitor: dict, as_of: date) -> list[dict]:\n    \"\"\"\n    Return a report of all patients with at least one overdue lab as of `as_of`.\n\n    Each entry in the list is a dict:\n    {\n        \"patient_id\":    str,\n        \"overdue_labs\":  list[str],   # sorted lab names\n        \"overdue_count\": int,\n    }\n\n    Sort the list by overdue_count descending (most overdue first), then\n    alphabetically by patient_id for ties.\n\n    Return an empty list if no patient has overdue labs.\n\n    \"\"\"\n    raise NotImplementedError"
+      },
+      {
+        "part": 4,
+        "title": "Submission history",
+        "contract": "def submission_history(monitor: dict, patient_id: str, lab_type: str) -> list[date]:\n    \"\"\"\n    Return a chronologically sorted list of all submission dates for\n    (patient_id, lab_type).\n\n    Return an empty list if the patient doesn't exist or has no submissions\n    for that lab type.\n    \"\"\"\n    raise NotImplementedError\n\n\ndef days_since_last_submission(\n    monitor: dict, patient_id: str, lab_type: str, as_of: date\n) -> int | None:\n    \"\"\"\n    Return the number of days between the patient's most recent submission\n    for lab_type and `as_of`.\n\n    Return None if the patient has never submitted that lab type.\n\n    \"\"\"\n    raise NotImplementedError"
+      }
+    ],
+    "testSuites": [
+      "TestRegisterPatient",
+      "TestAddRequiredLab",
+      "TestGetRequiredLabs",
+      "TestSetLabDeadline",
+      "TestRecordSubmission",
+      "TestIsOverdue",
+      "TestOverdueLabs",
+      "TestComplianceReport",
+      "TestSubmissionHistory",
+      "TestDaysSinceLastSubmission"
+    ],
+    "commands": {
+      "answerPath": "python/practice_problem_answers/my_answer_06_lab_cadence.py",
+      "copyCommand": "cp python/practice_problems/problem_06_lab_cadence.py python/practice_problem_answers/my_answer_06_lab_cadence.py",
+      "openCommand": "code python/practice_problems/problem_06_lab_cadence.py",
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_06_lab_cadence.py -c pytest python/tests/test_problem_06_lab_cadence.py -v"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Which nested keys let required labs remain unique per patient without leaking mutable sets?",
+          "concepts": [
+            "dict schema",
+            "defensive snapshots"
+          ],
+          "steps": [
+            "Create each patient's collections at registration time.",
+            "Return a copy of required labs rather than the stored set."
+          ],
+          "pitfalls": [
+            "reusing one set across patients",
+            "silently replacing an existing patient"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "Which deadline and submission facts determine overdue status at an arbitrary date?",
+          "concepts": [
+            "deadline state",
+            "on-time submission matching"
+          ],
+          "steps": [
+            "Validate patient and required-lab relationships at mutation boundaries.",
+            "Compare the relevant deadline with submissions without consuming their history."
+          ],
+          "pitfalls": [
+            "letting a late submission satisfy an earlier deadline",
+            "treating a missing deadline like an on-time lab"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "How can patient reports be assembled entirely from the single-lab overdue decision?",
+          "concepts": [
+            "method composition",
+            "deterministic reporting"
+          ],
+          "steps": [
+            "Call is_overdue for every required lab.",
+            "Sort lab names and patient report rows explicitly."
+          ],
+          "pitfalls": [
+            "reimplementing overdue logic in the report",
+            "including labs a patient does not require"
+          ]
+        },
+        {
+          "part": 4,
+          "prompt": "Which chronological history supports both a snapshot list and days-since calculation?",
+          "concepts": [
+            "sorted immutable history",
+            "optional absence"
+          ],
+          "steps": [
+            "Return a sorted copy of matching submissions.",
+            "Use its latest element for elapsed whole days, or represent absence explicitly."
+          ],
+          "pitfalls": [
+            "returning the internal list",
+            "using the earliest submission"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "Adding to a returned required-labs set changes monitor state",
+            "cause": "An internal collection escaped by reference",
+            "check": "Mutate the returned set and query the monitor again."
+          },
+          {
+            "symptom": "Compliance rows disagree with is_overdue",
+            "cause": "The report contains a second deadline algorithm",
+            "check": "Trace every reported lab through the public overdue predicate."
+          }
+        ]
+      }
+    }
+  },
+  "python-07": {
+    "id": "python-07",
+    "title": "Care Team Assignment Manager",
+    "description": "Assign patients to care team members by role with capacity enforcement and a full reassignment audit trail queryable by timestamp.",
+    "language": "python",
+    "industry": "health-tech",
+    "tags": [
+      "relational-data",
+      "capacity-constraints",
+      "audit-trail",
+      "temporal-queries"
+    ],
+    "level": "senior",
+    "stubPath": "python/practice_problems/problem_07_care_team_assignments.py",
+    "testPath": "python/tests/test_problem_07_care_team_assignments.py",
+    "sourceScript": "journey-sources/python-07.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": "mgr = CareTeamManager()\nmgr.add_member(\"coach_a\", \"coach\", max_patients=2)\nmgr.add_member(\"dr_main\", \"physician\", max_patients=100)\nmgr.assign(\"patient_1\", \"coach_a\", assigned_at=1000.0)\nmgr.assign(\"patient_1\", \"dr_main\", assigned_at=1000.0)\nmgr.get_assignment(\"patient_1\", \"coach\")      # -> \"coach_a\"\nmgr.get_assignment(\"patient_1\", \"dietitian\")  # -> None\nmgr.get_patients(\"coach_a\")                   # -> [\"patient_1\"]\n\n# Part 2\nmgr.add_member(\"coach_b\", \"coach\", max_patients=1)\nmgr.assign(\"patient_2\", \"coach_b\", assigned_at=2000.0)\nmgr.assign(\"patient_3\", \"coach_b\", assigned_at=3000.0)  # raises CapacityError\nmgr.available_members(\"coach\")                # -> [\"coach_a\"]\n\n# Part 3 — reassign patient_1 from coach_a to coach_b\nmgr.assign(\"patient_1\", \"coach_b\", assigned_at=5000.0)\nmgr.get_history(\"patient_1\", \"coach\")\n# -> [(\"coach_a\", 1000.0, 5000.0), (\"coach_b\", 5000.0, None)]\nmgr.get_assignment_at(\"patient_1\", \"coach\",  500.0)   # -> None (before any assignment)\nmgr.get_assignment_at(\"patient_1\", \"coach\", 3000.0)   # -> \"coach_a\"\nmgr.get_assignment_at(\"patient_1\", \"coach\", 6000.0)   # -> \"coach_b\"\n\"\"\"\n\nfrom typing import Optional\n\n\nclass CapacityError(Exception):\n    \"\"\"Raised when assigning a patient to a member who is at their patient capacity.\"\"\"\n\n    pass\n\n\nclass CareTeamManager:\n    \"\"\"\n    Manages patient-to-care-team-member assignments for a remote clinical platform.\n\n    You choose the internal data structures — the public interface is what matters.\n\n    Store all state in instance variables initialized in `__init__`.\n    Class-level variables will bleed between tests and between CareTeamManager\n    instances — avoid them.\n    \"\"\"\n\n    def __init__(self) -> None:\n        raise NotImplementedError\n\n── Part 1: Basic assignment and lookup ───────────────────────────────────\n\n    def add_member(self, member_id: str, role: str, max_patients: int) -> None:\n        \"\"\"Register a care team member with the given role and patient capacity.\"\"\"\n        raise NotImplementedError\n\n    def assign(self, patient_id: str, member_id: str, assigned_at: float) -> None:\n        \"\"\"\n        Assign a patient to a care team member (assigned_at is Unix seconds).\n\n        A patient may have at most one assigned member per role at a time.\n        If the patient already has a member with the same role, that assignment\n        is replaced — the new assignment takes effect at assigned_at.\n\n        Raises ValueError  if member_id has not been registered via add_member.\n\n        Part 2 addition: raises CapacityError if the member is already at\n        max_patients and the patient is not currently assigned to that exact member.\n        (Reassigning a patient who is already on this member does not count as\n        adding a new patient — it is a no-op for capacity purposes.)\n        \"\"\"\n        raise NotImplementedError\n\n    def get_assignment(self, patient_id: str, role: str) -> Optional[str]:\n        \"\"\"\n        Return the member_id currently assigned to this patient for the given\n        role, or None if no member of that role is currently assigned.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_patients(self, member_id: str) -> list[str]:\n        \"\"\"\n        Return a sorted list of patient_ids currently assigned to this member.\n        Raises ValueError if member_id has not been registered.\n        \"\"\"\n        raise NotImplementedError\n\n── Part 2: Capacity enforcement ──────────────────────────────────────────\n\n    def available_members(self, role: str) -> list[str]:\n        \"\"\"\n        Return a sorted list of member_ids with the given role that still have\n        open capacity (current patient count < max_patients).\n        \"\"\"\n        raise NotImplementedError\n\n── Part 3: Assignment history ────────────────────────────────────────────\n\n    def get_history(\n        self, patient_id: str, role: str\n    ) -> list[tuple[str, float, Optional[float]]]:\n        \"\"\"\n        Return the full assignment history for the patient's given role as a list\n        of (member_id, assigned_at, unassigned_at) tuples sorted by assigned_at.\n\n        - unassigned_at is None for the current (still-active) assignment.\n        - unassigned_at equals the assigned_at of the subsequent assignment for\n          past entries.\n        - Returns [] if the patient has never been assigned a member of this role.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_assignment_at(\n        self, patient_id: str, role: str, timestamp: float\n    ) -> Optional[str]:\n        \"\"\"\n        Return the member_id assigned to the patient for the given role at the\n        given timestamp, or None if no assignment was active at that time.\n\n        An assignment is active during the interval [assigned_at, unassigned_at).\n        The current assignment (unassigned_at is None) is active from assigned_at\n        onward.\n\n        Implement this by calling get_history() — do not duplicate the lookup logic.\n        \"\"\"\n        raise NotImplementedError",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Basic assignment and lookup",
+        "contract": "add_member(member_id, role, max_patients)\n  assign(patient_id, member_id, assigned_at)\n  get_assignment(patient_id, role)   -> Optional[str]\n  get_patients(member_id)            -> list[str]"
+      },
+      {
+        "part": 2,
+        "title": "Capacity enforcement",
+        "contract": "assign() now raises CapacityError when the member is at max_patients\n  available_members(role)            -> list[str]"
+      },
+      {
+        "part": 3,
+        "title": "Assignment history",
+        "contract": "get_history(patient_id, role)               -> list[tuple[str, float, Optional[float]]]\n  get_assignment_at(patient_id, role, timestamp) -> Optional[str]\n\nExample\nmgr = CareTeamManager()\nmgr.add_member(\"coach_a\", \"coach\", max_patients=2)\nmgr.add_member(\"dr_main\", \"physician\", max_patients=100)\nmgr.assign(\"patient_1\", \"coach_a\", assigned_at=1000.0)\nmgr.assign(\"patient_1\", \"dr_main\", assigned_at=1000.0)\nmgr.get_assignment(\"patient_1\", \"coach\")      # -> \"coach_a\"\nmgr.get_assignment(\"patient_1\", \"dietitian\")  # -> None\nmgr.get_patients(\"coach_a\")                   # -> [\"patient_1\"]\n\n# Part 2\nmgr.add_member(\"coach_b\", \"coach\", max_patients=1)\nmgr.assign(\"patient_2\", \"coach_b\", assigned_at=2000.0)\nmgr.assign(\"patient_3\", \"coach_b\", assigned_at=3000.0)  # raises CapacityError\nmgr.available_members(\"coach\")                # -> [\"coach_a\"]\n\n# Part 3 — reassign patient_1 from coach_a to coach_b\nmgr.assign(\"patient_1\", \"coach_b\", assigned_at=5000.0)\nmgr.get_history(\"patient_1\", \"coach\")\n# -> [(\"coach_a\", 1000.0, 5000.0), (\"coach_b\", 5000.0, None)]\nmgr.get_assignment_at(\"patient_1\", \"coach\",  500.0)   # -> None (before any assignment)\nmgr.get_assignment_at(\"patient_1\", \"coach\", 3000.0)   # -> \"coach_a\"\nmgr.get_assignment_at(\"patient_1\", \"coach\", 6000.0)   # -> \"coach_b\"\n\"\"\"\n\nfrom typing import Optional\n\n\nclass CapacityError(Exception):\n    \"\"\"Raised when assigning a patient to a member who is at their patient capacity.\"\"\"\n\n    pass\n\n\nclass CareTeamManager:\n    \"\"\"\n    Manages patient-to-care-team-member assignments for a remote clinical platform.\n\n    You choose the internal data structures — the public interface is what matters.\n\n    Store all state in instance variables initialized in `__init__`.\n    Class-level variables will bleed between tests and between CareTeamManager\n    instances — avoid them.\n    \"\"\"\n\n    def __init__(self) -> None:\n        raise NotImplementedError\n\n── Part 1: Basic assignment and lookup ───────────────────────────────────\n\n    def add_member(self, member_id: str, role: str, max_patients: int) -> None:\n        \"\"\"Register a care team member with the given role and patient capacity.\"\"\"\n        raise NotImplementedError\n\n    def assign(self, patient_id: str, member_id: str, assigned_at: float) -> None:\n        \"\"\"\n        Assign a patient to a care team member (assigned_at is Unix seconds).\n\n        A patient may have at most one assigned member per role at a time.\n        If the patient already has a member with the same role, that assignment\n        is replaced — the new assignment takes effect at assigned_at.\n\n        Raises ValueError  if member_id has not been registered via add_member.\n\n        Part 2 addition: raises CapacityError if the member is already at\n        max_patients and the patient is not currently assigned to that exact member.\n        (Reassigning a patient who is already on this member does not count as\n        adding a new patient — it is a no-op for capacity purposes.)\n        \"\"\"\n        raise NotImplementedError\n\n    def get_assignment(self, patient_id: str, role: str) -> Optional[str]:\n        \"\"\"\n        Return the member_id currently assigned to this patient for the given\n        role, or None if no member of that role is currently assigned.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_patients(self, member_id: str) -> list[str]:\n        \"\"\"\n        Return a sorted list of patient_ids currently assigned to this member.\n        Raises ValueError if member_id has not been registered.\n        \"\"\"\n        raise NotImplementedError\n\n── Part 2: Capacity enforcement ──────────────────────────────────────────\n\n    def available_members(self, role: str) -> list[str]:\n        \"\"\"\n        Return a sorted list of member_ids with the given role that still have\n        open capacity (current patient count < max_patients).\n        \"\"\"\n        raise NotImplementedError\n\n── Part 3: Assignment history ────────────────────────────────────────────\n\n    def get_history(\n        self, patient_id: str, role: str\n    ) -> list[tuple[str, float, Optional[float]]]:\n        \"\"\"\n        Return the full assignment history for the patient's given role as a list\n        of (member_id, assigned_at, unassigned_at) tuples sorted by assigned_at.\n\n        - unassigned_at is None for the current (still-active) assignment.\n        - unassigned_at equals the assigned_at of the subsequent assignment for\n          past entries.\n        - Returns [] if the patient has never been assigned a member of this role.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_assignment_at(\n        self, patient_id: str, role: str, timestamp: float\n    ) -> Optional[str]:\n        \"\"\"\n        Return the member_id assigned to the patient for the given role at the\n        given timestamp, or None if no assignment was active at that time.\n\n        An assignment is active during the interval [assigned_at, unassigned_at).\n        The current assignment (unassigned_at is None) is active from assigned_at\n        onward.\n\n        Implement this by calling get_history() — do not duplicate the lookup logic.\n        \"\"\"\n        raise NotImplementedError"
+      }
+    ],
+    "testSuites": [
+      "TestAddMember",
+      "TestAssign",
+      "TestGetAssignment",
+      "TestGetPatients",
+      "TestCapacityEnforcement",
+      "TestAvailableMembers",
+      "TestGetHistory",
+      "TestGetAssignmentAt"
+    ],
+    "commands": {
+      "answerPath": "python/practice_problem_answers/my_answer_07_care_team_assignments.py",
+      "copyCommand": "cp python/practice_problems/problem_07_care_team_assignments.py python/practice_problem_answers/my_answer_07_care_team_assignments.py",
+      "openCommand": "code python/practice_problems/problem_07_care_team_assignments.py",
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_07_care_team_assignments.py -c pytest python/tests/test_problem_07_care_team_assignments.py -v"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Which keys represent a patient's independent current assignment for each role?",
+          "concepts": [
+            "role-scoped identity",
+            "bidirectional lookup"
+          ],
+          "steps": [
+            "Index members by ID and current assignments by patient plus role.",
+            "On reassignment, remove the patient from the former member's current set."
+          ],
+          "pitfalls": [
+            "allowing only one member across all roles",
+            "leaving stale reverse membership after reassignment"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "When a member is full, which assignment case must remain a capacity no-op?",
+          "concepts": [
+            "capacity invariant",
+            "validate-before-mutate"
+          ],
+          "steps": [
+            "Count distinct currently assigned patients.",
+            "Check capacity before removing an existing role assignment."
+          ],
+          "pitfalls": [
+            "rejecting reassignment to the same member",
+            "freeing the old slot before discovering the new member is full"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "How can each reassignment close one interval while opening the next?",
+          "concepts": [
+            "half-open temporal intervals",
+            "audit history"
+          ],
+          "steps": [
+            "Record role-specific assignment intervals in chronological order.",
+            "Implement point-in-time lookup by consuming get_history."
+          ],
+          "pitfalls": [
+            "making both assignments active at the transition timestamp",
+            "duplicating historical lookup outside get_history"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "A failed move to a full member leaves the patient unassigned",
+            "cause": "Old state was removed before capacity validation",
+            "check": "Compare all current and reverse indexes before and after the exception."
+          },
+          {
+            "symptom": "The old member is returned exactly at reassignment time",
+            "cause": "Closed intervals use an inclusive end",
+            "check": "Verify assignment windows follow start-inclusive, end-exclusive semantics."
+          }
+        ]
+      }
+    }
+  },
+  "python-08": {
+    "id": "python-08",
+    "title": "Patient Enrollment Pipeline",
+    "description": "Model a clinical enrollment state machine with duration metrics, conversion rates between stages, and SLA monitoring for patients overdue in a state.",
+    "language": "python",
+    "industry": "health-tech",
+    "tags": [
+      "state-machine",
+      "metrics",
+      "conversion-rate",
+      "sla-monitoring",
+      "clinical"
+    ],
+    "level": "senior",
+    "stubPath": "python/practice_problems/problem_08_enrollment_pipeline.py",
+    "testPath": "python/tests/test_problem_08_enrollment_pipeline.py",
+    "sourceScript": "journey-sources/python-08.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": "pipeline = EnrollmentPipeline()\npipeline.add_patient(\"p_001\", timestamp=0.0)\npipeline.transition(\"p_001\", \"screened\", timestamp=86400.0)   # 1 day later\npipeline.transition(\"p_001\", \"enrolled\", timestamp=172800.0)  # 2 days later\npipeline.get_state(\"p_001\")                   # -> \"enrolled\"\npipeline.get_patients_in_state(\"enrolled\")    # -> [\"p_001\"]\n\npipeline.add_patient(\"p_002\", timestamp=0.0)\npipeline.transition(\"p_002\", \"screened\",   timestamp=43200.0)\npipeline.transition(\"p_002\", \"ineligible\", timestamp=86400.0)\npipeline.get_patients_in_state(\"screened\")    # -> []  (both have moved on)\n\n# Part 2\npipeline.time_in_state(\"p_001\", \"screened\", as_of=999999.0)\n# -> 86400.0  (172800 - 86400; already exited, as_of ignored)\npipeline.conversion_rate(\"screened\", \"enrolled\")\n# -> 0.5  (p_001 enrolled, p_002 ineligible; one of two converted)\n\n# Part 3\npipeline.transition(\"p_001\", \"active\", timestamp=259200.0)\npipeline.patients_overdue(\"active\", max_seconds=3600.0, as_of=270000.0)\n# -> [\"p_001\"]  (has been active 10800 s > 3600 s threshold)\npipeline.average_time_in_state(\"screened\", as_of=999999.0)\n# -> 64800.0  ((86400 + 43200) / 2; both p_001 and p_002 have exited screened)\n\"\"\"\n\n\nALLOWED_TRANSITIONS: dict[str, set[str]] = {\n    \"referred\": {\"screened\"},\n    \"screened\": {\"enrolled\", \"ineligible\"},\n    \"enrolled\": {\"active\", \"withdrawn\"},\n    \"active\": {\"graduated\", \"churned\", \"withdrawn\"},\n}\n\nTERMINAL_STATES: set[str] = {\"ineligible\", \"withdrawn\", \"graduated\", \"churned\"}\n\n\nclass EnrollmentPipeline:\n    \"\"\"\n    Tracks patients moving through a structured clinical enrollment pipeline.\n\n    You choose the internal data structures — the public interface is what matters.\n\n    Store all state in instance variables initialized in `__init__`.\n    Class-level variables will bleed between tests and between EnrollmentPipeline\n    instances — avoid them.\n    \"\"\"\n\n    def __init__(self) -> None:\n        raise NotImplementedError\n\n── Part 1: State tracking ────────────────────────────────────────────────\n\n    def add_patient(self, patient_id: str, timestamp: float = 0.0) -> None:\n        \"\"\"\n        Register a patient in the pipeline at the \"referred\" state.\n        timestamp is when they entered the \"referred\" state (Unix seconds).\n        Raises ValueError if patient_id is already registered.\n        \"\"\"\n        raise NotImplementedError\n\n    def transition(self, patient_id: str, new_state: str, timestamp: float) -> None:\n        \"\"\"\n        Advance a patient to new_state at the given timestamp.\n\n        Raises ValueError if:\n          - patient_id is not registered.\n          - new_state is not a valid next state from the patient's current state\n            (consult ALLOWED_TRANSITIONS).\n          - the patient is already in a terminal state.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_state(self, patient_id: str) -> str:\n        \"\"\"Return the patient's current state. Raises ValueError if not registered.\"\"\"\n        raise NotImplementedError\n\n    def get_patients_in_state(self, state: str) -> list[str]:\n        \"\"\"Return a sorted list of patient_ids currently in the given state.\"\"\"\n        raise NotImplementedError\n\n── Part 2: Duration and conversion metrics ───────────────────────────────\n\n    def time_in_state(self, patient_id: str, state: str, as_of: float) -> float:\n        \"\"\"\n        Return the total seconds the patient has spent in the given state.\n\n        - If the patient is currently in that state, count time from state entry\n          up to as_of.\n        - If the patient has already left that state, return the exact duration\n          spent there (as_of is ignored).\n        - Returns 0.0 if the patient has never been in that state.\n\n        With the allowed transitions above, each state is visited at most once,\n        so there is no ambiguity about multiple visits.\n        \"\"\"\n        raise NotImplementedError\n\n    def conversion_rate(self, from_state: str, to_state: str) -> float:\n        \"\"\"\n        Of all patients who have exited from_state, return the fraction that\n        transitioned directly to to_state.\n\n        - Only patients who have already left from_state are counted; patients\n          currently sitting in from_state are excluded (still undecided).\n        - Returns 0.0 if no patients have exited from_state yet.\n\n        Example: conversion_rate(\"screened\", \"enrolled\") returns the share of\n        screened patients who went on to enroll (vs. being marked ineligible).\n        \"\"\"\n        raise NotImplementedError\n\n── Part 3: SLA monitoring ────────────────────────────────────────────────\n\n    def patients_overdue(\n        self, state: str, max_seconds: float, as_of: float\n    ) -> list[str]:\n        \"\"\"\n        Return patient_ids currently in state who have spent more than\n        max_seconds there, sorted by time spent descending (longest-waiting first).\n\n        Call time_in_state() for each patient's duration — do not re-implement\n        the duration logic here.\n        \"\"\"\n        raise NotImplementedError\n\n    def average_time_in_state(self, state: str, as_of: float) -> float:\n        \"\"\"\n        Return the mean seconds spent in state across all patients who have fully\n        exited that state (their time is complete and will not grow further).\n\n        - Patients currently in state are excluded from the average.\n        - Returns 0.0 if no patients have fully exited state yet.\n\n        Call time_in_state() for each patient's duration.\n        \"\"\"\n        raise NotImplementedError",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "State tracking",
+        "contract": "add_patient(patient_id, timestamp)\n  transition(patient_id, new_state, timestamp)\n  get_state(patient_id)              -> str\n  get_patients_in_state(state)       -> list[str]"
+      },
+      {
+        "part": 2,
+        "title": "Duration and conversion metrics",
+        "contract": "time_in_state(patient_id, state, as_of) -> float\n  conversion_rate(from_state, to_state)   -> float"
+      },
+      {
+        "part": 3,
+        "title": "SLA monitoring",
+        "contract": "patients_overdue(state, max_seconds, as_of) -> list[str]\n  average_time_in_state(state, as_of)         -> float\n\nExample\npipeline = EnrollmentPipeline()\npipeline.add_patient(\"p_001\", timestamp=0.0)\npipeline.transition(\"p_001\", \"screened\", timestamp=86400.0)   # 1 day later\npipeline.transition(\"p_001\", \"enrolled\", timestamp=172800.0)  # 2 days later\npipeline.get_state(\"p_001\")                   # -> \"enrolled\"\npipeline.get_patients_in_state(\"enrolled\")    # -> [\"p_001\"]\n\npipeline.add_patient(\"p_002\", timestamp=0.0)\npipeline.transition(\"p_002\", \"screened\",   timestamp=43200.0)\npipeline.transition(\"p_002\", \"ineligible\", timestamp=86400.0)\npipeline.get_patients_in_state(\"screened\")    # -> []  (both have moved on)\n\n# Part 2\npipeline.time_in_state(\"p_001\", \"screened\", as_of=999999.0)\n# -> 86400.0  (172800 - 86400; already exited, as_of ignored)\npipeline.conversion_rate(\"screened\", \"enrolled\")\n# -> 0.5  (p_001 enrolled, p_002 ineligible; one of two converted)\n\n# Part 3\npipeline.transition(\"p_001\", \"active\", timestamp=259200.0)\npipeline.patients_overdue(\"active\", max_seconds=3600.0, as_of=270000.0)\n# -> [\"p_001\"]  (has been active 10800 s > 3600 s threshold)\npipeline.average_time_in_state(\"screened\", as_of=999999.0)\n# -> 64800.0  ((86400 + 43200) / 2; both p_001 and p_002 have exited screened)\n\"\"\"\n\n\nALLOWED_TRANSITIONS: dict[str, set[str]] = {\n    \"referred\": {\"screened\"},\n    \"screened\": {\"enrolled\", \"ineligible\"},\n    \"enrolled\": {\"active\", \"withdrawn\"},\n    \"active\": {\"graduated\", \"churned\", \"withdrawn\"},\n}\n\nTERMINAL_STATES: set[str] = {\"ineligible\", \"withdrawn\", \"graduated\", \"churned\"}\n\n\nclass EnrollmentPipeline:\n    \"\"\"\n    Tracks patients moving through a structured clinical enrollment pipeline.\n\n    You choose the internal data structures — the public interface is what matters.\n\n    Store all state in instance variables initialized in `__init__`.\n    Class-level variables will bleed between tests and between EnrollmentPipeline\n    instances — avoid them.\n    \"\"\"\n\n    def __init__(self) -> None:\n        raise NotImplementedError\n\n── Part 1: State tracking ────────────────────────────────────────────────\n\n    def add_patient(self, patient_id: str, timestamp: float = 0.0) -> None:\n        \"\"\"\n        Register a patient in the pipeline at the \"referred\" state.\n        timestamp is when they entered the \"referred\" state (Unix seconds).\n        Raises ValueError if patient_id is already registered.\n        \"\"\"\n        raise NotImplementedError\n\n    def transition(self, patient_id: str, new_state: str, timestamp: float) -> None:\n        \"\"\"\n        Advance a patient to new_state at the given timestamp.\n\n        Raises ValueError if:\n          - patient_id is not registered.\n          - new_state is not a valid next state from the patient's current state\n            (consult ALLOWED_TRANSITIONS).\n          - the patient is already in a terminal state.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_state(self, patient_id: str) -> str:\n        \"\"\"Return the patient's current state. Raises ValueError if not registered.\"\"\"\n        raise NotImplementedError\n\n    def get_patients_in_state(self, state: str) -> list[str]:\n        \"\"\"Return a sorted list of patient_ids currently in the given state.\"\"\"\n        raise NotImplementedError\n\n── Part 2: Duration and conversion metrics ───────────────────────────────\n\n    def time_in_state(self, patient_id: str, state: str, as_of: float) -> float:\n        \"\"\"\n        Return the total seconds the patient has spent in the given state.\n\n        - If the patient is currently in that state, count time from state entry\n          up to as_of.\n        - If the patient has already left that state, return the exact duration\n          spent there (as_of is ignored).\n        - Returns 0.0 if the patient has never been in that state.\n\n        With the allowed transitions above, each state is visited at most once,\n        so there is no ambiguity about multiple visits.\n        \"\"\"\n        raise NotImplementedError\n\n    def conversion_rate(self, from_state: str, to_state: str) -> float:\n        \"\"\"\n        Of all patients who have exited from_state, return the fraction that\n        transitioned directly to to_state.\n\n        - Only patients who have already left from_state are counted; patients\n          currently sitting in from_state are excluded (still undecided).\n        - Returns 0.0 if no patients have exited from_state yet.\n\n        Example: conversion_rate(\"screened\", \"enrolled\") returns the share of\n        screened patients who went on to enroll (vs. being marked ineligible).\n        \"\"\"\n        raise NotImplementedError\n\n── Part 3: SLA monitoring ────────────────────────────────────────────────\n\n    def patients_overdue(\n        self, state: str, max_seconds: float, as_of: float\n    ) -> list[str]:\n        \"\"\"\n        Return patient_ids currently in state who have spent more than\n        max_seconds there, sorted by time spent descending (longest-waiting first).\n\n        Call time_in_state() for each patient's duration — do not re-implement\n        the duration logic here.\n        \"\"\"\n        raise NotImplementedError\n\n    def average_time_in_state(self, state: str, as_of: float) -> float:\n        \"\"\"\n        Return the mean seconds spent in state across all patients who have fully\n        exited that state (their time is complete and will not grow further).\n\n        - Patients currently in state are excluded from the average.\n        - Returns 0.0 if no patients have fully exited state yet.\n\n        Call time_in_state() for each patient's duration.\n        \"\"\"\n        raise NotImplementedError"
+      }
+    ],
+    "testSuites": [
+      "TestAddPatient",
+      "TestTransition",
+      "TestGetState",
+      "TestGetPatientsInState",
+      "TestTimeInState",
+      "TestConversionRate",
+      "TestPatientsOverdue",
+      "TestAverageTimeInState"
+    ],
+    "commands": {
+      "answerPath": "python/practice_problem_answers/my_answer_08_enrollment_pipeline.py",
+      "copyCommand": "cp python/practice_problems/problem_08_enrollment_pipeline.py python/practice_problem_answers/my_answer_08_enrollment_pipeline.py",
+      "openCommand": "code python/practice_problems/problem_08_enrollment_pipeline.py",
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_08_enrollment_pipeline.py -c pytest python/tests/test_problem_08_enrollment_pipeline.py -v"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "What append-only transition record preserves both current state and the full enrollment path?",
+          "concepts": [
+            "finite-state transitions",
+            "event history"
+          ],
+          "steps": [
+            "Validate each requested move against the current state.",
+            "Update current state and history as one mutation."
+          ],
+          "pitfalls": [
+            "accepting skipped or backward transitions",
+            "storing only the latest state"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "Which entry and exit timestamps define time in a state, including a currently open stay?",
+          "concepts": [
+            "state interval duration",
+            "cohort conversion"
+          ],
+          "steps": [
+            "Derive intervals from the Part 1 history.",
+            "Define conversion cohorts from patients who reached the source state."
+          ],
+          "pitfalls": [
+            "using patient creation time for every state",
+            "dividing by all registered patients instead of the source cohort"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "How can SLA and average-duration queries reuse the same state-duration meaning?",
+          "concepts": [
+            "threshold filtering",
+            "composed metrics"
+          ],
+          "steps": [
+            "Filter current-state patients by time_in_state.",
+            "Average the same duration measure over the documented population."
+          ],
+          "pitfalls": [
+            "including patients who already left the state in overdue results",
+            "using a different duration calculation for averages"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "A patient who left a stage is still reported overdue there",
+            "cause": "Historical membership was confused with current membership",
+            "check": "Intersect the SLA candidates with get_patients_in_state."
+          },
+          {
+            "symptom": "Conversion exceeds its logical cohort",
+            "cause": "The denominator does not represent patients who reached from_state",
+            "check": "Write down numerator and denominator membership before dividing."
+          }
+        ]
+      }
+    }
+  },
+  "python-09": {
+    "id": "python-09",
+    "title": "Multi-Source Incident Aggregator",
+    "description": "Ingest reports from multiple data sources, manually group them into unified incidents, and auto-deduplicate new arrivals using a sliding time window.",
+    "language": "python",
+    "industry": "public-safety",
+    "tags": [
+      "event-deduplication",
+      "time-window",
+      "alert-system",
+      "event-driven"
+    ],
+    "level": "senior",
+    "stubPath": "python/practice_problems/problem_09_incident_aggregator.py",
+    "testPath": "python/tests/test_problem_09_incident_aggregator.py",
+    "sourceScript": "journey-sources/python-09.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": "agg = IncidentAggregator()\nagg.ingest_report(\"r1\", \"radio-north\", \"shooting\", \"downtown\", \"2024-01-01T10:00:00\")\nagg.ingest_report(\"r2\", \"radio-south\", \"shooting\", \"downtown\", \"2024-01-01T10:00:45\")\nagg.ingest_report(\"r3\", \"social-feed\", \"car-crash\", \"midtown\",  \"2024-01-01T10:01:00\")\ninc = agg.create_incident(\"inc-001\", \"shooting\", \"downtown\")\nagg.add_report_to_incident(\"inc-001\", \"r1\")\nagg.add_report_to_incident(\"inc-001\", \"r2\")\nagg.get_incident(\"inc-001\")[\"report_count\"]           # -> 2\nagg.get_unassigned_reports()                           # -> [r3 report dict]\nagg.auto_ingest_report(\"r4\", \"radio-east\", \"shooting\",\n                        \"downtown\", \"2024-01-01T10:01:30\",\n                        time_window_secs=120)\n# -> \"inc-001\"  (within 120 s window, same type + location)",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Report ingestion",
+        "contract": "def ingest_report(\n        self,\n        report_id: str,\n        source_id: str,\n        event_type: str,\n        location_key: str,\n        ts: str,\n    ) -> dict:\n        \"\"\"\n        Store a new raw report and return it.\n        The report's incident_id starts as None.\n        Raise ValueError if report_id already exists.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_report(self, report_id: str) -> Optional[dict]:\n        \"\"\"Return the report dict, or None if not found.\"\"\"\n        raise NotImplementedError\n\n    def get_reports(\n        self,\n,\n        location_key: Optional[str] = None,\n        event_type: Optional[str] = None,\n    ) -> list:\n        \"\"\"\n        Return all reports, optionally filtered by location_key and/or\n        event_type (both filters applied when both are given).\n        Results are sorted by ts ascending.\n        \"\"\"\n        raise NotImplementedError"
+      },
+      {
+        "part": 2,
+        "title": "Manual incident grouping",
+        "contract": "def create_incident(\n        self, incident_id: str, event_type: str, location_key: str\n    ) -> dict:\n        \"\"\"\n        Create and return a new, empty incident with the given event_type and\n        location_key.\n        Raise ValueError if incident_id already exists.\n        \"\"\"\n        raise NotImplementedError\n\n    def add_report_to_incident(self, incident_id: str, report_id: str) -> None:\n        \"\"\"\n        Assign a report to an incident.\n        - Raise KeyError  if incident_id or report_id does not exist.\n        - Raise ValueError if the report is already assigned to any incident.\n        - Sets report[\"incident_id\"] = incident_id.\n        - Updates the incident's report_ids (kept in ts-ascending order),\n          report_count, and latest_ts.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_incident(self, incident_id: str) -> Optional[dict]:\n        \"\"\"\n        Return the incident dict (including up-to-date report_ids, report_count,\n        and latest_ts), or None if not found.\n        report_ids must be ordered by the corresponding report's ts, ascending.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_unassigned_reports(self) -> list:\n        \"\"\"\n        Return all reports whose incident_id is still None, sorted by ts\n        ascending.\n        \"\"\"\n        raise NotImplementedError"
+      },
+      {
+        "part": 3,
+        "title": "Automatic deduplication",
+        "contract": "def auto_ingest_report(\n        self,\n        report_id: str,\n        source_id: str,\n        event_type: str,\n        location_key: str,\n        ts: str,\n        time_window_secs: int,\n    ) -> str:\n        \"\"\"\n        Ingest a new report and automatically assign it to an incident:\n\n        1. Call ingest_report to store the report.\n        2. Find all *active* incidents whose event_type and location_key match\n           the incoming report's.  An incident is \"active\" if its latest_ts is\n           within time_window_secs of the new report's ts:\n               latest_ts >= ts - time_window_secs\n           Incidents with no reports (latest_ts is None) are not active.\n        3. If one or more matches exist, pick the one whose latest_ts is closest\n           to ts (i.e. most recently active).  Break ties by incident_id\n           lexicographically ascending.\n        4. If no active match exists, create a new incident (auto-generate a\n           unique incident_id; any scheme is fine as long as it doesn't clash\n           with existing IDs).\n        5. Call add_report_to_incident to assign the report.\n        6. Return the incident_id.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_active_incidents(self, as_of_ts: str, time_window_secs: int) -> list:\n        \"\"\"\n        Return all incidents that have a latest_ts within time_window_secs of\n        as_of_ts:\n            latest_ts >= as_of_ts - time_window_secs\n\n        Sorted by latest_ts descending (most-recently-active first).\n        Incidents with no reports (latest_ts is None) are excluded.\n        \"\"\"\n        raise NotImplementedError"
+      }
+    ],
+    "testSuites": [
+      "TestIngestReport",
+      "TestGetReports",
+      "TestCreateIncident",
+      "TestAddReportToIncident",
+      "TestGetIncident",
+      "TestGetUnassignedReports",
+      "TestAutoIngestReport",
+      "TestGetActiveIncidents"
+    ],
+    "commands": {
+      "answerPath": "python/practice_problem_answers/my_answer_09_incident_aggregator.py",
+      "copyCommand": "cp python/practice_problems/problem_09_incident_aggregator.py python/practice_problem_answers/my_answer_09_incident_aggregator.py",
+      "openCommand": "code python/practice_problems/problem_09_incident_aggregator.py",
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_09_incident_aggregator.py -c pytest python/tests/test_problem_09_incident_aggregator.py -v"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Which canonical timestamp and severity ordering keeps report queries deterministic?",
+          "concepts": [
+            "validated ingestion",
+            "multi-key sorting"
+          ],
+          "steps": [
+            "Reject duplicate report IDs before storing a complete record.",
+            "Centralize filtering and ordering for report queries."
+          ],
+          "pitfalls": [
+            "sorting ISO timestamps inconsistently",
+            "returning mutable internal dicts"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "What invariant guarantees one report belongs to at most one incident?",
+          "concepts": [
+            "many-to-one grouping",
+            "referential integrity"
+          ],
+          "steps": [
+            "Validate both IDs and current ownership before mutation.",
+            "Derive unassigned reports from the same ownership mapping."
+          ],
+          "pitfalls": [
+            "adding a report to two incidents",
+            "partially mutating the incident before validation"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "Which existing active incident is the deterministic best match for a new report?",
+          "concepts": [
+            "deduplication window",
+            "method composition"
+          ],
+          "steps": [
+            "Ingest through the Part 1 method first.",
+            "Filter candidates by type, location, status, and time window, then group through Part 2 methods."
+          ],
+          "pitfalls": [
+            "building a parallel ingestion path",
+            "matching against resolved or expired incidents"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "One report appears in multiple incidents",
+            "cause": "Incident membership is stored independently without a global ownership check",
+            "check": "Trace a report ID through every grouping mutation."
+          },
+          {
+            "symptom": "Automatic and manual incidents have different record shapes",
+            "cause": "auto_ingest constructs records instead of composing public methods",
+            "check": "Confirm automatic ingestion delegates to ingest and grouping operations."
+          }
+        ]
+      }
+    }
+  },
+  "python-10": {
+    "id": "python-10",
+    "title": "Responder Dispatch Manager",
+    "description": "Route incoming incident alerts to field responders based on type subscriptions and capacity limits, with auto-assignment selecting the least-loaded eligible unit.",
+    "language": "python",
+    "industry": "public-safety",
+    "tags": [
+      "dispatch",
+      "capacity-constraints",
+      "priority-queue",
+      "auto-assignment"
+    ],
+    "level": "senior",
+    "stubPath": "python/practice_problems/problem_10_dispatch_manager.py",
+    "testPath": "python/tests/test_problem_10_dispatch_manager.py",
+    "sourceScript": "journey-sources/python-10.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": "dm = DispatchManager()\ndm.register_responder(\"unit-12\", \"Alpha Team\",\n                       subscribed_types=[\"shooting\", \"robbery\"], capacity=3)\ndm.register_responder(\"unit-14\", \"Beta Team\",\n                       subscribed_types=[\"car-crash\", \"fire\"], capacity=2)\ndm.add_incident(\"inc-001\", \"shooting\", severity=5, ts=\"2024-01-01T10:00:00\")\ndm.add_incident(\"inc-002\", \"car-crash\", severity=3, ts=\"2024-01-01T10:01:00\")\ndm.get_incidents_for_responder(\"unit-12\")   # -> [inc-001 dict]\ndm.assign_incident(\"inc-001\", \"unit-12\")\ndm.get_open_assignments(\"unit-12\")          # -> [inc-001 dict]\ndm.auto_assign(\"inc-002\")                   # -> \"unit-14\"",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Registration and basic queries",
+        "contract": "def register_responder(\n        self,\n        responder_id: str,\n        name: str,\n        subscribed_types: list,\n        capacity: int,\n    ) -> dict:\n        \"\"\"\n        Register a new responder and return it.\n        Raise ValueError if responder_id already exists.\n        \"\"\"\n        raise NotImplementedError\n\n    def add_incident(\n        self,\n        incident_id: str,\n        incident_type: str,\n        severity: int,\n        ts: str,\n    ) -> dict:\n        \"\"\"\n        Add a new incident (unassigned, unresolved) and return it.\n        Raise ValueError if incident_id already exists.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_incidents_for_responder(self, responder_id: str) -> list:\n        \"\"\"\n        Return all incidents whose incident_type appears in the responder's\n        subscribed_types list, regardless of whether the incident has been\n        assigned yet.\n\n        Sort order: severity descending (5 first), then ts ascending (oldest\n        first within the same severity).\n\n        Raise KeyError if responder_id does not exist.\n        \"\"\"\n        raise NotImplementedError"
+      },
+      {
+        "part": 2,
+        "title": "Assignment and resolution",
+        "contract": "def assign_incident(self, incident_id: str, responder_id: str) -> None:\n        \"\"\"\n        Assign an incident to a responder.\n        - Raise KeyError   if incident_id or responder_id does not exist.\n        - Raise ValueError if the incident already has a responder assigned.\n        - Raise ValueError if the responder is at capacity.  A responder is at\n          capacity when their count of open assignments (assigned + not yet\n          resolved) equals their capacity.\n        - On success, sets incident[\"responder_id\"] = responder_id.\n        \"\"\"\n        raise NotImplementedError\n\n    def resolve_incident(self, incident_id: str) -> None:\n        \"\"\"\n        Mark an incident as resolved (sets resolved = True), freeing the\n        assigned responder's capacity slot.\n        - Raise KeyError   if incident_id does not exist.\n        - Raise ValueError if the incident is already resolved.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_open_assignments(self, responder_id: str) -> list:\n        \"\"\"\n        Return all incidents that are assigned to this responder and not yet\n        resolved.\n        Sort order: severity descending, then ts ascending.\n        Raise KeyError if responder_id does not exist.\n        \"\"\"\n        raise NotImplementedError"
+      },
+      {
+        "part": 3,
+        "title": "Auto-assignment",
+        "contract": "def auto_assign(self, incident_id: str) -> str:\n        \"\"\"\n        Automatically assign an incident to the best available responder:\n\n        Eligibility (both must hold):\n          1. The responder's subscribed_types includes the incident's\n             incident_type.\n          2. The responder's current open-assignment count is less than their\n             capacity.\n\n        Selection — among eligible responders, prefer:\n          1. Fewest open assignments (least loaded).\n          2. Tie-break: highest capacity (largest capacity value).\n          3. Tie-break: responder_id lexicographically ascending.\n\n        - Raise KeyError   if incident_id does not exist.\n        - Raise ValueError if the incident is already assigned.\n        - Raise ValueError if no eligible responder is available.\n\n        Call assign_incident to perform the assignment and return the\n        responder_id of the chosen responder.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_dispatch_summary(self) -> list:\n        \"\"\"\n        Return a list of dicts — one per registered responder — with fields:\n          \"responder_id\":       str\n          \"name\":               str\n          \"capacity\":           int\n          \"open_count\":         int  (current open assignments)\n          \"available_capacity\": int  (capacity - open_count)\n\n        Sorted by responder_id ascending.\n        \"\"\"\n        raise NotImplementedError"
+      }
+    ],
+    "testSuites": [
+      "TestRegisterResponder",
+      "TestAddIncident",
+      "TestGetIncidentsForResponder",
+      "TestAssignIncident",
+      "TestResolveIncident",
+      "TestGetOpenAssignments",
+      "TestAutoAssign",
+      "TestGetDispatchSummary"
+    ],
+    "commands": {
+      "answerPath": "python/practice_problem_answers/my_answer_10_dispatch_manager.py",
+      "copyCommand": "cp python/practice_problems/problem_10_dispatch_manager.py python/practice_problem_answers/my_answer_10_dispatch_manager.py",
+      "openCommand": "code python/practice_problems/problem_10_dispatch_manager.py",
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_10_dispatch_manager.py -c pytest python/tests/test_problem_10_dispatch_manager.py -v"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Which keyed records and one incident ordering rule make registration queries predictable?",
+          "concepts": [
+            "registry invariants",
+            "severity ordering"
+          ],
+          "steps": [
+            "Validate readable IDs before insertion.",
+            "Sort responder incidents by the documented severity, time, and ID keys."
+          ],
+          "pitfalls": [
+            "using responder names as identity",
+            "depending on dictionary order"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "Which incidents count toward capacity, and when should assignment validation occur?",
+          "concepts": [
+            "capacity accounting",
+            "state transitions"
+          ],
+          "steps": [
+            "Count assigned unresolved incidents only.",
+            "Validate incident and responder state before mutating either record."
+          ],
+          "pitfalls": [
+            "counting resolved incidents",
+            "allowing reassignment to silently overfill a responder"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "How should candidate selection compose with the authoritative manual assignment boundary?",
+          "concepts": [
+            "eligibility ranking",
+            "method composition"
+          ],
+          "steps": [
+            "Filter responders by subscription and available capacity.",
+            "Apply deterministic load and ID tie-breaks, then call assign_incident."
+          ],
+          "pitfalls": [
+            "duplicating assignment mutation",
+            "choosing unsubscribed or full responders"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "Resolved work still consumes capacity",
+            "cause": "Load counts every assigned incident",
+            "check": "Inspect the predicate used by open assignments and dispatch summaries."
+          },
+          {
+            "symptom": "Auto-assignment and manual assignment diverge",
+            "cause": "Automatic selection owns a second mutation path",
+            "check": "Trace the selected responder into assign_incident."
+          }
+        ]
+      }
+    }
+  },
+  "python-11": {
+    "id": "python-11",
+    "title": "Sensor Coverage Tracker",
+    "description": "Monitor radio-receiver station health via heartbeats, track outage history with duration metrics, and compute per-region coverage status.",
+    "language": "python",
+    "industry": "public-safety",
+    "tags": [
+      "heartbeat-monitoring",
+      "outage-tracking",
+      "time-series",
+      "coverage-analysis"
+    ],
+    "level": "senior",
+    "stubPath": "python/practice_problems/problem_11_coverage_tracker.py",
+    "testPath": "python/tests/test_problem_11_coverage_tracker.py",
+    "sourceScript": "journey-sources/python-11.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": "ct = CoverageTracker()\nct.register_station(\"sta-001\", \"North Tower\", region=\"downtown\")\nct.register_station(\"sta-002\", \"South Tower\", region=\"downtown\")\nct.record_heartbeat(\"sta-001\", \"2024-01-01T10:00:00\")\nct.record_heartbeat(\"sta-002\", \"2024-01-01T10:00:05\")\nct.get_last_heartbeat(\"sta-001\")              # -> \"2024-01-01T10:00:00\"\nct.get_stale_stations(\"2024-01-01T10:05:00\", stale_after_secs=120)  # -> []\nct.record_outage_start(\"sta-001\", \"2024-01-01T10:10:00\")\nct.get_region_coverage(\"downtown\", \"2024-01-01T10:10:30\", stale_after_secs=120)\n# -> {\"region\": \"downtown\", \"total\": 2, \"healthy\": 1, \"stale\": 1,\n#     \"has_coverage\": True}",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Station registration and heartbeats",
+        "contract": "def register_station(self, station_id: str, name: str, region: str) -> dict:\n        \"\"\"\n        Register a new station and return it.\n        Raise ValueError if station_id already exists.\n        \"\"\"\n        raise NotImplementedError\n\n    def record_heartbeat(self, station_id: str, ts: str) -> None:\n        \"\"\"\n        Record a heartbeat for the station.\n        - Raise KeyError   if station_id does not exist.\n        - Raise ValueError if ts is earlier than or equal to the station's most\n          recent heartbeat (out-of-order and duplicate heartbeats are rejected).\n        \"\"\"\n        raise NotImplementedError\n\n    def get_last_heartbeat(self, station_id: str) -> Optional[str]:\n        \"\"\"\n        Return the timestamp of the most recent heartbeat, or None if the\n        station has never sent one.\n        Raise KeyError if station_id does not exist.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_stations(self, region: Optional[str] = None) -> list:\n        \"\"\"\n        Return all stations, optionally filtered to a specific region.\n        Sorted by station_id ascending.\n        \"\"\"\n        raise NotImplementedError"
+      },
+      {
+        "part": 2,
+        "title": "Staleness detection and outage tracking",
+        "contract": "def get_stale_stations(self, as_of_ts: str, stale_after_secs: int) -> list:\n        \"\"\"\n        Return station dicts for all stations that are stale as of as_of_ts.\n        A station is stale if:\n          - It has never sent a heartbeat, OR\n          - Its last heartbeat was more than stale_after_secs seconds before\n            as_of_ts  (i.e. as_of_ts - last_heartbeat > stale_after_secs).\n\n        Results are sorted by station_id ascending.\n        \"\"\"\n        raise NotImplementedError\n\n    def record_outage_start(self, station_id: str, ts: str) -> None:\n        \"\"\"\n        Open a new outage record for the station (end_ts = None).\n        - Raise KeyError   if station_id does not exist.\n        - Raise ValueError if the station already has an open outage\n          (an outage with end_ts = None).\n        \"\"\"\n        raise NotImplementedError\n\n    def record_outage_end(self, station_id: str, ts: str) -> None:\n        \"\"\"\n        Close the most recent open outage for the station by setting its\n        end_ts = ts.\n        - Raise KeyError   if station_id does not exist.\n        - Raise ValueError if the station has no open outage.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_outages(self, station_id: str) -> list:\n        \"\"\"\n        Return all Outage dicts for the station, sorted by start_ts ascending.\n        Raise KeyError if station_id does not exist.\n        \"\"\"\n        raise NotImplementedError"
+      },
+      {
+        "part": 3,
+        "title": "Coverage analysis",
+        "contract": "def get_region_coverage(\n        self, region: str, as_of_ts: str, stale_after_secs: int\n    ) -> dict:\n        \"\"\"\n        Return a coverage summary for the region:\n          {\n            \"region\":       str,\n            \"total\":        int,   # stations in this region\n            \"healthy\":      int,   # stations NOT stale\n            \"stale\":        int,   # stations that ARE stale\n            \"has_coverage\": bool,  # True if healthy >= 1\n          }\n\n        Use get_stations (Part 1) and get_stale_stations (Part 2) internally.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_outage_summary(self, station_id: str, as_of_ts: str) -> dict:\n        \"\"\"\n        Return an outage summary for the station:\n          {\n            \"station_id\":        str,\n            \"total_outages\":     int,   # number of outage records\n            \"open_outage\":       bool,  # True if there is a current open outage\n            \"total_outage_secs\": int,   # cumulative outage duration in seconds\n          }\n\n        For an open outage (end_ts is None), count duration from start_ts up\n        to as_of_ts.\n\n        Use get_outages (Part 2) internally.\n        Raise KeyError if station_id does not exist.\n        \"\"\"\n        raise NotImplementedError"
+      }
+    ],
+    "testSuites": [
+      "TestRegisterStation",
+      "TestRecordHeartbeat",
+      "TestGetLastHeartbeat",
+      "TestGetStations",
+      "TestGetStaleStations",
+      "TestRecordOutageStartEnd",
+      "TestGetRegionCoverage",
+      "TestGetOutageSummary"
+    ],
+    "commands": {
+      "answerPath": "python/practice_problem_answers/my_answer_11_coverage_tracker.py",
+      "copyCommand": "cp python/practice_problems/problem_11_coverage_tracker.py python/practice_problem_answers/my_answer_11_coverage_tracker.py",
+      "openCommand": "code python/practice_problems/problem_11_coverage_tracker.py",
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_11_coverage_tracker.py -c pytest python/tests/test_problem_11_coverage_tracker.py -v"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Which station facts are immutable, and which heartbeat rule rejects stale updates?",
+          "concepts": [
+            "instance registries",
+            "ISO timestamp ordering"
+          ],
+          "steps": [
+            "Keep station metadata and latest heartbeat keyed by station ID.",
+            "Accept only a strictly newer heartbeat and return sorted snapshots."
+          ],
+          "pitfalls": [
+            "accepting duplicate timestamps",
+            "exposing dictionary insertion order"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "What exact comparison defines stale, and how is one open outage represented?",
+          "concepts": [
+            "temporal boundary",
+            "open interval invariant"
+          ],
+          "steps": [
+            "Parse timestamps for elapsed-seconds comparisons.",
+            "Permit a new outage only after the previous one is closed."
+          ],
+          "pitfalls": [
+            "marking equality with the threshold stale",
+            "closing an arbitrary rather than the open outage"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "Which Part 1 and Part 2 snapshots already contain all facts for coverage and outage totals?",
+          "concepts": [
+            "method composition",
+            "duration aggregation"
+          ],
+          "steps": [
+            "Intersect regional stations with stale station IDs.",
+            "Reduce get_outages and extend an open interval only to as_of."
+          ],
+          "pitfalls": [
+            "reimplementing station filters",
+            "ignoring open-outage duration"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "A station exactly at the threshold is stale",
+            "cause": "The comparison is inclusive",
+            "check": "Compare elapsed seconds with a strict greater-than boundary."
+          },
+          {
+            "symptom": "Region totals include stations elsewhere",
+            "cause": "Global stale counts were used without regional intersection",
+            "check": "Compare IDs from get_stations(region) with get_stale_stations."
+          }
+        ]
+      }
+    }
+  },
+  "python-12": {
+    "id": "python-12",
+    "title": "Contract Expiration Alert Scheduler",
+    "description": "Schedule and track expiration alerts for contracts — register global alert configs, compute per-contract alert schedules, query due alerts, and track sent state.",
+    "language": "python",
+    "industry": "legal-tech",
+    "tags": [
+      "scheduling",
+      "date-arithmetic",
+      "clm",
+      "notifications"
+    ],
+    "level": "senior",
+    "stubPath": "python/practice_problems/problem_12_contract_alert_scheduler.py",
+    "testPath": "python/tests/test_problem_12_contract_alert_scheduler.py",
+    "sourceScript": "journey-sources/python-12.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": "scheduler = ContractAlertScheduler()\nscheduler.add_contract(\"c-001\", \"Vendor MSA\", \"legal@acme.com\", expires_on=\"2025-06-30\")\nscheduler.add_alert_config(\"cfg-30\", days_before=30, label=\"30-day notice\")\nscheduler.add_alert_config(\"cfg-7\",  days_before=7,  label=\"final warning\")\n\nscheduler.get_contracts_expiring_between(\"2025-06-01\", \"2025-06-30\")\n# -> [{\"contract_id\": \"c-001\", \"title\": \"Vendor MSA\", ...}]\n\nscheduler.compute_alert_schedule(\"c-001\")\n# -> [\n#      {\"config_id\": \"cfg-30\", \"label\": \"30-day notice\", \"alert_on\": \"2025-05-31\"},\n#      {\"config_id\": \"cfg-7\",  \"label\": \"final warning\",  \"alert_on\": \"2025-06-23\"},\n#    ]\n\nscheduler.get_due_alerts(as_of_date=\"2025-06-01\")\n# -> [{\"contract_id\": \"c-001\", \"config_id\": \"cfg-30\", \"alert_on\": \"2025-05-31\", ...}]",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Contract and alert-config management",
+        "contract": "def add_contract(\n        self,\n        contract_id: str,\n        title: str,\n        owner_email: str,\n        expires_on: str,\n    ) -> dict:\n        \"\"\"\n        Register a contract.\n\n        Parameters\n        contract_id : str\n            Unique identifier.\n        title : str\n            Human-readable contract name.\n        owner_email : str\n            Primary point of contact.\n        expires_on : str\n            Expiration date in ISO-8601 date format (\"YYYY-MM-DD\").\n\n        Returns\n        dict\n            The stored contract dict.\n\n        Raises\n        ValueError\n            If contract_id already exists.\n        \"\"\"\n        raise NotImplementedError\n\n    def add_alert_config(self, config_id: str, days_before: int, label: str) -> dict:\n        \"\"\"\n        Register a global alert configuration.\n\n        Parameters\n        config_id : str\n            Unique identifier.\n        days_before : int\n            Number of days before contract expiry to trigger the alert.\n        label : str\n            Human-readable description (e.g. \"30-day notice\").\n\n        Returns\n        dict\n            The stored alert config dict.\n\n        Raises\n        ValueError\n            If config_id already exists.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_contracts_expiring_between(self, start_date: str, end_date: str) -> list[dict]:\n        \"\"\"\n        Return all contracts whose expiration date falls within [start_date, end_date],\n        inclusive on both ends. Results are sorted by expires_on ascending.\n\n        Parameters\n        start_date : str\n            ISO-8601 date string.\n        end_date : str\n            ISO-8601 date string.\n\n        Returns\n        list[dict]\n            List of matching contract dicts, sorted by expires_on ascending.\n        \"\"\"\n        raise NotImplementedError"
+      },
+      {
+        "part": 2,
+        "title": "Alert schedule and due alerts",
+        "contract": "def compute_alert_schedule(self, contract_id: str) -> list[dict]:\n        \"\"\"\n        Compute the full alert schedule for a contract by applying every\n        registered alert config.\n\n        For each AlertConfig, the alert fires on:\n            expires_on - timedelta(days=days_before)\n\n        Results are sorted by alert_on date ascending.\n\n        Parameters\n        contract_id : str\n\n        Returns\n        list[dict]\n            Each item:\n            {\n              \"config_id\": str,\n              \"label\":     str,\n              \"alert_on\":  str,   # ISO-8601 date string\n            }\n\n        Raises\n        KeyError\n            If contract_id does not exist.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_due_alerts(self, as_of_date: str) -> list[dict]:\n        \"\"\"\n        Return all alert schedule entries whose alert_on date is on or before\n        as_of_date. Uses compute_alert_schedule internally — call it per contract;\n        do not duplicate its logic here.\n\n        Results are sorted by alert_on ascending, then contract_id ascending.\n\n        Parameters\n        as_of_date : str\n            ISO-8601 date string representing \"today\".\n\n        Returns\n        list[dict]\n            Each item:\n            {\n              \"contract_id\":  str,\n              \"config_id\":    str,\n              \"label\":        str,\n              \"alert_on\":     str,\n              \"owner_email\":  str,\n              \"expires_on\":   str,\n            }\n        \"\"\"\n        raise NotImplementedError"
+      },
+      {
+        "part": 3,
+        "title": "Sent alerts and upcoming alerts",
+        "contract": "def record_alert_sent(self, contract_id: str, config_id: str, sent_on: str) -> dict:\n        \"\"\"\n        Record that an alert was sent for a specific contract/config pair.\n\n        Parameters\n        contract_id : str\n        config_id : str\n        sent_on : str\n            ISO-8601 date string.\n\n        Returns\n        dict\n            The SentRecord: {\"contract_id\", \"config_id\", \"sent_on\"}.\n\n        Raises\n        KeyError\n            If contract_id or config_id does not exist.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_upcoming_alerts(self, contract_id: str, as_of_date: str) -> list[dict]:\n        \"\"\"\n        Return the alert schedule for a contract, enriched with a \"sent\" flag\n        indicating whether that alert has already been sent.\n\n        Uses compute_alert_schedule and record_alert_sent state internally.\n\n        Parameters\n        contract_id : str\n        as_of_date : str\n            ISO-8601 date string. Exclude alerts whose alert_on is strictly\n            before as_of_date (they are in the past).\n\n        Returns\n        list[dict]\n            Each item (sorted by alert_on ascending):\n            {\n              \"config_id\":  str,\n              \"label\":      str,\n              \"alert_on\":   str,\n              \"sent\":       bool,\n            }\n\n        Raises\n        KeyError\n            If contract_id does not exist.\n        \"\"\"\n        raise NotImplementedError"
+      }
+    ],
+    "testSuites": [
+      "TestAddContract",
+      "TestAddAlertConfig",
+      "TestGetContractsExpiringBetween",
+      "TestComputeAlertSchedule",
+      "TestGetDueAlerts",
+      "TestRecordAlertSent",
+      "TestGetUpcomingAlerts"
+    ],
+    "commands": {
+      "answerPath": "python/practice_problem_answers/my_answer_12_contract_alert_scheduler.py",
+      "copyCommand": "cp python/practice_problems/problem_12_contract_alert_scheduler.py python/practice_problem_answers/my_answer_12_contract_alert_scheduler.py",
+      "openCommand": "code python/practice_problems/problem_12_contract_alert_scheduler.py",
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_12_contract_alert_scheduler.py -c pytest python/tests/test_problem_12_contract_alert_scheduler.py -v"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Which date parsing boundary supports inclusive range queries and stable ordering?",
+          "concepts": [
+            "ISO date arithmetic",
+            "keyed configuration"
+          ],
+          "steps": [
+            "Validate unique contract and config IDs before insertion.",
+            "Parse dates for comparisons and sort expiration results explicitly."
+          ],
+          "pitfalls": [
+            "excluding either range endpoint",
+            "sorting only by insertion order"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "How can every due-alert row originate from the canonical schedule for its contract?",
+          "concepts": [
+            "date offsets",
+            "method composition"
+          ],
+          "steps": [
+            "Apply each config as a date offset from expiration.",
+            "Call compute_alert_schedule per contract, enrich due rows, and apply both sort keys."
+          ],
+          "pitfalls": [
+            "duplicating alert date arithmetic",
+            "forgetting the contract-ID tie-break"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "What identity determines whether one scheduled alert has already been sent?",
+          "concepts": [
+            "delivery ledger",
+            "schedule enrichment"
+          ],
+          "steps": [
+            "Validate both referenced IDs before recording delivery.",
+            "Reuse compute_alert_schedule, filter past entries, and annotate by contract/config identity."
+          ],
+          "pitfalls": [
+            "treating any contract send as all configs sent",
+            "excluding an alert scheduled exactly as_of"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "Due dates differ between schedule and due-alert views",
+            "cause": "Date subtraction is implemented twice",
+            "check": "Confirm get_due_alerts consumes compute_alert_schedule output."
+          },
+          {
+            "symptom": "Sending one alert marks another configuration sent",
+            "cause": "The ledger key is too broad",
+            "check": "Inspect sent-state lookup for both contract_id and config_id."
+          }
+        ]
+      }
+    }
+  },
+  "python-13": {
+    "id": "python-13",
+    "title": "Contract Lifecycle State Machine",
+    "description": "Manage contract state transitions through a defined lifecycle (draft → executed → expired), enforcing valid transitions, audit-logging every change, and surfacing overdue contracts.",
+    "language": "python",
+    "industry": "legal-tech",
+    "tags": [
+      "state-machine",
+      "audit-trail",
+      "clm",
+      "lifecycle"
+    ],
+    "level": "senior",
+    "stubPath": "python/practice_problems/problem_13_contract_lifecycle.py",
+    "testPath": "python/tests/test_problem_13_contract_lifecycle.py",
+    "sourceScript": "journey-sources/python-13.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": "cl = ContractLifecycle()\ncl.create_contract(\"c-001\", \"Vendor MSA\", created_at=\"2025-01-01T09:00:00\", actor=\"alice\")\ncl.get_contract(\"c-001\")[\"state\"]  # -> \"draft\"\ncl.transition(\"c-001\", \"in_review\", at=\"2025-01-02T10:00:00\", actor=\"alice\")\ncl.transition(\"c-001\", \"approved\",  at=\"2025-01-03T11:00:00\", actor=\"bob\")\ncl.get_contract(\"c-001\")[\"state\"]  # -> \"approved\"\ncl.transition(\"c-001\", \"draft\", at=\"2025-01-04T09:00:00\", actor=\"bob\")\n# raises ValueError — approved → draft is not a valid transition",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Contract creation, fields, and transitions",
+        "contract": "def create_contract(\n        self,\n        contract_id: str,\n        title: str,\n        created_at: str,\n        actor: str,\n    ) -> dict:\n        \"\"\"\n        Create a new contract in the \"draft\" state and record the initial\n        audit entry (from_state=None, to_state=\"draft\").\n\n        Parameters\n        contract_id : str\n            Unique identifier.\n        title : str\n        created_at : str\n            ISO-8601 datetime.\n        actor : str\n            User/system creating the contract.\n\n        Returns\n        dict\n            The stored contract dict (fields starts empty).\n\n        Raises\n        ValueError\n            If contract_id already exists.\n        \"\"\"\n        raise NotImplementedError\n\n    def set_field(self, contract_id: str, key: str, value) -> dict:\n        \"\"\"\n        Set or update a field on the contract's `fields` dict.\n\n        Parameters\n        contract_id : str\n        key : str\n        value : any JSON-serialisable value.\n\n        Returns\n        dict\n            The updated contract dict.\n\n        Raises\n        KeyError\n            If contract_id does not exist.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_contract(self, contract_id: str) -> dict:\n        \"\"\"\n        Return the contract dict.\n\n        Raises\n        KeyError\n            If contract_id does not exist.\n        \"\"\"\n        raise NotImplementedError\n\n    def transition(\n        self,\n        contract_id: str,\n        to_state: str,\n        at: str,\n        actor: str,\n    ) -> dict:\n        \"\"\"\n        Move a contract to a new state if the transition is valid, and append\n        an AuditEntry.\n\n        Parameters\n        contract_id : str\n        to_state : str\n            Target state.\n        at : str\n            ISO-8601 datetime of the transition.\n        actor : str\n\n        Returns\n        dict\n            The updated contract dict.\n\n        Raises\n        KeyError\n            If contract_id does not exist.\n        ValueError\n            If the transition from the current state to to_state is not allowed\n            (consult VALID_TRANSITIONS).\n        \"\"\"\n        raise NotImplementedError"
+      },
+      {
+        "part": 2,
+        "title": "Audit queries and bulk advancement",
+        "contract": "def get_audit_trail(self, contract_id: str) -> list[dict]:\n        \"\"\"\n        Return the full ordered audit trail for a contract (oldest first).\n\n        Parameters\n        contract_id : str\n\n        Returns\n        list[dict]\n            List of AuditEntry dicts in chronological order.\n\n        Raises\n        KeyError\n            If contract_id does not exist.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_contracts_by_state(self, state: str) -> list[dict]:\n        \"\"\"\n        Return all contracts currently in the given state, sorted by\n        contract_id ascending.\n\n        Parameters\n        state : str\n\n        Returns\n        list[dict]\n        \"\"\"\n        raise NotImplementedError\n\n    def bulk_advance(\n        self,\n        contract_ids: list[str],\n        to_state: str,\n        at: str,\n        actor: str,\n    ) -> dict:\n        \"\"\"\n        Attempt to transition each contract in contract_ids to to_state.\n        Calls `transition` internally — do not duplicate its logic.\n\n        Continue processing remaining contracts even if one fails; collect all\n        failures.\n\n        Parameters\n        contract_ids : list[str]\n        to_state : str\n        at : str\n            ISO-8601 datetime applied to all transitions.\n        actor : str\n\n        Returns\n        dict\n            {\n              \"succeeded\": [contract_id, ...],   # successfully transitioned\n              \"failed\":    [                      # failed transitions\n                {\n                  \"contract_id\": str,\n                  \"reason\":      str,  # error message\n                },\n                ...\n              ],\n            }\n        \"\"\"\n        raise NotImplementedError"
+      },
+      {
+        "part": 3,
+        "title": "Lifecycle metrics and overdue contracts",
+        "contract": "def get_lifecycle_metrics(self) -> dict:\n        \"\"\"\n        Return aggregate counts across all contracts.\n\n        Returns\n        dict\n            {\n              \"total\":           int,\n              \"by_state\":        {state: count, ...},  # only states with count > 0\n              \"terminal_count\":  int,   # contracts in \"expired\" or \"terminated\"\n            }\n        \"\"\"\n        raise NotImplementedError\n\n    def get_overdue_contracts(self, as_of: str) -> list[dict]:\n        \"\"\"\n        Return contracts that have been stuck in the same non-terminal state\n        for more than 30 days without any transition.\n\n        \"Stuck since\" is the `at` timestamp of the most recent AuditEntry for\n        the contract.\n\n        Uses get_audit_trail internally — do not duplicate its logic.\n\n        Parameters\n        as_of : str\n            ISO-8601 datetime to measure staleness against.\n\n        Returns\n        list[dict]\n            Each item:\n            {\n              \"contract_id\":  str,\n              \"title\":        str,\n              \"state\":        str,\n              \"stuck_since\":  str,  # ISO-8601 datetime of last transition\n              \"days_stuck\":   int,\n            }\n            Sorted by days_stuck descending.\n        \"\"\"\n        raise NotImplementedError"
+      }
+    ],
+    "testSuites": [
+      "TestCreateContract",
+      "TestSetField",
+      "TestGetContract",
+      "TestTransition",
+      "TestGetAuditTrail",
+      "TestGetContractsByState",
+      "TestBulkAdvance",
+      "TestGetLifecycleMetrics",
+      "TestGetOverdueContracts"
+    ],
+    "commands": {
+      "answerPath": "python/practice_problem_answers/my_answer_13_contract_lifecycle.py",
+      "copyCommand": "cp python/practice_problems/problem_13_contract_lifecycle.py python/practice_problem_answers/my_answer_13_contract_lifecycle.py",
+      "openCommand": "code python/practice_problems/problem_13_contract_lifecycle.py",
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_13_contract_lifecycle.py -c pytest python/tests/test_problem_13_contract_lifecycle.py -v"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "How can every lifecycle transition be validated before state and audit history change together?",
+          "concepts": [
+            "finite-state machine",
+            "atomic audit mutation"
+          ],
+          "steps": [
+            "Keep contract fields, state, and audit records in instance storage.",
+            "Validate the source-to-destination edge before appending a transition event."
+          ],
+          "pitfalls": [
+            "mutating state before validation",
+            "forgetting the creation audit record"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "How can bulk advancement preserve the exact behavior of one transition while continuing after failures?",
+          "concepts": [
+            "method composition",
+            "partial success"
+          ],
+          "steps": [
+            "Return audit snapshots in chronological order.",
+            "Call transition for each requested contract and capture per-item outcomes."
+          ],
+          "pitfalls": [
+            "duplicating the state machine",
+            "aborting the batch on the first invalid contract"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "Which current snapshots and latest audit timestamps define metrics and overdue contracts?",
+          "concepts": [
+            "state aggregation",
+            "whole-day thresholds"
+          ],
+          "steps": [
+            "Aggregate current contracts by state.",
+            "Measure time from the latest transition and exclude terminal states."
+          ],
+          "pitfalls": [
+            "measuring from contract creation after later moves",
+            "including the exact threshold when the rule says more than"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "Bulk and single transitions create different audit trails",
+            "cause": "Bulk owns a second transition implementation",
+            "check": "Confirm each item delegates to transition."
+          },
+          {
+            "symptom": "Recently advanced contracts appear overdue",
+            "cause": "Age is measured from creation",
+            "check": "Use the timestamp of the latest audit event for the current state."
+          }
+        ]
+      }
+    }
+  },
+  "python-14": {
+    "id": "python-14",
+    "title": "Contract Amendment Manager",
+    "description": "Track amendments to signed contracts and resolve the effective field values as of any date by applying base fields and chronological overrides.",
+    "language": "python",
+    "industry": "legal-tech",
+    "tags": [
+      "clm",
+      "versioning",
+      "date-arithmetic",
+      "event-sourcing"
+    ],
+    "level": "senior",
+    "stubPath": "python/practice_problems/problem_14_contract_amendment.py",
+    "testPath": "python/tests/test_problem_14_contract_amendment.py",
+    "sourceScript": "journey-sources/python-14.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": "mgr = ContractAmendmentManager()\nmgr.add_contract(\"c-001\", \"Vendor MSA\", fields={\"value\": 50000, \"payment_terms\": \"net-30\"})\n\nmgr.add_amendment(\"amd-1\", \"c-001\", effective_on=\"2025-03-01\",\n                  overrides={\"payment_terms\": \"net-45\"}, note=\"extended terms\")\nmgr.add_amendment(\"amd-2\", \"c-001\", effective_on=\"2025-06-01\",\n                  overrides={\"value\": 75000}, note=\"scope increase\")\n\nmgr.get_effective_contract(\"c-001\", as_of_date=\"2025-01-01\")\n# -> {\"value\": 50000, \"payment_terms\": \"net-30\"}   (no amendments yet)\n\nmgr.get_effective_contract(\"c-001\", as_of_date=\"2025-04-15\")\n# -> {\"value\": 50000, \"payment_terms\": \"net-45\"}   (amd-1 applied)\n\nmgr.get_effective_contract(\"c-001\", as_of_date=\"2025-07-01\")\n# -> {\"value\": 75000, \"payment_terms\": \"net-45\"}   (amd-1 + amd-2 applied)",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Base contract management",
+        "contract": "def add_contract(\n        self,\n        contract_id: str,\n        title: str,\n        fields: dict,\n    ) -> dict:\n        \"\"\"\n        Register a base contract.\n\n        Parameters\n        contract_id : str\n            Unique identifier.\n        title : str\n        fields : dict\n            Initial field values (e.g. {\"value\": 50000, \"payment_terms\": \"net-30\"}).\n            Store a copy — do not hold a reference to the caller's dict.\n\n        Returns\n        dict\n            The stored contract dict.\n\n        Raises\n        ValueError\n            If contract_id already exists.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_base_contract(self, contract_id: str) -> dict:\n        \"\"\"\n        Return the base contract dict (original fields, no amendments applied).\n\n        Raises\n        KeyError\n            If contract_id does not exist.\n        \"\"\"\n        raise NotImplementedError"
+      },
+      {
+        "part": 2,
+        "title": "Amendments and effective contracts",
+        "contract": "def add_amendment(\n        self,\n        amendment_id: str,\n        contract_id: str,\n        effective_on: str,\n        overrides: dict,\n        note: str,\n    ) -> dict:\n        \"\"\"\n        Register an amendment for a contract.\n\n        Parameters\n        amendment_id : str\n            Unique amendment identifier.\n        contract_id : str\n        effective_on : str\n            ISO-8601 date string from which this amendment takes effect.\n        overrides : dict\n            Partial field updates. Keys may be a subset of the base contract\n            fields, or introduce new fields.\n            Store a copy — do not hold a reference to the caller's dict.\n        note : str\n            Human-readable reason.\n\n        Returns\n        dict\n            The stored amendment dict.\n\n        Raises\n        ValueError\n            If amendment_id already exists.\n        KeyError\n            If contract_id does not exist.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_amendments(self, contract_id: str) -> list[dict]:\n        \"\"\"\n        Return all amendments for a contract, sorted by effective_on ascending,\n        then amendment_id ascending (for deterministic ordering when dates match).\n\n        Parameters\n        contract_id : str\n\n        Returns\n        list[dict]\n            List of amendment dicts.\n\n        Raises\n        KeyError\n            If contract_id does not exist.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_effective_contract(self, contract_id: str, as_of_date: str) -> dict:\n        \"\"\"\n        Return the resolved field values for a contract as of as_of_date.\n\n        Start with the base fields from `get_base_contract`, then apply\n        amendments in chronological order (earliest first) where\n        effective_on <= as_of_date, overlaying their overrides.\n\n        Uses get_base_contract and get_amendments internally — do not\n        duplicate their logic.\n\n        Parameters\n        contract_id : str\n        as_of_date : str\n            ISO-8601 date string.\n\n        Returns\n        dict\n            Resolved {field: value} mapping at as_of_date.\n\n        Raises\n        KeyError\n            If contract_id does not exist.\n        \"\"\"\n        raise NotImplementedError"
+      },
+      {
+        "part": 3,
+        "title": "Value history and amendment summary",
+        "contract": "def get_value_history(self, contract_id: str, field: str) -> list[dict]:\n        \"\"\"\n        Return the full history of a specific field's value across base and\n        all amendments that touched it, in chronological order.\n\n        Parameters\n        contract_id : str\n        field : str\n            The field name to trace.\n\n        Returns\n        list[dict]\n            Each item:\n            {\n              \"effective_on\":   str,          # ISO-8601 date; \"base\" for the original value\n              \"value\":          any,\n              \"source\":         str,          # \"base\" | amendment_id\n            }\n            Sorted by effective_on ascending (base always first).\n\n        Raises\n        KeyError\n            If contract_id does not exist, or if the field is not present in\n            the base contract or any amendment for that contract.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_amendment_summary(self, contract_id: str) -> dict:\n        \"\"\"\n        Return a summary of amendment activity for a contract.\n        Uses get_amendments and get_effective_contract internally — do not\n        duplicate their logic.\n\n        Parameters\n        contract_id : str\n\n        Returns\n        dict\n            {\n              \"contract_id\":       str,\n              \"amendment_count\":   int,\n              \"fields_amended\":    list[str],   # unique field names ever overridden,\nsorted ascending\n              \"latest_amendment\":  str | None,  # ISO-8601 date of most recent\namendment, or None if no amendments\n              \"current_fields\":    dict,        # result of get_effective_contract\ncalled with today's date\n            }\n            For \"today\" use the most recent amendment's effective_on date if\n            any amendments exist, otherwise use \"2099-12-31\" as a far-future\n            sentinel so all amendments are included.\n\n        Raises\n        KeyError\n            If contract_id does not exist.\n        \"\"\"\n        raise NotImplementedError"
+      }
+    ],
+    "testSuites": [
+      "TestAddContract",
+      "TestGetBaseContract",
+      "TestAddAmendment",
+      "TestGetAmendments",
+      "TestGetEffectiveContract",
+      "TestGetValueHistory",
+      "TestGetAmendmentSummary"
+    ],
+    "commands": {
+      "answerPath": "python/practice_problem_answers/my_answer_14_contract_amendment.py",
+      "copyCommand": "cp python/practice_problems/problem_14_contract_amendment.py python/practice_problem_answers/my_answer_14_contract_amendment.py",
+      "openCommand": "code python/practice_problems/problem_14_contract_amendment.py",
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_14_contract_amendment.py -c pytest python/tests/test_problem_14_contract_amendment.py -v"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Which base fields form the immutable starting snapshot for all later amendments?",
+          "concepts": [
+            "canonical base record",
+            "defensive copies"
+          ],
+          "steps": [
+            "Validate unique contract IDs before storage.",
+            "Return snapshots that callers cannot use to mutate the base record."
+          ],
+          "pitfalls": [
+            "overwriting duplicate contracts",
+            "returning nested mutable fields by reference"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "How should effective fields be folded when amendments arrive out of order or after the query date?",
+          "concepts": [
+            "effective-dated overlay",
+            "chronological reduction"
+          ],
+          "steps": [
+            "Validate amendment identity and contract reference.",
+            "Sort applicable amendments and overlay only their changed fields onto a base copy."
+          ],
+          "pitfalls": [
+            "trusting insertion order",
+            "mutating the base contract while computing a view"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "Which amendment stream is sufficient for both one-field history and a contract-wide summary?",
+          "concepts": [
+            "audit projection",
+            "derived summary"
+          ],
+          "steps": [
+            "Project chronological amendments that touch the requested field.",
+            "Aggregate amendment counts and changed-field facts from get_amendments."
+          ],
+          "pitfalls": [
+            "including unrelated fields in value history",
+            "re-parsing raw storage instead of composing amendment queries"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "An as-of query includes a future amendment",
+            "cause": "All amendments are folded regardless of effective date",
+            "check": "Inspect the applicable-date filter before overlay."
+          },
+          {
+            "symptom": "Computing an effective contract changes later base lookups",
+            "cause": "The overlay mutates the stored base dict",
+            "check": "Compare get_base_contract before and after the effective query."
+          }
+        ]
+      }
+    }
+  },
+  "python-15": {
+    "id": "python-15",
+    "title": "Tic-Tac-Toe Engine",
+    "description": "Analyze game boards for winners, optimize move tracking with O(1) incremental counters, then generalize to arbitrary board sizes, win lengths, and player counts.",
+    "language": "python",
+    "industry": "general",
+    "tags": [
+      "game-logic",
+      "incremental-state",
+      "optimization",
+      "generalization"
+    ],
+    "level": "senior",
+    "stubPath": "python/practice_problems/problem_15_tic_tac_toe_engine.py",
+    "testPath": "python/tests/test_problem_15_tic_tac_toe_engine.py",
+    "sourceScript": "journey-sources/python-15.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": "engine = TicTacToeEngine()\nengine.check_winner([\n    ['X', 'X', 'X'],\n    ['O', 'O', None],\n    [None, None, None],\n])                            # -> 'X'\n\nengine.check_winner([\n    ['X', 'O', 'X'],\n    ['O', 'X', 'O'],\n    ['O', 'X', None],\n])                            # -> None  (no winner)\n\n═════════════════════════════════════════════════════════════════════════════\nPart 2 — Incremental Move Tracking  (~20 min)\n═════════════════════════════════════════════════════════════════════════════\nImplement:\n    make_move(row: int, col: int, player: str) -> str | None\n    get_board() -> list[list[str | None]]\n    reset() -> None\n\n`make_move` records `player`'s move at (row, col) on the internal board and\nreturns the winning player's symbol if this move wins the game, otherwise None.\n\nOptimization goal: do NOT rescan the entire board on each move. Instead,\nmaintain per-player counters for each row, column, and diagonal so that\na win can be detected in O(1) after every move.\n\nRaise ValueError if the cell is already occupied or the position is out\nof bounds.\n\n`get_board` returns a deep copy of the current board as a 2D list.\n`reset`  clears the board and all counters for a new game.\n\nExample\nengine = TicTacToeEngine()\nengine.make_move(0, 0, 'X')  # -> None\nengine.make_move(1, 0, 'O')  # -> None\nengine.make_move(0, 1, 'X')  # -> None\nengine.make_move(1, 1, 'O')  # -> None\nengine.make_move(0, 2, 'X')  # -> 'X'   (top row complete)\nengine.get_board()\n# -> [['X', 'X', 'X'], ['O', 'O', None], [None, None, None]]\n\n═════════════════════════════════════════════════════════════════════════════\nPart 3 — Arbitrary Board Size and Win Length  (~15 min)\n═════════════════════════════════════════════════════════════════════════════\nExtend `__init__` to accept:\n    size: int = 3          — side length of the square board\n    win_length: int = None — consecutive same-symbol cells required to win;\n                             defaults to `size` (standard Tic-Tac-Toe rules)\n\nWhen win_length < size, a player wins by placing `win_length` consecutive\nsymbols in any row, column, or diagonal — they do NOT need to fill the\nentire row/column.\n\nUpdate `make_move` to handle the general case. The O(1) counter approach\nfrom Part 2 works when win_length == size (each counter can only reach one\ntarget). When win_length < size, instead scan outward from the newly placed\ncell in each of the 4 axis directions (horizontal, vertical, main-diagonal,\nanti-diagonal), counting consecutive same-symbol cells. If the combined run\nlength in any axis reaches win_length, the moving player wins. This is\nO(win_length) per move.\n\nAlso update `check_winner` so it detects `self._win_length` consecutive\nsame-symbol cells anywhere on the board, rather than requiring a full\nrow/column/diagonal to be filled.\n\nMultiple players (more than 2) are naturally supported — any string is a\nvalid player symbol.\n\nExample\nengine = TicTacToeEngine(size=5, win_length=3)\nengine.make_move(2, 1, 'X')  # -> None\nengine.make_move(2, 2, 'X')  # -> None\nengine.make_move(2, 3, 'X')  # -> 'X'  (3 consecutive in row 2)\n\n# Three-player game on a 4×4 board\nengine2 = TicTacToeEngine(size=4, win_length=4)\nengine2.make_move(0, 0, 'A')  # -> None\nengine2.make_move(0, 1, 'B')  # -> None\nengine2.make_move(0, 0, 'C')  # -> ValueError (cell occupied)",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Board Analysis",
+        "contract": "═════════════════════════════════════════════════════════════════════════════\nImplement:\n    check_winner(board: list[list[str | None]]) -> str | None\n\nGiven a square 2D board (list of lists), return the symbol of the winning\nplayer, or None if there is no winner. A player wins by filling an entire\nrow, column, main diagonal, or anti-diagonal with their symbol. Empty cells\nare represented by None. The board may contain any number of distinct player\nsymbols (not just 'X' and 'O').\n\nExample\nengine = TicTacToeEngine()\nengine.check_winner([\n    ['X', 'X', 'X'],\n    ['O', 'O', None],\n    [None, None, None],\n])                            # -> 'X'\n\nengine.check_winner([\n    ['X', 'O', 'X'],\n    ['O', 'X', 'O'],\n    ['O', 'X', None],\n])                            # -> None  (no winner)\n\n═════════════════════════════════════════════════════════════════════════════"
+      },
+      {
+        "part": 2,
+        "title": "Incremental Move Tracking",
+        "contract": "═════════════════════════════════════════════════════════════════════════════\nImplement:\n    make_move(row: int, col: int, player: str) -> str | None\n    get_board() -> list[list[str | None]]\n    reset() -> None\n\n`make_move` records `player`'s move at (row, col) on the internal board and\nreturns the winning player's symbol if this move wins the game, otherwise None.\n\nOptimization goal: do NOT rescan the entire board on each move. Instead,\nmaintain per-player counters for each row, column, and diagonal so that\na win can be detected in O(1) after every move.\n\nRaise ValueError if the cell is already occupied or the position is out\nof bounds.\n\n`get_board` returns a deep copy of the current board as a 2D list.\n`reset`  clears the board and all counters for a new game.\n\nExample\nengine = TicTacToeEngine()\nengine.make_move(0, 0, 'X')  # -> None\nengine.make_move(1, 0, 'O')  # -> None\nengine.make_move(0, 1, 'X')  # -> None\nengine.make_move(1, 1, 'O')  # -> None\nengine.make_move(0, 2, 'X')  # -> 'X'   (top row complete)\nengine.get_board()\n# -> [['X', 'X', 'X'], ['O', 'O', None], [None, None, None]]\n\n═════════════════════════════════════════════════════════════════════════════"
+      },
+      {
+        "part": 3,
+        "title": "Arbitrary Board Size and Win Length",
+        "contract": "═════════════════════════════════════════════════════════════════════════════\nExtend `__init__` to accept:\n    size: int = 3          — side length of the square board\n    win_length: int = None — consecutive same-symbol cells required to win;\n                             defaults to `size` (standard Tic-Tac-Toe rules)\n\nWhen win_length < size, a player wins by placing `win_length` consecutive\nsymbols in any row, column, or diagonal — they do NOT need to fill the\nentire row/column.\n\nUpdate `make_move` to handle the general case. The O(1) counter approach\nfrom Part 2 works when win_length == size (each counter can only reach one\ntarget). When win_length < size, instead scan outward from the newly placed\ncell in each of the 4 axis directions (horizontal, vertical, main-diagonal,\nanti-diagonal), counting consecutive same-symbol cells. If the combined run\nlength in any axis reaches win_length, the moving player wins. This is\nO(win_length) per move.\n\nAlso update `check_winner` so it detects `self._win_length` consecutive\nsame-symbol cells anywhere on the board, rather than requiring a full\nrow/column/diagonal to be filled.\n\nMultiple players (more than 2) are naturally supported — any string is a\nvalid player symbol.\n\nExample\nengine = TicTacToeEngine(size=5, win_length=3)\nengine.make_move(2, 1, 'X')  # -> None\nengine.make_move(2, 2, 'X')  # -> None\nengine.make_move(2, 3, 'X')  # -> 'X'  (3 consecutive in row 2)\n\n# Three-player game on a 4×4 board\nengine2 = TicTacToeEngine(size=4, win_length=4)\nengine2.make_move(0, 0, 'A')  # -> None\nengine2.make_move(0, 1, 'B')  # -> None\nengine2.make_move(0, 0, 'C')  # -> ValueError (cell occupied)\n\"\"\"\n\n\nclass TicTacToeEngine:\n    def __init__(self, size: int = 3, win_length: int = None):\n        raise NotImplementedError\n\nPART 1 — Board Analysis  (~10 min)\n\n    def check_winner(self, board: list[list[str | None]]) -> str | None:\n        \"\"\"\n        Given a square 2D board, return the winning player's symbol or None.\n\n        Part 1: A player wins by filling an entire row, column, or diagonal.\n        Part 3: Update to detect self._win_length consecutive same-symbol cells\n                anywhere on the board (not necessarily a full row/column).\n\n        Empty cells are None. Any non-None string is a valid player symbol.\n        \"\"\"\n        raise NotImplementedError\n\nPART 2 — Incremental Move Tracking  (~20 min)\n\n    def make_move(self, row: int, col: int, player: str) -> str | None:\n        \"\"\"\n        Record player's move at (row, col). Return the winning player's symbol\n        if this move wins the game, otherwise None.\n\n        Raise ValueError if the cell is already occupied or out of bounds.\n\n        Part 2: Maintain per-player row/column/diagonal counters for O(1) win\n                detection (valid when win_length == size).\n        Part 3: When win_length < size, scan outward from (row, col) in each\n                of the 4 axis directions to count consecutive same-symbol cells.\n                Return player if any axis reaches win_length. O(win_length) per move.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_board(self) -> list[list[str | None]]:\n        \"\"\"Return a deep copy of the current board state.\"\"\"\n        raise NotImplementedError\n\n    def reset(self) -> None:\n        \"\"\"Reset the board and all counters for a new game.\"\"\"\n        raise NotImplementedError"
+      }
+    ],
+    "testSuites": [
+      "TestCheckWinner",
+      "TestMakeMoveReturnsNone",
+      "TestMakeMoveWin",
+      "TestMakeMoveErrors",
+      "TestGetBoard",
+      "TestReset",
+      "TestArbitrarySize",
+      "TestWinLengthLessThanSize",
+      "TestMultiplePlayers",
+      "TestCheckWinnerPart3"
+    ],
+    "commands": {
+      "answerPath": "python/practice_problem_answers/my_answer_15_tic_tac_toe_engine.py",
+      "copyCommand": "cp python/practice_problems/problem_15_tic_tac_toe_engine.py python/practice_problem_answers/my_answer_15_tic_tac_toe_engine.py",
+      "openCommand": "code python/practice_problems/problem_15_tic_tac_toe_engine.py",
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_15_tic_tac_toe_engine.py -c pytest python/tests/test_problem_15_tic_tac_toe_engine.py -v"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "How can rows, columns, and both diagonal families share one line-analysis idea?",
+          "concepts": [
+            "board traversal",
+            "uniform-line detection"
+          ],
+          "steps": [
+            "Reject empty cells as candidate winners.",
+            "Inspect every required line without hard-coding player symbols."
+          ],
+          "pitfalls": [
+            "treating an all-empty line as a win",
+            "missing the descending diagonal"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "Which state must change atomically for a legal move, and how should reset recreate it?",
+          "concepts": [
+            "move validation",
+            "incremental counters"
+          ],
+          "steps": [
+            "Validate bounds and vacancy before writing the board.",
+            "Update only the moving player's relevant counters and return the resulting winner."
+          ],
+          "pitfalls": [
+            "partially updating counters for an invalid move",
+            "resetting the board but retaining counters"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "When win_length is smaller than board size, why are whole-row counters no longer sufficient?",
+          "concepts": [
+            "consecutive-run scan",
+            "configurable dimensions"
+          ],
+          "steps": [
+            "Validate size and win length together.",
+            "Scan outward through the last move or canonical directions while resetting across gaps."
+          ],
+          "pitfalls": [
+            "counting separated marks",
+            "using the Part 2 full-line shortcut for shorter wins"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "A larger board wins across an empty gap",
+            "cause": "The algorithm counts marks without adjacency",
+            "check": "Trace one directional run and reset at every different cell."
+          },
+          {
+            "symptom": "A new game wins too early after reset",
+            "cause": "Incremental state survived reset",
+            "check": "Inspect board and every counter immediately after reset."
+          }
+        ]
+      }
+    }
+  },
   "python-16": {
     "id": "python-16",
     "title": "Build Pipeline Scheduler",
@@ -1722,6 +3369,710 @@ window.JOURNEY_PROBLEMS = {
             "symptom": "A grandchild stays queued after its ancestor fails",
             "cause": "Cancellation propagation stopped after one pass",
             "check": "Continue evaluating queued jobs until an entire pass makes no changes."
+          }
+        ]
+      }
+    }
+  },
+  "python-17": {
+    "id": "python-17",
+    "title": "Payment Reconciliation Engine",
+    "description": "Reconcile internal charges with processor settlements using exact references, Decimal-safe amount windows, rich ambiguity results, and deterministic audit summaries.",
+    "language": "python",
+    "industry": "fintech",
+    "tags": [
+      "reconciliation",
+      "matching",
+      "decimal",
+      "idempotency",
+      "audit-trail"
+    ],
+    "level": "senior",
+    "stubPath": "python/practice_problems/problem_17_payment_reconciliation.py",
+    "testPath": "python/tests/test_problem_17_payment_reconciliation.py",
+    "sourceScript": "journey-sources/python-17.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": "engine = PaymentReconciliationEngine()\nengine.ingest_charge(\"charge-alpha\", Decimal(\"25.00\"), \"2026-04-10\")\nengine.ingest_charge(\"charge-beta\", Decimal(\"25.00\"), \"2026-04-11\")\nengine.ingest_settlement(\"settlement-open\", Decimal(\"25.00\"), \"2026-04-11\")\nengine.match_settlement(\"settlement-open\", date_window_days=2)[\"status\"]\n# -> \"ambiguous\" (both $25 charges are candidates)\nengine.ingest_settlement(\n    \"settlement-ref\", Decimal(\"25.00\"), \"2026-04-11\", \"charge-alpha\"\n)\nengine.match_settlement(\"settlement-ref\", 2)[\"matched_charge_id\"]\n# -> \"charge-alpha\"\nengine.ingest_settlement(\"settlement-24\", Decimal(\"24.00\"), \"2026-04-11\")\nengine.match_settlement(\"settlement-24\", 2)[\"status\"]  # -> \"unmatched\"",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Canonical ingestion and lookups",
+        "contract": "def ingest_charge(\n        self, charge_id: str, amount: Decimal, charge_date: str\n    ) -> dict:\n        \"\"\"\n        Store and return a charge.\n\n        Re-ingesting an identical record is idempotent and returns the\n        canonical stored charge. Raise ValueError if charge_id already exists\n        with different data. Raise TypeError if amount is not a Decimal.\n        \"\"\"\n        raise NotImplementedError\n\n    def ingest_settlement(\n        self,\n        settlement_id: str,\n        amount: Decimal,\n        settlement_date: str,\n        reference: Optional[str] = None,\n    ) -> dict:\n        \"\"\"\n        Store and return a processor settlement.\n\n        Re-ingesting an identical record is idempotent and returns the\n        canonical stored settlement. Raise ValueError if settlement_id already\n        exists with different data. Raise TypeError if amount is not Decimal.\n        A reference, when provided, is an internal charge_id.\n        \"\"\"\n        raise NotImplementedError\n\n    def get_charge(self, charge_id: str) -> Optional[dict]:\n        \"\"\"Return a copy of the charge, or None when charge_id is unknown.\"\"\"\n        raise NotImplementedError\n\n    def get_settlement(self, settlement_id: str) -> Optional[dict]:\n        \"\"\"Return a copy of the settlement, or None when its ID is unknown.\"\"\"\n        raise NotImplementedError"
+      },
+      {
+        "part": 2,
+        "title": "Settlement matching",
+        "contract": "def match_settlement(\n        self, settlement_id: str, date_window_days: int\n    ) -> dict:\n        \"\"\"\n        Return a rich MatchResult for one canonical settlement.\n\n        Matching precedence:\n        1. If `reference` names an existing charge, return a matched result\n           with reason \"exact_reference\". Reference matching takes precedence\n           over amount and date checks.\n        2. Otherwise find charges with the exact Decimal amount whose\n           charge_date is within `date_window_days` (inclusive, in either\n           direction) of settlement_date.\n        3. One candidate is matched with reason \"amount_date_window\"; more\n           than one is ambiguous with reason \"multiple_candidates\"; none is\n           unmatched with reason \"no_candidates\".\n\n        `candidates` contains copies of all plausible charges, sorted by\n        charge_id. A matched result has exactly one candidate and sets\n        matched_charge_id. Ambiguous and unmatched results set it to None.\n\n        Raise KeyError for an unknown settlement_id and ValueError when\n        date_window_days is negative.\n        \"\"\"\n        raise NotImplementedError"
+      },
+      {
+        "part": 3,
+        "title": "Batch reconciliation",
+        "contract": "def reconcile_batch(\n        self, settlement_ids: list[str], date_window_days: int\n    ) -> dict:\n        \"\"\"\n        Reconcile a batch by calling `match_settlement` exactly once for each\n        supplied settlement ID and folding those MatchResults into:\n\n          {\n            \"counts\": {\"matched\": int, \"ambiguous\": int, \"unmatched\": int},\n            \"discrepancies_by_reason\": {\n                reason: [settlement_id, ...],\n            },\n            \"audit_by_reason\": {\n                reason: [\n                    {\n                      \"settlement_id\": str,\n                      \"status\": str,\n                      \"matched_charge_id\": str | None,\n                      \"candidate_charge_ids\": list[str],\n                    }, ...\n                ],\n            },\n          }\n\n        Only ambiguous and unmatched outcomes are discrepancies. All outcomes\n        appear in the audit. Reason keys and entries within every group are\n        sorted lexicographically, making output stable regardless of input\n        order. Do not re-run matching logic or mutate ingested records.\n        \"\"\"\n        raise NotImplementedError"
+      }
+    ],
+    "testSuites": [
+      "TestIngestion",
+      "TestIdempotentReingest",
+      "TestConflictingDuplicate",
+      "TestDecimalPrecision",
+      "TestExactReferenceMatch",
+      "TestAmountWindowMatch",
+      "TestAmbiguityWithMultipleCandidates",
+      "TestBatchCounts",
+      "TestStableAuditOrdering",
+      "TestReconciliationDoesNotMutateFixtures"
+    ],
+    "commands": {
+      "answerPath": "python/practice_problem_answers/my_answer_17_payment_reconciliation.py",
+      "copyCommand": "cp python/practice_problems/problem_17_payment_reconciliation.py python/practice_problem_answers/my_answer_17_payment_reconciliation.py",
+      "openCommand": "code python/practice_problems/problem_17_payment_reconciliation.py",
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_17_payment_reconciliation.py -c pytest python/tests/test_problem_17_payment_reconciliation.py -v"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Which canonical money and reference fields make charge and settlement lookups unambiguous?",
+          "concepts": [
+            "normalized ingestion",
+            "idempotent identifiers"
+          ],
+          "steps": [
+            "Validate each record before inserting it into its keyed store.",
+            "Keep charge and settlement namespaces and snapshots distinct."
+          ],
+          "pitfalls": [
+            "using floating-point arithmetic for currency",
+            "allowing duplicate IDs to overwrite history"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "What outcome should explain both a successful match and each mismatch without mutating either record?",
+          "concepts": [
+            "rich reconciliation result",
+            "matching precedence"
+          ],
+          "steps": [
+            "Resolve both canonical records through Part 1 lookups.",
+            "Compare the documented reference, currency, and amount facts in a deterministic order."
+          ],
+          "pitfalls": [
+            "returning a bare Boolean",
+            "matching amount while ignoring currency or external reference"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "How can batch reconciliation classify every settlement by folding only single-match outcomes?",
+          "concepts": [
+            "method composition",
+            "stable batch aggregation"
+          ],
+          "steps": [
+            "Call match_settlement once per requested settlement.",
+            "Preserve input order in item results while accumulating summary groups."
+          ],
+          "pitfalls": [
+            "aborting after one mismatch",
+            "reimplementing matching rules inside the batch"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "Single and batch reconciliation classify the same settlement differently",
+            "cause": "The batch has a parallel matching implementation",
+            "check": "Trace every batch item through match_settlement."
+          },
+          {
+            "symptom": "A same-amount settlement matches the wrong charge",
+            "cause": "Amount was treated as identity",
+            "check": "Inspect reference and currency checks before accepting a match."
+          }
+        ]
+      }
+    }
+  },
+  "react-01": {
+    "id": "react-01",
+    "title": "Activity Feed with Filtering & Optimistic Updates",
+    "description": "Build a real-time event feed with client-side filtering and optimistic acknowledgement with automatic rollback on failure.",
+    "language": "react",
+    "industry": "general",
+    "tags": [
+      "real-time",
+      "event-stream",
+      "filtering",
+      "optimistic-updates",
+      "hooks",
+      "saas"
+    ],
+    "level": "senior",
+    "stubPath": "react/practice_problems/problem_01_activity_feed.jsx",
+    "testPath": "react/tests/test_problem_01_activity_feed.spec.js",
+    "sourceScript": "journey-sources/react-01.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": null,
+    "exampleStatus": "legacy-missing",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Live event subscription",
+        "contract": "Render an <ActivityFeed /> component that:\n  - Subscribes to `eventSource` on mount and unsubscribes on unmount.\n  - Displays incoming events in reverse-chronological order (newest on top).\n  - Each event row shows: timestamp, type badge, actor, and message.\n  - New events should appear at the top without losing scroll position for\n    events already in view. (Hint: prepend, don't append.)"
+      },
+      {
+        "part": 2,
+        "title": "Client-side filtering",
+        "contract": "Add filter controls above the feed:\n  - A dropdown (or set of toggle buttons) for EVENT TYPE\n    (values: \"all\" | \"deploy\" | \"alert\" | \"payment\" | \"auth\")\n  - A dropdown for STATUS (\"all\" | \"success\" | \"warning\" | \"error\")\n\nRequirements:\n  - Filtering is purely client-side — all events stay in memory.\n  - Changing a filter must NOT restart the event subscription.\n  - Use useMemo (or equivalent) so the filtered list is only recomputed\n    when events or filter state actually change."
+      },
+      {
+        "part": 3,
+        "title": "Optimistic acknowledgement",
+        "contract": "Add an \"Ack\" button to each unacknowledged event row.\n\nWhen clicked:\n  1. Immediately mark the event as acknowledged in local state (optimistic).\n  2. Call `acknowledgeEvent(eventId)` — it returns a Promise that resolves\n     on success or rejects ~20% of the time to simulate flakiness.\n  3. On rejection: revert the event to unacknowledged and display an inline\n     error message on that row (\"Failed — try again\").\n  4. While the request is in-flight, the button should show a loading state\n     and be disabled to prevent double-submission.\n\n\nimport React, { useState, useEffect, useMemo, useRef, useCallback } from \"react\";"
+      }
+    ],
+    "testSuites": [
+      "Problem 01 — Activity Feed"
+    ],
+    "commands": {
+      "answerPath": "react/my_answer_01_activity_feed.jsx",
+      "copyCommand": "cp react/practice_problems/problem_01_activity_feed.jsx react/my_answer_01_activity_feed.jsx",
+      "openCommand": "code react/practice_problems/problem_01_activity_feed.jsx",
+      "testCommand": "./run_tests.sh -f react/my_answer_01_activity_feed.jsx -c npm run test:01"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Which component owns connection lifetime, and which owns subscription lifetime?",
+          "concepts": [
+            "effect cleanup",
+            "functional state updates"
+          ],
+          "steps": [
+            "Subscribe once when the feed mounts and retain the returned cleanup.",
+            "Prepend each emitted event without closing over a stale array."
+          ],
+          "pitfalls": [
+            "reconnecting from ActivityFeed",
+            "appending events oldest-first"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "Which values are source state and which are derived visible state?",
+          "concepts": [
+            "controlled filters",
+            "memoized derivation"
+          ],
+          "steps": [
+            "Keep every received event in source state.",
+            "Memoize filtering from events and both selected filters."
+          ],
+          "pitfalls": [
+            "deleting filtered-out events",
+            "putting filters in the subscription effect dependencies"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "What per-event state allows simultaneous acknowledgements to resolve independently?",
+          "concepts": [
+            "optimistic update",
+            "per-row pending and error state"
+          ],
+          "steps": [
+            "Mark only the selected event acknowledged and pending.",
+            "On rejection, restore that event and attach its retry error."
+          ],
+          "pitfalls": [
+            "one global loading flag",
+            "rollback that replaces the entire event list with a stale snapshot"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "Changing a filter restarts or duplicates incoming events",
+            "cause": "Filter state is coupled to the subscription effect",
+            "check": "Inspect the effect dependencies and cleanup lifetime."
+          },
+          {
+            "symptom": "One failed acknowledgement reverts newer feed changes",
+            "cause": "Rollback restores a captured array",
+            "check": "Use an ID-scoped functional state update for both optimistic change and rollback."
+          }
+        ]
+      }
+    }
+  },
+  "react-03": {
+    "id": "react-03",
+    "title": "Alert Triage Console",
+    "description": "Build a dispatch ops queue with real-time alert ingestion, unit assignment with optimistic updates, tab-based filtering, and bulk-acknowledge.",
+    "language": "react",
+    "industry": "public-safety",
+    "tags": [
+      "dispatch",
+      "real-time",
+      "optimistic-updates",
+      "bulk-actions",
+      "tabs",
+      "hooks"
+    ],
+    "level": "senior",
+    "stubPath": "react/practice_problems/problem_03_alert_triage_console.jsx",
+    "testPath": "react/tests/test_problem_03_alert_triage_console.spec.js",
+    "sourceScript": "journey-sources/react-03.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": null,
+    "exampleStatus": "legacy-missing",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Alert queue",
+        "contract": "Render an <AlertTriageConsole /> component that:\n  - Subscribes to `alertStream` on mount and unsubscribes on unmount.\n  - Displays unacknowledged, unassigned alerts sorted by severity descending\n    (5 = highest), then by timestamp ascending (oldest first within same sev).\n  - Each row shows: severity badge (1–5, color-coded), alert type, message,\n    source, and relative time (\"3 min ago\").\n\nData-testid requirements (Playwright relies on these):\n  data-testid=\"alert-row\"      — wrapper element for each alert row\n  data-testid=\"severity-badge\" — the severity indicator inside each row"
+      },
+      {
+        "part": 2,
+        "title": "Assign to unit",
+        "contract": "Add an assign action to each unassigned, unacknowledged alert row:\n  - A <select data-testid=\"unit-select\"> populated with UNITS.\n  - A <button data-testid=\"assign-btn\"> that calls assignAlert(alertId, unitId).\n\nWhen the assignment succeeds:\n  - Show the assigned unit name on the row (no separate section needed yet).\n  - Mark the alert as assigned in local state.\nOn failure (~15% of the time):\n  - Revert to unassigned; show an inline error (\"Assignment failed — retry\").\nWhile in-flight:\n  - Disable the assign button and the unit select."
+      },
+      {
+        "part": 3,
+        "title": "Tab navigation and bulk-ack",
+        "contract": "Add a tab bar at the top of the console with three tabs:\n  Queued | Assigned | Acknowledged\n\nData-testid requirements:\n  data-testid=\"tab-queued\"        — Queued tab button\n  data-testid=\"tab-assigned\"      — Assigned tab button\n  data-testid=\"tab-acknowledged\"  — Acknowledged tab button\n\nEach tab shows its count in parentheses, e.g. \"Queued (3)\".\n\nSwitching tabs changes which alerts are shown:\n  Queued       — unassigned AND not acknowledged\n  Assigned     — assigned AND not acknowledged\n  Acknowledged — acknowledged (by any means)\n\nOn the Queued tab, add an \"Ack All\" button (data-testid=\"ack-all-btn\") that\ncalls acknowledgeAlert(id) for every currently visible queued alert and marks\nthem all as acknowledged. Fire all calls in parallel (Promise.all or similar).\n\n\nimport React, { useState, useEffect, useMemo, useCallback } from 'react'"
+      }
+    ],
+    "testSuites": [
+      "Problem 03 — Alert Triage Console"
+    ],
+    "commands": {
+      "answerPath": "react/my_answer_03_alert_triage_console.jsx",
+      "copyCommand": "cp react/practice_problems/problem_03_alert_triage_console.jsx react/my_answer_03_alert_triage_console.jsx",
+      "openCommand": "code react/practice_problems/problem_03_alert_triage_console.jsx",
+      "testCommand": "./run_tests.sh -f react/my_answer_03_alert_triage_console.jsx -c npm run test:03"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Which derived queue predicate and sort keys express operational priority?",
+          "concepts": [
+            "stream subscription",
+            "multi-key queue ordering"
+          ],
+          "steps": [
+            "Subscribe once and merge alerts by stable ID.",
+            "Derive unassigned, unacknowledged rows ordered by severity then age."
+          ],
+          "pitfalls": [
+            "sorting source state in place",
+            "reversing the oldest-first timestamp tie-break"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "Which row-local selection, pending, and error facts keep assignments independent?",
+          "concepts": [
+            "optimistic assignment",
+            "per-item async state"
+          ],
+          "steps": [
+            "Track the selected unit per alert.",
+            "Disable that row during the request and update only its assignment on success or failure."
+          ],
+          "pitfalls": [
+            "one selected unit shared by every row",
+            "leaving controls enabled for double submission"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "Can all tab counts and visible rows come from one canonical alert collection?",
+          "concepts": [
+            "derived tab views",
+            "parallel bulk actions"
+          ],
+          "steps": [
+            "Partition alerts by assigned and acknowledged facts.",
+            "Capture currently visible queued IDs, acknowledge them concurrently, then reconcile results by ID."
+          ],
+          "pitfalls": [
+            "maintaining three drifting arrays",
+            "acknowledging alerts hidden from the current queued view"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "An assigned alert remains counted as queued",
+            "cause": "Counts and rows use different predicates",
+            "check": "Derive every tab view from the same canonical alert objects."
+          },
+          {
+            "symptom": "Playwright cannot locate queue controls",
+            "cause": "Required data-testid attributes changed",
+            "check": "Compare row, badge, unit, assignment, tab, and bulk-action attributes with the stub contract."
+          }
+        ]
+      }
+    }
+  },
+  "react-04": {
+    "id": "react-04",
+    "title": "Contract Review Dashboard",
+    "description": "Build a contract list view with status/text filtering, expiration sorting, and inline field editing with optimistic updates and rollback on failure.",
+    "language": "react",
+    "industry": "legal-tech",
+    "tags": [
+      "clm",
+      "optimistic-updates",
+      "filtering",
+      "inline-editing",
+      "hooks"
+    ],
+    "level": "senior",
+    "stubPath": "react/practice_problems/problem_04_contract_dashboard.jsx",
+    "testPath": "react/tests/test_problem_04_contract_dashboard.spec.js",
+    "sourceScript": "journey-sources/react-04.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": null,
+    "exampleStatus": "legacy-missing",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Contract table",
+        "contract": "Render a table (or list) of contracts from SEED_CONTRACTS.\nEach row must include:\n  • Contract title\n  • Status badge (colour-coded using STATUS_COLORS)\n  • Owner email\n  • Expiration date\n\nRequired data-testid attributes:\n  • data-testid=\"contract-row\"    on every contract row\n  • data-testid=\"status-badge\"    on the status badge inside each row"
+      },
+      {
+        "part": 2,
+        "title": "Filter, search, and sort",
+        "contract": "Add three controls above the table:\n\n1. Status filter — a <select> that filters by contract status.\n   Options: \"All\", \"draft\", \"in_review\", \"approved\", \"active\", \"expired\"\n   data-testid=\"filter-status\"\n\n2. Text search — an <input> that filters rows by title (case-insensitive\n   substring match).\n   data-testid=\"search-input\"\n\n3. Sort by expiration — a <button> that toggles between ascending and\n   descending expiration date order.\n   data-testid=\"sort-expiration\"\n\nUse useMemo to derive the filtered + sorted list from the raw contracts state.\nShow a row count: \"Showing N contracts\"."
+      },
+      {
+        "part": 3,
+        "title": "Inline field editing with optimistic updates",
+        "contract": "Make the contract title and owner email cells inline-editable:\n\n• Double-clicking a title or email cell enters edit mode (renders an <input>).\n• Pressing Enter or clicking a \"Save\" button calls updateContractField and\n  shows a spinner (data-testid=\"save-spinner\") while the request is in-flight.\n• On success: update the cell with the new value.\n• On failure: revert to the previous value and show an inline error message.\n• While saving, the input should be disabled.\n\nRequired data-testid attributes:\n  • data-testid=\"editable-field\"   on every editable cell (view mode)\n  • data-testid=\"save-spinner\"     on the loading indicator during save\n\n\n── Seed data (do not modify) ─────────────────────────────────────────────────\n\nexport const SEED_CONTRACTS = [\n  {\n    contract_id: 'con-001',\n    title: 'Vendor MSA',\n    owner_email: 'legal@acme.com',\n    status: 'active',\n    expires_on: '2025-09-30',\n  },\n  {\n    contract_id: 'con-002',\n    title: 'SaaS Subscription Agreement',\n    owner_email: 'ops@acme.com',\n    status: 'in_review',\n    expires_on: '2025-12-31',\n  },\n  {\n    contract_id: 'con-003',\n    title: 'NDA — Design Partner',\n    owner_email: 'bizdev@acme.com',\n    status: 'approved',\n    expires_on: '2026-03-15',\n  },\n  {\n    contract_id: 'con-004',\n    title: 'Office Lease',\n    owner_email: 'finance@acme.com',\n    status: 'active',\n    expires_on: '2027-06-01',\n  },\n  {\n    contract_id: 'con-005',\n    title: 'Legacy Reseller Agreement',\n    owner_email: 'sales@acme.com',\n    status: 'expired',\n    expires_on: '2024-01-01',\n  },\n  {\n    contract_id: 'con-006',\n    title: 'Marketing Agency SOW',\n    owner_email: 'marketing@acme.com',\n    status: 'draft',\n    expires_on: '2025-11-30',\n  },\n]\n\nexport const STATUS_COLORS = {\n  draft:     '#94a3b8',\n  in_review: '#f59e0b',\n  approved:  '#3b82f6',\n  active:    '#22c55e',\n  expired:   '#ef4444',\n}\n\n\nMock API call. Resolves after ~300 ms; rejects ~15% of the time.\n\n@param {string} contractId\n@param {string} field        - \"title\" | \"owner_email\"\n@param {string} value        - new value\n@returns {Promise<{ contract_id: string, field: string, value: string }>}\nexport function updateContractField(contractId, field, value) {\n  return new Promise((resolve, reject) => {\n    setTimeout(() => {\n      if (Math.random() < 0.15) {\n        reject(new Error('Save failed — please try again.'))\n      } else {\n        resolve({ contract_id: contractId, field, value })\n      }\n    }, 300)\n  })\n}\n\n── Your implementation goes below ───────────────────────────────────────────\n\nexport default function App() {\n  throw new Error('Not implemented — replace this with your solution.')\n}"
+      }
+    ],
+    "testSuites": [
+      "Problem 04 — Contract Review Dashboard"
+    ],
+    "commands": {
+      "answerPath": "react/my_answer_04_contract_dashboard.jsx",
+      "copyCommand": "cp react/practice_problems/problem_04_contract_dashboard.jsx react/my_answer_04_contract_dashboard.jsx",
+      "openCommand": "code react/practice_problems/problem_04_contract_dashboard.jsx",
+      "testCommand": "./run_tests.sh -f react/my_answer_04_contract_dashboard.jsx -c npm run test:04"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "What stable row structure presents every contract field and status semantics without mutating seed data?",
+          "concepts": [
+            "defensive initial state",
+            "semantic table rendering"
+          ],
+          "steps": [
+            "Initialize state from copied contract records.",
+            "Render one keyed row and status badge per contract."
+          ],
+          "pitfalls": [
+            "using array indexes as row identity",
+            "mutating SEED_CONTRACTS"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "How can filter, search, and ordering compose as one derived pipeline?",
+          "concepts": [
+            "controlled inputs",
+            "memoized sort/filter"
+          ],
+          "steps": [
+            "Filter by status and case-normalized title search.",
+            "Sort a copied result array and report its derived count."
+          ],
+          "pitfalls": [
+            "sorting state in place",
+            "applying search and status as mutually exclusive modes"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "What field-level snapshot supports optimistic save, rollback, and concurrent edits on different rows?",
+          "concepts": [
+            "inline edit state",
+            "optimistic rollback"
+          ],
+          "steps": [
+            "Enter editing from a stable contract-and-field identity.",
+            "Apply the draft optimistically, disable its editor during save, and roll back only that field on failure."
+          ],
+          "pitfalls": [
+            "one global editing or saving flag",
+            "rollback that overwrites other successful edits"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "Sorting changes the original order permanently across filters",
+            "cause": "Array.sort mutated source state",
+            "check": "Inspect whether the derived list is copied before sorting."
+          },
+          {
+            "symptom": "Saving one field disables every row",
+            "cause": "Pending state is not keyed by contract and field",
+            "check": "Trace the save identity through spinner and disabled conditions."
+          }
+        ]
+      }
+    }
+  },
+  "react-05": {
+    "id": "react-05",
+    "title": "Accessible Async Search Combobox",
+    "description": "Build an accessible keyboard-driven combobox with debounced race-safe search, query caching, and optimistic recent selections with rollback.",
+    "language": "react",
+    "industry": "general",
+    "tags": [
+      "accessibility",
+      "debounce",
+      "request-races",
+      "keyboard-navigation",
+      "optimistic-updates"
+    ],
+    "level": "senior",
+    "stubPath": "react/practice_problems/problem_05_search_combobox.jsx",
+    "testPath": "react/tests/test_problem_05_search_combobox.spec.js",
+    "sourceScript": "journey-sources/react-05.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": null,
+    "exampleStatus": "legacy-missing",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Accessible local combobox",
+        "contract": "Implement `useComboboxState(items, onSelect)` and use it in\n`AccessibleSearchCombobox` to search/select from INITIAL_ITEMS.\n\nRequirements:\n  - A visible <label> named \"Search workspace\" is associated to the input.\n  - The input has role=\"combobox\", aria-autocomplete=\"list\",\n    aria-controls, aria-expanded, and aria-activedescendant while active.\n  - Results use role=\"listbox\" and role=\"option\"; the active option has\n    aria-selected=\"true\" and a stable, readable DOM id derived from item.id.\n  - ArrowDown/ArrowUp move and wrap; Home/End jump; Enter selects; Escape\n    closes the popup without moving focus away from the input.\n  - Clicking an option uses the same selection path as Enter."
+      },
+      {
+        "part": 2,
+        "title": "Debounced asynchronous item source",
+        "contract": "Implement `useAsyncSearch(query, search, debounceMs = 300)`. Non-empty\nqueries call `search(query)` only after 300 ms. Expose loading, success,\nempty, and error states. Suppress stale responses: only the newest request\nmay update visible results. Feed its items into the Part 1 hook and render\noptions through the same listbox/selection path—do not build a second list."
+      },
+      {
+        "part": 3,
+        "title": "Cache and optimistic recent selections",
+        "contract": "Implement `useSearchData(search, persist)`. It owns an instance-local query\ncache and exposes a cached search function. It also exposes the selection\nhandler passed to Part 1: add a selection to the recent list immediately,\ncall persist, and remove that optimistic entry plus show an error on failure.\nCache arrays defensively. Repeating a successful query must not call search.\n\nCOMPOSITION CHAIN\n`useComboboxState` drives selection -> `useAsyncSearch` replaces its items ->\n`useSearchData` wraps fetch/persist and feeds the same selection handler.\n\nRequired data-testid contract (supplements, never replaces, semantic ARIA):\n  search-input, search-listbox, search-option, search-status, selected-item,\n  recent-list, recent-item, recent-error\n\nExample:\n  Type \"alp\" and advance fake time 300 ms: Alpha and Alpine appear.\n  Press ArrowDown, then Enter: Alpha is selected immediately.\n  If a slower earlier request for \"al\" resolves afterward, it is ignored.\n\nimport React from 'react'\n\nexport const INITIAL_ITEMS = [\n  { id: 'doc-alpha', label: 'Alpha', kind: 'Document' },\n  { id: 'doc-alpine', label: 'Alpine', kind: 'Document' },\n  { id: 'project-bravo', label: 'Bravo', kind: 'Project' },\n  { id: 'person-charlie', label: 'Charlie', kind: 'Person' },\n]\n\nexport async function searchItems(query) {\n  const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`)\n  if (!response.ok) throw new Error('Search failed')\n  return response.json()\n}\n\nexport async function persistSelection(item) {\n  const response = await fetch('/api/recent-selections', {\n    method: 'POST',\n    headers: { 'Content-Type': 'application/json' },\n    body: JSON.stringify({ itemId: item.id }),\n  })\n  if (!response.ok) throw new Error('Could not save recent selection')\n}\n\nPART 1\nexport function useComboboxState(items, onSelect) {\n  throw new Error('Not implemented: Part 1 useComboboxState')\n}\n\nPART 2\nexport function useAsyncSearch(query, search, debounceMs = 300) {\n  throw new Error('Not implemented: Part 2 useAsyncSearch')\n}\n\nPART 3\nexport function useSearchData(search, persist) {\n  throw new Error('Not implemented: Part 3 useSearchData')\n}\n\nexport function AccessibleSearchCombobox({\n  search = searchItems,\n  persist = persistSelection,\n}) {\n  throw new Error('Not implemented: compose Parts 1–3')\n}\n\nexport default function App() {\n  return <AccessibleSearchCombobox />\n}"
+      }
+    ],
+    "testSuites": [
+      "Part 1 — ARIA roles, keyboard navigation, and focus management",
+      "Part 2 — debounce, errors, and stale-response suppression",
+      "Part 3 — cache and optimistic recent selections"
+    ],
+    "commands": {
+      "answerPath": "react/my_answer_05_search_combobox.jsx",
+      "copyCommand": "cp react/practice_problems/problem_05_search_combobox.jsx react/my_answer_05_search_combobox.jsx",
+      "openCommand": "code react/practice_problems/problem_05_search_combobox.jsx",
+      "testCommand": "./run_tests.sh -f react/my_answer_05_search_combobox.jsx -c npm run test:05"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Which single active-index state can drive keyboard, pointer, ARIA, and selection behavior together?",
+          "concepts": [
+            "ARIA combobox pattern",
+            "roving active descendant"
+          ],
+          "steps": [
+            "Associate the visible label, input, and stable listbox/option IDs.",
+            "Route Enter and pointer clicks through one selection handler while preserving focus."
+          ],
+          "pitfalls": [
+            "moving DOM focus into options",
+            "letting aria-activedescendant reference a missing option"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "What request identity prevents an older response from replacing newer visible results?",
+          "concepts": [
+            "debounce cleanup",
+            "stale-response suppression"
+          ],
+          "steps": [
+            "Cancel the prior debounce when query inputs change.",
+            "Expose explicit loading, success, empty, and error states and commit only the latest request."
+          ],
+          "pitfalls": [
+            "debouncing response handling instead of request start",
+            "building a second option list outside Part 1"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "Which state belongs to one combobox instance, and what snapshot rolls back one failed recent selection?",
+          "concepts": [
+            "instance-local cache",
+            "optimistic recent items"
+          ],
+          "steps": [
+            "Cache defensive result arrays behind the search function consumed by Part 2.",
+            "Add a recent selection immediately and remove only that optimistic entry if persistence fails."
+          ],
+          "pitfalls": [
+            "module-global cache leaking between instances",
+            "caching rejected searches",
+            "rollback removing an earlier successful selection of the same label"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "A slow old query replaces current options",
+            "cause": "Every resolved promise commits without checking request identity",
+            "check": "Trace a monotonic request token or cancellation flag through response handling."
+          },
+          {
+            "symptom": "Keyboard and mouse selections produce different recent state",
+            "cause": "They bypass the shared Part 1 onSelect path",
+            "check": "Follow both interactions into the same selection callback."
+          },
+          {
+            "symptom": "A repeated successful query still reaches the network",
+            "cause": "The cached function is recreated or stores mutable results incorrectly",
+            "check": "Inspect cache lifetime and lookup before invoking search."
+          }
+        ]
+      }
+    }
+  },
+  "swift-03": {
+    "id": "swift-03",
+    "title": "Permission Manager (Swift)",
+    "description": "Build typed role-based access control with inheritance and wildcard permission patterns.",
+    "language": "swift",
+    "industry": "general",
+    "tags": [
+      "rbac",
+      "protocols",
+      "enums",
+      "value-semantics"
+    ],
+    "level": "senior",
+    "stubPath": "swift/practice_problems/problem_03_permission_manager.swift",
+    "testPath": "swift/Tests/Problem03PermissionManagerTests/Problem03PermissionManagerTests.swift",
+    "sourceScript": "journey-sources/swift-03.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": null,
+    "exampleStatus": "legacy-missing",
+    "parts": [
+      {
+        "part": 1,
+        "title": "flat roles and permissions",
+        "contract": "public mutating func createRole(id: String, permissions: Set<Permission> = []) throws(PermissionManagerError) { throw .notImplemented }\n    public mutating func grant(_ permission: Permission, to roleID: String) throws(PermissionManagerError) { throw .notImplemented }\n    public mutating func revoke(_ permission: Permission, from roleID: String) throws(PermissionManagerError) { throw .notImplemented }\n    public mutating func assignRole(_ roleID: String, to userID: String) throws(PermissionManagerError) { throw .notImplemented }\n    public mutating func unassignRole(_ roleID: String, from userID: String) throws(PermissionManagerError) { throw .notImplemented }\n    public func hasPermission(_ permission: Permission, userID: String) -> Bool { false }\n    public func allPermissions(for userID: String) -> Set<Permission> { [] }\n    public func permissions(forRole roleID: String) throws(PermissionManagerError) -> Set<Permission> { throw .notImplemented }\n\nMARK:"
+      },
+      {
+        "part": 2,
+        "title": "inheritance",
+        "contract": "public mutating func setParentRole(_ parentRoleID: String, for roleID: String) throws(PermissionManagerError) { throw .notImplemented }\n\nMARK:"
+      },
+      {
+        "part": 3,
+        "title": "scoped wildcard matching",
+        "contract": "public func hasScopedPermission(userID: String, resource: String, action: String) -> Bool { false }\n}"
+      }
+    ],
+    "testSuites": [
+      "Part 1 — Flat roles and permissions",
+      "Part 2 — Role inheritance",
+      "Part 3 — Scoped permissions"
+    ],
+    "commands": {
+      "answerPath": "swift/practice_problem_answers/my_answer_03_permission_manager.swift",
+      "copyCommand": "cp swift/practice_problems/problem_03_permission_manager.swift swift/practice_problem_answers/my_answer_03_permission_manager.swift",
+      "openCommand": "code swift/practice_problems/problem_03_permission_manager.swift",
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_03_permission_manager.swift -c swift test"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Which value-semantic mappings make role updates and a user's effective permission union straightforward?",
+          "concepts": [
+            "typed role identifiers",
+            "Set-based permissions"
+          ],
+          "steps": [
+            "Keep roles and user assignments private to each manager value.",
+            "Return copied permission sets and typed failures at mutation boundaries."
+          ],
+          "pitfalls": [
+            "reference-backed storage shared by copied managers",
+            "returning mutable internal collections"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "How can one parent link extend the existing effective-permission query transitively?",
+          "concepts": [
+            "role inheritance",
+            "cycle-safe traversal"
+          ],
+          "steps": [
+            "Validate parent and child IDs before storing inheritance.",
+            "Make Part 1 permission queries traverse all ancestors without duplicating collection logic."
+          ],
+          "pitfalls": [
+            "checking only the immediate parent",
+            "allowing an inheritance cycle"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "How can scoped wildcard matching consume effective permissions without becoming a second inheritance algorithm?",
+          "concepts": [
+            "resource/action scopes",
+            "finite wildcard candidates"
+          ],
+          "steps": [
+            "Parse the requested permission at the matching boundary.",
+            "Compare exact and documented wildcard candidates against the Part 2 effective set."
+          ],
+          "pitfalls": [
+            "treating malformed strings as valid wildcards",
+            "forgetting inherited wildcard permissions"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "Mutating a copied manager changes the original",
+            "cause": "Mutable reference storage defeats value semantics",
+            "check": "Copy a seeded manager, grant a unique permission, and inspect both snapshots."
+          },
+          {
+            "symptom": "Direct permissions work but inherited wildcards do not",
+            "cause": "Wildcard matching reads only the role's local set",
+            "check": "Trace matching through the effective permission query and every ancestor."
           }
         ]
       }
