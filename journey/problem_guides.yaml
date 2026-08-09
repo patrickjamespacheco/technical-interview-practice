@@ -113,6 +113,18 @@
       {"symptom": "Cancellation still starts queued sends", "cause": "Replacement work is scheduled without checking cancellation", "check": "Check cancellation before every task-group add."}
     ]}
   },
+  "swift-20": {
+    "approach": [
+      {"part": 1, "prompt": "Which snapshots preserve both the current local value and the clean ancestor needed by later reconciliation?", "concepts": ["value-semantic records", "dirty baselines", "injected time"], "steps": ["Keep the first clean baseline when a record becomes dirty.", "Return sorted copies of baseline and current records from the pending query."], "pitfalls": ["replacing the baseline after every edit", "reading the wall clock inside the store"]},
+      {"part": 2, "prompt": "What context must each outcome carry so resolution never compares ordering metadata again?", "concepts": ["lexicographic precedence", "associated-value outcomes", "deterministic ties"], "steps": ["Use the pending snapshot to identify dirty local records.", "Compare version, timestamp, and origin in order while retaining all three record perspectives."], "pitfalls": ["recomputing dirty state", "silently choosing a side when every ordering key ties"]},
+      {"part": 3, "prompt": "How can baseline-relative field choices and deletion precedence be derived only from reconciliation outcomes?", "concepts": ["three-way merge", "tombstones", "idempotent application"], "steps": ["Classify each field as unchanged, one-sided, or divergent against the baseline.", "Resolve tombstone-versus-live pairs before field merging and preserve the recorded reason."], "pitfalls": ["letting an edit resurrect a tombstone", "re-inspecting versions during application", "bumping a synthesized result on replay"]}
+    ],
+    "verify": {"commonFailures": [
+      {"symptom": "A second local edit loses the original merge ancestor", "cause": "Dirty baseline is overwritten with the latest local value", "check": "Capture a baseline only on the clean-to-dirty transition."},
+      {"symptom": "Equal metadata produces nondeterministic results", "cause": "Dictionary order or arrival order acts as an undocumented tie-break", "check": "Apply the documented origin ordering and emit conflict only when all keys tie."},
+      {"symptom": "A deleted note returns after sync", "cause": "The winning live edit is applied before tombstone semantics", "check": "Inspect the outcome's record contents and resolve deletion precedence first."}
+    ]}
+  },
   "swift-11": {
     "approach": [
       {"part": 1, "prompt": "Which typed values should be stored separately from changing heartbeat state?", "concepts": ["value records", "Date ordering", "immutable snapshots"], "steps": ["Index stations by readable ID.", "Reject a heartbeat unless it is strictly newer than the stored date."], "pitfalls": ["string timestamps", "returning dictionary storage order"]},
