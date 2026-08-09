@@ -123,5 +123,17 @@
       {"symptom": "A station exactly at the threshold is stale", "cause": "The comparison is inclusive", "check": "Compare heartbeat age using greater-than, not greater-than-or-equal."},
       {"symptom": "Open outage totals change with wall time", "cause": "The injected time source was bypassed", "check": "Resolve every omitted asOf value from the initializer closure."}
     ]}
+  },
+  "swift-21": {
+    "approach": [
+      {"part": 1, "prompt": "Which decoding boundaries preserve the detected version while keeping structural and field failures distinct?", "concepts": ["Codable envelopes", "associated-value errors", "reusable version queries"], "steps": ["Decode only enough envelope structure for version detection.", "Parse body fields into a reusable value before validating the current schema."], "pitfalls": ["collapsing every decoding error into one case", "validating the body inside version detection"]},
+      {"part": 2, "prompt": "How can an unordered registry produce one deterministic contiguous path to the current schema?", "concepts": ["protocol existentials", "step-indexed lookup", "method composition"], "steps": ["Start the chain from the Part 1 detected version.", "Advance exactly one version per registered step and fail at the first gap."], "pitfalls": ["re-parsing the version in the registry", "depending on registration order", "allowing a step to skip versions"]},
+      {"part": 3, "prompt": "Which Part 2 outcome contains enough information to classify every batch item without repeating migration logic?", "concepts": ["per-item outcomes", "stable folds", "value semantics"], "steps": ["Map each input to the existing single-payload migration operation.", "Fold outcome cases into counts while preserving input order."], "pitfalls": ["aborting after the first failure", "sorting report entries", "mutating caller-owned inputs"]}
+    ],
+    "verify": {"commonFailures": [
+      {"symptom": "An unsupported payload is reported as malformed", "cause": "Current-schema decoding runs before the version is checked", "check": "Trace the detected integer into the unknown-version branch before body requirements."},
+      {"symptom": "A v1 payload fails even though both steps are registered", "cause": "The chain follows registry insertion order", "check": "Index steps by their source version and walk upward from the detected version."},
+      {"symptom": "Batch counts disagree with item results", "cause": "Aggregation reclassifies raw payloads independently", "check": "Fold only over the MigrationOutcome returned for each item."}
+    ]}
   }
 }

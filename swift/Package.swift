@@ -13,7 +13,8 @@ let package = Package(
         .library(name: "Problem15TicTacToeEngine", targets: ["Problem15TicTacToeEngine"]),
         .library(name: "Problem02APIRateLimiter", targets: ["Problem02APIRateLimiter"]),
         .library(name: "Problem11CoverageTracker", targets: ["Problem11CoverageTracker"]),
-        .library(name: "Problem19OfflineTelemetryBatchProcessor", targets: ["Problem19OfflineTelemetryBatchProcessor"])
+        .library(name: "Problem19OfflineTelemetryBatchProcessor", targets: ["Problem19OfflineTelemetryBatchProcessor"]),
+        .library(name: "Problem21VersionedPayloadMigration", targets: ["Problem21VersionedPayloadMigration"])
     ],
     targets: [
         .target(name: "Problem03PermissionManager"),
@@ -33,6 +34,8 @@ let package = Package(
         .target(name: "Problem11CoverageTracker"),
         .testTarget(name: "Problem11CoverageTrackerTests", dependencies: ["Problem11CoverageTracker"]),
         .target(name: "Problem19OfflineTelemetryBatchProcessor"),
-        .testTarget(name: "Problem19OfflineTelemetryBatchProcessorTests", dependencies: ["Problem19OfflineTelemetryBatchProcessor"])
+        .testTarget(name: "Problem19OfflineTelemetryBatchProcessorTests", dependencies: ["Problem19OfflineTelemetryBatchProcessor"]),
+        .target(name: "Problem21VersionedPayloadMigration"),
+        .testTarget(name: "Problem21VersionedPayloadMigrationTests", dependencies: ["Problem21VersionedPayloadMigration"])
     ]
 )
