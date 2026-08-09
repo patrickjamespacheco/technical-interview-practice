@@ -154,7 +154,9 @@
       flex-direction: column;
       gap: 0.7rem;
       transition: box-shadow 0.15s, border-color 0.15s;
+      min-width: 0;
     }
+    .problem-card.expanded { grid-column: 1 / -1; }
     .problem-card:hover { box-shadow: var(--shadow-hover); border-color: var(--border-hover); }
 
     .card-header {
@@ -302,6 +304,21 @@
       z-index: 999;
     }
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ── Generated source reader ── */
+    .source-reader { min-width: 0; margin-top: .25rem; border-top: 1px solid var(--border); padding-top: 1rem; }
+    .source-reader-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: .7rem; }
+    .source-reader h3 { margin: 0; font-size: 1rem; }
+    .source-reader-note { margin: .18rem 0 0; color: var(--text-muted); font-size: .78rem; }
+    .source-tabs { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .65rem; }
+    .source-tab { border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text-secondary); padding: .38rem .7rem; cursor: pointer; font: inherit; font-size: .78rem; font-weight: 600; }
+    .source-tab[aria-selected="true"] { color: #fff; background: var(--accent); border-color: var(--accent); }
+    .source-file-label { margin: 0 0 .45rem; color: var(--text-muted); font: .7rem ui-monospace, "Cascadia Code", Menlo, monospace; overflow-wrap: anywhere; }
+    .source-region { max-height: min(70vh, 760px); overflow: auto; overscroll-behavior: contain; border: 1px solid #1e293b; border-radius: 8px; background: #0f172a; min-width: 0; }
+    .source-region pre { margin: 0; padding: 1rem 1.15rem; min-width: max-content; color: #e2e8f0; font: .8rem/1.65 ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; tab-size: 4; white-space: pre; }
+    .tok-comment { color: #94a3b8; font-style: italic; } .tok-string { color: #bef264; } .tok-keyword { color: #93c5fd; font-weight: 600; } .tok-type { color: #67e8f9; } .tok-number { color: #fda4af; }
+    .source-loading, .source-error { padding: 1rem; border-radius: 7px; background: var(--bg); color: var(--text-secondary); font-size: .85rem; }
+    @media (max-width: 540px) { main { padding-inline: .75rem; } .problem-grid { grid-template-columns: minmax(0, 1fr); } .source-reader-head { flex-direction: column; } }
   </style>
 </head>
 <body>
@@ -333,6 +350,7 @@
 
 <div class="toast" id="toast">Path copied!</div>
 
+<script src="problem-source-viewer.js"></script>
 <script>
 // ============================================================
 // PROBLEM INDEX
@@ -723,7 +741,9 @@ const repoRoot = window.location.pathname.replace(/\/index\.html$/, "");
 
 // ── Filter state ─────────────────────────────────────────────────────────────
 const LEVELS = ["junior", "mid-level", "senior", "staff"]; // canonical order
-const state = { search: "", language: null, industry: null, level: null, tag: null };
+const state = { search: "", language: null, industry: null, level: null, tag: null, expanded: null, sourceTab: "stub" };
+window.PROBLEM_SOURCES = window.PROBLEM_SOURCES || {};
+const sourceLoads = {};
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const unique = arr => [...new Set(arr)];
@@ -732,6 +752,36 @@ const label  = key => key.split("-").map(w => w[0].toUpperCase() + w.slice(1)).j
 function problemNum(path) {
   const m = path.match(/problem_(\d+)/);
   return m ? `#${m[1]}` : "";
+}
+
+function problemKey(p) { return `${p.language}-${(p.path.match(/problem_(\d+)/) || [null, ""])[1]}`; }
+
+function sourceReader(p) {
+  const key = problemKey(p), payload = window.PROBLEM_SOURCES[key];
+  if (!payload) return `<section class="source-reader" aria-label="Problem source"><div class="source-loading" role="status">Loading source…</div></section>`;
+  const selected = state.sourceTab === "test" && payload.test ? "test" : "stub";
+  const file = payload[selected];
+  return `<section class="source-reader" aria-labelledby="source-title-${key}">
+    <div class="source-reader-head"><div><h3 id="source-title-${key}">${selected === "stub" ? "Problem statement and stub" : "Test specification"}</h3><p class="source-reader-note">Generated from the repository source. Scroll inside the code region for long files.</p></div><button type="button" class="action-btn action-secondary" data-close-source>Close reader</button></div>
+    <div class="source-tabs" role="tablist" aria-label="Choose source file">
+      <button type="button" class="source-tab" role="tab" data-source-tab="stub" aria-selected="${selected === "stub"}">Problem stub</button>
+      ${payload.test ? `<button type="button" class="source-tab" role="tab" data-source-tab="test" aria-selected="${selected === "test"}">Tests</button>` : ""}
+    </div>
+    <p class="source-file-label">${ProblemSourceViewer.escape(file.path)}</p>
+    ${ProblemSourceViewer.region(file.source, payload.language, `${selected === "stub" ? "Problem stub" : "Test file"}: ${file.path}`)}
+  </section>`;
+}
+
+function loadSource(p) {
+  const key = problemKey(p);
+  if (window.PROBLEM_SOURCES[key]) { renderCards(); return; }
+  if (sourceLoads[key]) return;
+  const script = document.createElement("script");
+  script.src = `journey-sources/${key}.js`;
+  script.onload = () => { sourceLoads[key] = "loaded"; renderCards(); requestAnimationFrame(() => document.querySelector(`[data-card-key="${key}"] .source-reader`)?.scrollIntoView({block: "nearest"})); };
+  script.onerror = () => { sourceLoads[key] = "error"; renderCards(); };
+  sourceLoads[key] = "loading";
+  document.head.appendChild(script);
 }
 
 function matchesFilters(p) {
@@ -822,7 +872,7 @@ function renderCards() {
       : "";
 
     return `
-<div class="problem-card">
+<article class="problem-card${state.expanded === problemKey(p) ? " expanded" : ""}" data-card-key="${problemKey(p)}">
   <div class="card-header">
     <span class="card-num">${problemNum(p.path)}</span>
     <span class="card-title">${p.title}</span>
@@ -837,12 +887,14 @@ function renderCards() {
   <div class="tags">${tagHtml}</div>
   <p class="file-path">${p.path}</p>
   <div class="card-actions">
+    <button type="button" class="action-btn action-secondary" data-read-source>Read problem</button>
     <a href="${vscodeProblem}" class="action-btn action-primary">Open in VS Code ↗</a>
     ${journeyBtn}
     ${testBtn}
     <button class="action-btn action-secondary" onclick="copyPath('${p.path}')">Copy path</button>
   </div>
-</div>`;
+  ${state.expanded === problemKey(p) ? (sourceLoads[problemKey(p)] === "error" ? `<section class="source-reader"><div class="source-error" role="alert">Source could not be loaded. Regenerate the journey data and try again.</div></section>` : sourceReader(p)) : ""}
+</article>`;
   }).join("");
 }
 
@@ -879,6 +931,21 @@ document.getElementById("level-filters").addEventListener("click", e => {
   if (!btn) return;
   state.level = btn.dataset.level === "all" ? null : btn.dataset.level;
   render();
+});
+
+document.getElementById("problem-grid").addEventListener("click", e => {
+  const card = e.target.closest("[data-card-key]");
+  if (!card) return;
+  const key = card.dataset.cardKey;
+  if (e.target.closest("[data-read-source]")) {
+    state.expanded = key; state.sourceTab = "stub"; renderCards();
+    loadSource(PROBLEMS.find(p => problemKey(p) === key));
+  } else if (e.target.closest("[data-close-source]")) {
+    state.expanded = null; renderCards(); card.querySelector("[data-read-source]")?.focus();
+  } else if (e.target.closest("[data-source-tab]")) {
+    state.sourceTab = e.target.closest("[data-source-tab]").dataset.sourceTab; renderCards();
+    document.querySelector(`[data-card-key="${key}"] [data-source-tab="${state.sourceTab}"]`)?.focus();
+  }
 });
 
 // ── Init ─────────────────────────────────────────────────────────────────────
