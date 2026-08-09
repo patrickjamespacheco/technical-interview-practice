@@ -92,6 +92,14 @@
     .failure { border: 1px solid var(--border); border-radius: 8px; padding: .85rem; min-width: 0; }
     .failure strong { display: block; margin-bottom: .2rem; }
     .failure p { margin: .22rem 0 0; color: var(--secondary); font-size: .87rem; }
+    .locked { max-width: 42rem; margin: 2rem auto; padding: 1.5rem; border: 1px solid #fbbf24; border-radius: var(--radius); background: var(--warning-bg); }
+    .locked h2 { margin-top: 0; }
+    .unlock-confirm { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #fcd34d; }
+    .lesson-step { min-width: 0; }
+    .lesson-step .reasoning { font-size: 1rem; max-width: 72ch; }
+    .lesson-step .rejected { border-left: 3px solid #f59e0b; padding: .65rem .85rem; background: var(--warning-bg); color: var(--warning); }
+    .lesson-nav { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .65rem; margin: 1rem 0; }
+    .reflection { margin-top: 1.5rem; padding: 1rem; border: 1px solid #bbf7d0; border-radius: 8px; background: var(--success-bg); }
     .controls { display: flex; justify-content: space-between; gap: .8rem; margin-top: 1rem; }
     .controls .btn:last-child { margin-left: auto; }
     .error { max-width: 680px; margin: 4rem auto; text-align: center; }
@@ -120,7 +128,7 @@
   <header>
     <div class="topline"><a class="back" href="index.html">← All problems</a><span id="local-note" class="badge">Saved locally</span></div>
     <h1 id="problem-title">Practice journey</h1>
-    <p id="problem-subtitle">Frame it, plan it, code it, then verify it.</p>
+    <p id="problem-subtitle">Frame it, plan it, code it, verify it, then learn from a worked solution.</p>
   </header>
   <div class="layout" id="app" hidden>
     <nav class="rail" aria-label="Journey stages"><h2>Your journey</h2><ol class="stage-list" id="stage-list"></ol></nav>
@@ -139,16 +147,17 @@
   <script>
     (function () {
       "use strict";
-      var SCHEMA_VERSION = 1;
-      var STAGES = ["Navigate and frame", "Plan the solution", "Code", "Verify"];
+      var SCHEMA_VERSION = 2;
+      var STAGES = ["Navigate and frame", "Plan the solution", "Code", "Verify", "Learn"];
       var params = new URLSearchParams(location.search);
       var problemKey = params.get("problem");
       var problem = window.JOURNEY_PROBLEMS && window.JOURNEY_PROBLEMS[problemKey];
       var app = document.getElementById("app");
       var content = document.getElementById("stage-content");
       var storageKey = "practice-journey:v" + SCHEMA_VERSION + ":" + problemKey;
-      var state = { stage: 0, part: 1, reveals: {}, checks: {}, verified: {} };
+      var state = { stage: 0, part: 1, reveals: {}, checks: {}, verified: {}, lessonOverride: false, lessonConfirming: false, lessonSteps: {} };
       var sourcePayload = null, sourceStatus = "loading";
+      var lessonPayload = null, lessonStatus = "idle";
 
       if (!problem) {
         var error = document.getElementById("error");
@@ -159,7 +168,7 @@
       try { state = Object.assign(state, JSON.parse(localStorage.getItem(storageKey) || "{}")); } catch (_) {}
       // Hints always start closed on page entry, even when other progress resumes.
       state.reveals = {};
-      state.stage = Math.max(0, Math.min(3, Number(state.stage) || 0));
+      state.stage = Math.max(0, Math.min(4, Number(state.stage) || 0));
       state.part = Math.max(1, Math.min(problem.parts.length, Number(state.part) || 1));
 
       document.title = problem.title + " — Practice Journey";
@@ -178,6 +187,16 @@
       function save() { try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch (_) { document.getElementById("local-note").textContent = "Local saving unavailable"; } }
       function currentPart() { return problem.parts[state.part - 1]; }
       function guidePart() { return problem.guide.approach.find(function (item) { return item.part === state.part; }); }
+      function verifiedProblem() { return problem.parts.every(function (part) { return !!state.verified[String(part.part)]; }); }
+      function lessonUnlocked() { return verifiedProblem() || state.lessonOverride; }
+      function loadLesson() {
+        if (!lessonUnlocked() || !problem.lessonAvailable || lessonStatus !== "idle") return;
+        lessonStatus = "loading";
+        var script = document.createElement("script"); script.src = problem.lessonScript;
+        script.onload = function () { lessonPayload = window.PROBLEM_LESSONS && window.PROBLEM_LESSONS[problem.id]; lessonStatus = lessonPayload ? "loaded" : "error"; render(false); };
+        script.onerror = function () { lessonStatus = "error"; render(false); };
+        document.head.appendChild(script);
+      }
       function list(items) { return "<ul>" + items.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>"; }
       function partBar() {
         return '<div class="partbar"><div class="part-dots" aria-label="Choose a part">' + problem.parts.map(function (p) {
@@ -189,7 +208,7 @@
       }
       function renderFrame() {
         var example = problem.example ? '<pre><code>' + esc(problem.example) + '</code></pre>' : '<div class="legacy">This legacy pilot has no canonical usage example in its stub. Use the scenario and part outline as the requirements source.</div>';
-        return '<p class="eyebrow">Stage 1 of 4 · Requirements only</p><h2>Navigate and frame</h2><p class="lede">Understand the problem before choosing an approach.</p>' +
+        return '<p class="eyebrow">Stage 1 of 5 · Requirements only</p><h2>Navigate and frame</h2><p class="lede">Understand the problem before choosing an approach.</p>' +
           '<div class="badges"><span class="badge ' + esc(problem.language) + '">' + esc(label(problem.language)) + '</span><span class="badge">' + esc(label(problem.industry)) + '</span><span class="badge">' + esc(label(problem.level)) + '</span><span class="badge">~45 min</span></div>' +
           '<div class="tags" style="margin-top:.65rem">' + problem.tags.map(function (t) { return '<span class="tag">#' + esc(t) + '</span>'; }).join("") + '</div>' +
           '<div class="info-grid"><div class="info-card"><strong>Scenario</strong>' + esc(problem.description) + '</div><div class="info-card"><strong>Learning goals</strong>Build each cumulative contract while preserving earlier behavior.</div><div class="info-card"><strong>Prerequisites</strong>' + prerequisite() + '</div></div>' +
@@ -202,7 +221,7 @@
       }
       function renderPlan() {
         var g = guidePart(), key = String(state.part), reveal = state.reveals[key] || 0;
-        return partBar() + '<p class="eyebrow">Stage 2 of 4 · Think before revealing</p><h2>Plan part ' + state.part + ': ' + esc(currentPart().title) + '</h2><div class="prompt"><strong>Planning prompt</strong><br>' + esc(g.prompt) + '</div>' +
+        return partBar() + '<p class="eyebrow">Stage 2 of 5 · Think before revealing</p><h2>Plan part ' + state.part + ': ' + esc(currentPart().title) + '</h2><div class="prompt"><strong>Planning prompt</strong><br>' + esc(g.prompt) + '</div>' +
           '<div class="reveal-row"><button class="btn" type="button" id="concepts">Reveal concepts</button><button class="btn" type="button" id="approach"' + (reveal < 1 ? ' disabled' : '') + '>Reveal approach &amp; pitfalls</button><button class="btn" type="button" id="reset-reveals">Reset reveals</button></div>' +
           '<section class="reveal" id="concept-panel" tabindex="-1"' + (reveal < 1 ? ' hidden' : '') + '><h3>Concepts</h3>' + list(g.concepts) + '</section>' +
           '<section class="reveal" id="approach-panel" tabindex="-1"' + (reveal < 2 ? ' hidden' : '') + '><h3>Approach</h3>' + list(g.steps) + '<h3>Pitfalls</h3>' + list(g.pitfalls) + '</section>' +
@@ -213,7 +232,7 @@
         var scoped = scopedCommand();
         var checks = ["I kept the public signatures unchanged.", "I implemented this part without breaking earlier parts.", "I reviewed edge cases in the contract."];
         var source = renderPartSource(part);
-        return partBar() + '<p class="eyebrow">Stage 3 of 4 · Build</p><h2>Code part ' + state.part + ': ' + esc(part.title) + '</h2>' + source +
+        return partBar() + '<p class="eyebrow">Stage 3 of 5 · Build</p><h2>Code part ' + state.part + ': ' + esc(part.title) + '</h2>' + source +
           commandBlock(problem.commands.copyCommand, "Copy the stub") + '<p><strong>Answer file:</strong> <code>' + esc(problem.commands.answerPath) + '</code></p><p>The filename must preserve the problem number and slug so the runner can map it correctly.</p>' +
           '<p><a class="btn" href="' + esc(vscode) + '">Open stub in VS Code ↗</a></p>' + commandBlock(scoped.command, scoped.title) + (scoped.note ? '<p class="notice">' + esc(scoped.note) + '</p>' : '') +
           '<fieldset class="self-checks"><legend>Self-reported coding checklist</legend>' + checks.map(function (text, i) { var key = state.part + ":" + i; return '<label class="check"><input type="checkbox" data-check="' + key + '"' + (state.checks[key] ? ' checked' : '') + '><span>' + esc(text) + '</span></label>'; }).join("") + '</fieldset><p class="lede">These marks are stored locally. They are not machine verification.</p>';
@@ -246,18 +265,34 @@
         var success = problem.language === "react" ? "Playwright reports the selected suite passed with no failed tests." : problem.language === "swift" ? "Swift Testing finishes with zero issues." : "pytest reports all selected tests passed.";
         var testReader = sourcePayload && sourcePayload.test ? '<details class="full-source"><summary>Read the test specification</summary><p class="source-meta">Test assertion bodies are available here only in the Verify stage: ' + esc(sourcePayload.test.path) + '</p>' + ProblemSourceViewer.region(sourcePayload.test.source, problem.language === "react" ? "react" : problem.language, 'Test specification') + '</details>' : '';
         var testVscode = "vscode://file" + location.pathname.replace(/\/journey\.html$/, "") + "/" + problem.testPath;
-        return partBar() + '<p class="eyebrow">Stage 4 of 4 · Observe the terminal</p><h2>Verify part ' + state.part + '</h2><div class="notice"><strong>This page does not run tests and cannot know their result.</strong> Run the command yourself, then report what you observed.</div>' +
+        return partBar() + '<p class="eyebrow">Stage 4 of 5 · Observe the terminal</p><h2>Verify part ' + state.part + '</h2><div class="notice"><strong>This page does not run tests and cannot know their result.</strong> Run the command yourself, then report what you observed.</div>' +
           commandBlock(problem.commands.testCommand, "Exact terminal command") + '<h3>Test suites derived for this part</h3>' + (suites.length ? list(suites) : '<p>The available test metadata exposes only a full-problem suite. No part-specific suite is claimed.</p>') +
           '<p><a class="btn" href="' + esc(testVscode) + '">Open tests in VS Code ↗</a></p>' + testReader +
           '<h3>What success looks like</h3><p>' + esc(success) + '</p><h3>Common failures</h3><div class="failures">' + problem.guide.verify.commonFailures.map(function (f) { return '<article class="failure"><strong>' + esc(f.symptom) + '</strong><p><b>Likely cause:</b> ' + esc(f.cause) + '</p><p><b>Check:</b> ' + esc(f.check) + '</p></article>'; }).join("") + '</div>' +
           '<fieldset class="self-checks"><legend>Self-reported result</legend><label class="check"><input type="checkbox" id="saw-green"' + (green ? ' checked' : '') + '><span>I saw green for this part in my terminal.</span></label></fieldset><p class="lede">This mark is local and self-reported, not machine verification.</p>';
       }
+      function renderLearn() {
+        if (!problem.lessonAvailable) return '<p class="eyebrow">Stage 5 of 5 · Learn</p><h2>Lesson not authored yet</h2><p class="lede">This problem does not have a worked lesson yet. The first four practice stages remain fully available.</p>';
+        if (!lessonUnlocked()) return '<section class="locked"><p class="eyebrow">Worked solution locked</p><h2>Attempt first, then study the answer</h2><p>This stage contains the complete solution. It unlocks after you mark every part verified, protecting the useful struggle of solving the problem yourself.</p><p>If you are genuinely stuck, you can deliberately reveal it now. This is an escape hatch, not a penalty or a paywall.</p>' +
+          (state.lessonConfirming ? '<div class="unlock-confirm"><p><strong>This will reveal the full worked solution and remember that choice for this problem.</strong></p><button class="btn primary" id="confirm-lesson" type="button">Reveal the full worked solution</button> <button class="btn" id="cancel-lesson" type="button">Keep practicing</button></div>' : '<button class="btn" id="start-lesson-override" type="button">I’m stuck — consider showing the solution</button>') + '</section>';
+        if (lessonStatus === "idle") loadLesson();
+        if (lessonStatus === "loading") return '<p class="eyebrow">Stage 5 of 5 · Learn</p><h2>Loading the worked lesson…</h2><p class="notice" role="status">The lesson is loaded only after unlock to keep the initial page small.</p>';
+        if (!lessonPayload) return '<p class="eyebrow">Stage 5 of 5 · Learn</p><h2>Lesson unavailable</h2><p class="legacy">The generated lesson file could not be loaded. Run the journey data generator to restore it.</p>';
+        var lessonPart = lessonPayload.parts.find(function (item) { return item.part === state.part; });
+        var stepIndex = Math.max(0, Math.min(lessonPart.steps.length - 1, Number(state.lessonSteps[String(state.part)]) || 0));
+        var step = lessonPart.steps[stepIndex];
+        var isFinal = state.part === problem.parts.length && stepIndex === lessonPart.steps.length - 1;
+        return partBar() + '<p class="eyebrow">Stage 5 of 5 · Worked lesson</p><h2>Learn part ' + state.part + ': ' + esc(currentPart().title) + '</h2><p class="lede">Step ' + (stepIndex + 1) + ' of ' + lessonPart.steps.length + '</p>' +
+          '<article class="lesson-step"><p class="reasoning">' + esc(step.explanation) + '</p>' + ProblemSourceViewer.region(step.code, problem.language, 'Worked solution code for part ' + state.part + ', step ' + (stepIndex + 1)) + (step.rejected ? '<p class="rejected"><strong>Why not the tempting alternative?</strong><br>' + esc(step.rejected) + '</p>' : '') + '</article>' +
+          '<nav class="lesson-nav" aria-label="Lesson steps"><button class="btn" type="button" id="lesson-back"' + (stepIndex === 0 ? ' disabled' : '') + '>← Earlier step</button><button class="btn primary" type="button" id="lesson-forward"' + (stepIndex === lessonPart.steps.length - 1 ? ' disabled' : '') + '>Next step →</button></nav>' +
+          (isFinal ? '<aside class="reflection"><h3>Carry this forward</h3><p>' + esc(lessonPayload.reflection) + '</p></aside>' : '');
+      }
       function render(focus) {
         document.getElementById("stage-list").innerHTML = STAGES.map(function (name, i) { return '<li><button type="button" class="stage-btn" data-stage="' + i + '"' + (i === state.stage ? ' aria-current="step"' : '') + '><span class="stage-number">' + (i + 1) + '</span><span class="stage-label">' + esc(name) + '</span></button></li>'; }).join("");
-        content.innerHTML = [renderFrame, renderPlan, renderCode, renderVerify][state.stage]();
+        content.innerHTML = [renderFrame, renderPlan, renderCode, renderVerify, renderLearn][state.stage]();
         document.getElementById("previous").disabled = state.stage === 0;
-        document.getElementById("next").disabled = state.stage === 3;
-        document.getElementById("next").textContent = state.stage === 2 ? "Verify →" : "Next →";
+        document.getElementById("next").disabled = state.stage === 4 || (state.stage === 3 && !lessonUnlocked());
+        document.getElementById("next").textContent = state.stage === 2 ? "Verify →" : state.stage === 3 ? "Learn →" : "Next →";
         bind(); save();
         if (focus) { content.focus(); document.getElementById("announcer").textContent = STAGES[state.stage] + ", part " + state.part; }
       }
@@ -270,7 +305,12 @@
         if (concepts) concepts.onclick = function () { state.reveals[String(state.part)] = Math.max(1, state.reveals[String(state.part)] || 0); render(false); document.getElementById("concept-panel").focus(); };
         if (approach) approach.onclick = function () { state.reveals[String(state.part)] = 2; render(false); document.getElementById("approach-panel").focus(); };
         if (reset) reset.onclick = function () { state.reveals = {}; render(false); reset.focus(); };
-        var green = document.getElementById("saw-green"); if (green) green.onchange = function () { state.verified[String(state.part)] = green.checked; save(); };
+        var green = document.getElementById("saw-green"); if (green) green.onchange = function () { state.verified[String(state.part)] = green.checked; render(false); };
+        var startOverride = document.getElementById("start-lesson-override"); if (startOverride) startOverride.onclick = function () { state.lessonConfirming = true; render(false); };
+        var cancelOverride = document.getElementById("cancel-lesson"); if (cancelOverride) cancelOverride.onclick = function () { state.lessonConfirming = false; render(false); };
+        var confirmOverride = document.getElementById("confirm-lesson"); if (confirmOverride) confirmOverride.onclick = function () { state.lessonOverride = true; state.lessonConfirming = false; loadLesson(); render(false); };
+        var lessonBack = document.getElementById("lesson-back"); if (lessonBack) lessonBack.onclick = function () { state.lessonSteps[String(state.part)] = Math.max(0, (state.lessonSteps[String(state.part)] || 0) - 1); render(true); };
+        var lessonForward = document.getElementById("lesson-forward"); if (lessonForward) lessonForward.onclick = function () { state.lessonSteps[String(state.part)] = (state.lessonSteps[String(state.part)] || 0) + 1; render(true); };
       }
       function copyText(text, button) {
         function fallback() {
@@ -280,7 +320,7 @@
         if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(function () { button.textContent = "Copied"; }, fallback); else fallback();
         setTimeout(function () { button.textContent = "Copy"; }, 1800);
       }
-      function changeStage(next) { state.stage = Math.max(0, Math.min(3, next)); render(true); }
+      function changeStage(next) { state.stage = Math.max(0, Math.min(4, next)); if (state.stage === 4 && lessonUnlocked()) loadLesson(); render(true); }
       document.getElementById("previous").onclick = function () { changeStage(state.stage - 1); };
       document.getElementById("next").onclick = function () { changeStage(state.stage + 1); };
       document.addEventListener("keydown", function (event) {

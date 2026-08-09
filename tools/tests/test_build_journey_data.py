@@ -88,7 +88,7 @@ class JourneyGeneratorTests(unittest.TestCase):
 
     def test_parses_catalogue_parts_examples_and_suite_names(self):
         data = builder.build_data(self.root)
-        self.assertEqual(set(data), {"python-01", "python-03", "react-02", "swift-02", "swift-05", "swift-10", "swift-11", "swift-13", "swift-15", "swift-18", "swift-19", "swift-20", "swift-21", "swift-22"})
+        self.assertEqual(set(data), {"python-01", "python-03", "python-16", "react-02", "swift-02", "swift-05", "swift-10", "swift-11", "swift-13", "swift-15", "swift-18", "swift-19", "swift-20", "swift-21", "swift-22"})
         self.assertEqual([part["title"] for part in data["python-03"]["parts"]], [
             "Flat role/permission model", "Role inheritance", "Scoped permissions with wildcards"
         ])
@@ -119,9 +119,32 @@ class JourneyGeneratorTests(unittest.TestCase):
 
     def test_rejects_solution_code_block(self):
         guides = self.guides()
-        guides["python-03"]["approach"][0]["steps"][0] = "```python\nclass CompleteSolution: pass\n```"
+        solution = "```python\nclass CompleteSolution: pass\n```"
+        guides["python-03"]["approach"][0]["steps"][0] = solution
         self.write_guides(guides)
         with self.assertRaisesRegex(builder.JourneyDataError, "code blocks are forbidden"):
+            builder.build_data(self.root)
+
+    def test_accepts_solution_code_in_lesson_but_not_base_payload(self):
+        guides = self.guides()
+        solution = "```python\nclass CompleteSolution: pass\n```"
+        guides["python-03"]["lesson"]["parts"][0]["steps"][0]["code"] = solution
+        self.write_guides(guides)
+        data = builder.build_data(self.root)
+        self.assertNotIn(solution, builder.render(data))
+        self.assertIn("CompleteSolution", builder.render_lesson("python-03", guides["python-03"]["lesson"]))
+
+    def test_lesson_must_cover_every_part_and_have_code(self):
+        guides = self.guides()
+        valid_guides = copy.deepcopy(guides)
+        guides["python-03"]["lesson"]["parts"].pop()
+        self.write_guides(guides)
+        with self.assertRaisesRegex(builder.JourneyDataError, "lesson: missing or duplicate part"):
+            builder.build_data(self.root)
+        guides = valid_guides
+        guides["python-03"]["lesson"]["parts"][0]["steps"][0]["code"] = ""
+        self.write_guides(guides)
+        with self.assertRaisesRegex(builder.JourneyDataError, "expected a non-empty string"):
             builder.build_data(self.root)
 
     def test_check_rejects_stale_output(self):
@@ -131,6 +154,10 @@ class JourneyGeneratorTests(unittest.TestCase):
     def test_check_rejects_stale_on_demand_source(self):
         (self.root / "journey-sources/python-03.js").write_text("stale\n")
         self.assertIn("journey-sources/python-03.js differs", self.check_error())
+
+    def test_check_rejects_stale_on_demand_lesson(self):
+        (self.root / "journey-lessons/python-03.js").write_text("stale\n")
+        self.assertIn("journey-lessons/python-03.js differs", self.check_error())
 
     def test_source_payload_contains_stub_tests_and_part_excerpts(self):
         data = builder.build_data(self.root)

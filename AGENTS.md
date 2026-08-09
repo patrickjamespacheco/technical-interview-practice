@@ -198,16 +198,26 @@ When adding a problem:
 2. Order test classes or describes by Part.
 3. Append its catalogue record to `PROBLEMS` in `index.html`.
 4. Add `journey/problem_guides.yaml` prompts, concepts, steps, and pitfalls for
-   every part, plus symptom/cause/check verification failures.
-5. Keep guides to progressive hints: never full solution code, reference
-   implementations, test assertion internals, or expected test values.
-6. Regenerate with `python3 tools/build_journey_data.py`, then run
+   every part, plus symptom/cause/check verification failures and a worked lesson.
+5. Keep `approach`, `verify`, and every stage-1-to-4 field to progressive hints:
+   never put full solution code, reference implementations, test assertion
+   internals, or expected test values there. The generator enforces this boundary.
+6. Author `lesson` as the deliberate exception: cover every part with an ordered
+   sequence of steps. Every step has a concise prose `explanation`, the non-empty
+   `code` it introduces, and an optional `rejected` note when a plausible
+   alternative teaches an important tradeoff. End with one `reflection` on the
+   transferable design idea. Lessons contain the complete worked solution and are
+   generated into on-demand files because they unlock only after verification (or
+   the captain's explicit reveal override).
+7. Regenerate with `python3 tools/build_journey_data.py`, then run
    `python3 tools/build_journey_data.py --check` and the generator tests.
 
 The generator also writes one `journey-sources/<language>-<number>.js` file per
 catalogue entry. These contain the browser-readable stub and test source and are
 loaded on demand under `file://`; never edit or hand-merge them. Regenerate the
 whole set after catalogue, stub, test, or generator changes.
+Authored lessons are likewise emitted as `journey-lessons/<language>-<number>.js`
+and loaded only after Learn unlocks; never hand-edit those generated files.
 
 ### Use string IDs, not auto-incrementing integers
 String slugs like `"admin"`, `"viewer"`, `"pk.abc123"` are more readable in tests and
