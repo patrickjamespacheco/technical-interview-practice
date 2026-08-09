@@ -15,7 +15,8 @@ let package = Package(
         .library(name: "Problem11CoverageTracker", targets: ["Problem11CoverageTracker"]),
         .library(name: "Problem19OfflineTelemetryBatchProcessor", targets: ["Problem19OfflineTelemetryBatchProcessor"]),
         .library(name: "Problem21VersionedPayloadMigration", targets: ["Problem21VersionedPayloadMigration"]),
-        .library(name: "Problem22UndoRedoCommandStack", targets: ["Problem22UndoRedoCommandStack"])
+        .library(name: "Problem22UndoRedoCommandStack", targets: ["Problem22UndoRedoCommandStack"]),
+        .library(name: "Problem20OfflineSyncConflictResolver", targets: ["Problem20OfflineSyncConflictResolver"])
     ],
     targets: [
         .target(name: "Problem03PermissionManager"),
@@ -39,6 +40,8 @@ let package = Package(
         .target(name: "Problem21VersionedPayloadMigration"),
         .testTarget(name: "Problem21VersionedPayloadMigrationTests", dependencies: ["Problem21VersionedPayloadMigration"]),
         .target(name: "Problem22UndoRedoCommandStack"),
-        .testTarget(name: "Problem22UndoRedoCommandStackTests", dependencies: ["Problem22UndoRedoCommandStack"])
+        .testTarget(name: "Problem22UndoRedoCommandStackTests", dependencies: ["Problem22UndoRedoCommandStack"]),
+        .target(name: "Problem20OfflineSyncConflictResolver"),
+        .testTarget(name: "Problem20OfflineSyncConflictResolverTests", dependencies: ["Problem20OfflineSyncConflictResolver"])
     ]
 )

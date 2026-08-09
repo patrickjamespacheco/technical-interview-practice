@@ -1200,6 +1200,128 @@ window.JOURNEY_PROBLEMS = {
       }
     }
   },
+  "swift-20": {
+    "id": "swift-20",
+    "title": "Offline Sync Conflict Resolver",
+    "description": "Reconcile versioned offline note edits with rich conflict outcomes, field-level merges, and deterministic tombstone handling.",
+    "language": "swift",
+    "industry": "general",
+    "tags": [
+      "offline-first",
+      "conflict-resolution",
+      "merge",
+      "tombstones",
+      "value-semantics"
+    ],
+    "level": "senior",
+    "stubPath": "swift/practice_problems/problem_20_offline_sync_conflict_resolver.swift",
+    "testPath": "swift/Tests/Problem20OfflineSyncConflictResolverTests/Problem20OfflineSyncConflictResolverTests.swift",
+    "example": "let base = SyncRecord(id: \"note-plan\", version: 2, lastModified: Date(timeIntervalSince1970: 20), originID: \"server\", content: .note(.init(title: \"Plan\", body: \"Draft\")))\nvar store = OfflineSyncStore(records: [base])\ntry store.edit(id: \"note-plan\", title: \"Launch plan\", at: Date(timeIntervalSince1970: 30), originID: \"phone\").version // -> 3\nstore.reconcile(remote: [base]).first?.kind // -> .localWins\nlet remote = SyncRecord(id: \"note-plan\", version: 4, lastModified: Date(timeIntervalSince1970: 40), originID: \"server\", content: .note(.init(title: \"Plan\", body: \"Approved\")))\nlet outcomes = store.reconcile(remote: [remote])\nstore.apply(outcomes, resolution: .mergeFields(prefer: .remote), at: Date(timeIntervalSince1970: 50), originID: \"phone\").first?.record.content // -> .note(.init(title: \"Launch plan\", body: \"Approved\"))\nAfter delete, applying a racing live edit returns .tombstone with reason .tombstonePrecedence.\n/\n\npublic struct NoteFields: Equatable, Sendable {\n    public let title: String\n    public let body: String\n\n    public init(title: String, body: String) {\n        self.title = title\n        self.body = body\n    }\n}\n\npublic enum DeletionReason: Equatable, Sendable {\n    case userDeleted\n    case tombstonePrecedence(deletedOriginID: String, editedOriginID: String)\n}\n\npublic enum RecordContent: Equatable, Sendable {\n    case note(NoteFields)\n    case tombstone(reason: DeletionReason)\n}\n\npublic struct SyncRecord: Equatable, Sendable {\n    public let id: String\n    public let version: Int\n    public let lastModified: Date\n    public let originID: String\n    public let content: RecordContent\n\n    public init(id: String, version: Int, lastModified: Date, originID: String, content: RecordContent) {\n        self.id = id\n        self.version = version\n        self.lastModified = lastModified\n        self.originID = originID\n        self.content = content\n    }\n}\n\npublic struct PendingChange: Equatable, Sendable {\n    public let baseline: SyncRecord\n    public let local: SyncRecord\n\n    public init(baseline: SyncRecord, local: SyncRecord) {\n        self.baseline = baseline\n        self.local = local\n    }\n}\n\npublic struct PendingChanges: Equatable, Sendable {\n    public let changes: [PendingChange]\n\n    public init(changes: [PendingChange]) {\n        self.changes = changes\n    }\n}\n\npublic struct SyncComparison: Equatable, Sendable {\n    public let baseline: SyncRecord?\n    public let local: SyncRecord?\n    public let remote: SyncRecord\n\n    public init(baseline: SyncRecord?, local: SyncRecord?, remote: SyncRecord) {\n        self.baseline = baseline\n        self.local = local\n        self.remote = remote\n    }\n}\n\npublic enum ReconciliationKind: Equatable, Sendable {\n    case unchanged\n    case remoteWins\n    case localWins\n    case conflicted\n}\n\npublic enum ReconciliationOutcome: Equatable, Sendable {\n    case unchanged(SyncRecord)\n    case remoteWins(SyncComparison)\n    case localWins(SyncComparison)\n    case conflicted(SyncComparison)\n\n    public var kind: ReconciliationKind {\n        switch self {\n        case .unchanged: .unchanged\n        case .remoteWins: .remoteWins\n        case .localWins: .localWins\n        case .conflicted: .conflicted\n        }\n    }\n\n    public var recordID: String {\n        switch self {\n        case let .unchanged(record): record.id\n        case let .remoteWins(comparison), let .localWins(comparison), let .conflicted(comparison): comparison.remote.id\n        }\n    }\n}\n\npublic enum MergePreference: Equatable, Sendable {\n    case local\n    case remote\n}\n\npublic enum ResolutionStrategy: Equatable, Sendable {\n    case acceptWinner\n    case mergeFields(prefer: MergePreference)\n}\n\npublic enum ResolutionReason: Equatable, Sendable {\n    case unchanged\n    case acceptedRemote\n    case retainedLocal\n    case fieldMerge\n    case tombstonePrecedence\n}\n\npublic struct AppliedResolution: Equatable, Sendable {\n    public let record: SyncRecord\n    public let reason: ResolutionReason\n\n    public init(record: SyncRecord, reason: ResolutionReason) {\n        self.record = record\n        self.reason = reason\n    }\n}\n\npublic enum SyncStoreError: Error, Equatable, Sendable {\n    case unknownRecord(String)\n    case recordDeleted(String)\n    case notImplemented\n}\n\npublic struct OfflineSyncStore: Sendable {\n    public init(records: [SyncRecord] = []) {}\n\nMARK: Part 1 — versioned local state and dirty snapshots\n    public func record(id: String) -> SyncRecord? { nil }\n\n    @discardableResult\n    public mutating func edit(\n        id: String,\n        title: String? = nil,\n        body: String? = nil,\n        at instant: Date,\n        originID: String\n    ) throws(SyncStoreError) -> SyncRecord {\n        throw .notImplemented\n    }\n\n    @discardableResult\n    public mutating func delete(\n        id: String,\n        at instant: Date,\n        originID: String\n    ) throws(SyncStoreError) -> SyncRecord {\n        throw .notImplemented\n    }\n\n    public func pendingChanges() -> PendingChanges { PendingChanges(changes: []) }\n\nMARK: Part 2 — deterministic reconciliation\n    public func reconcile(remote: [SyncRecord]) -> [ReconciliationOutcome] { [] }\n\nMARK: Part 3 — outcome-driven resolution\n    @discardableResult\n    public mutating func apply(\n        _ outcomes: [ReconciliationOutcome],\n        resolution: ResolutionStrategy,\n        at instant: Date,\n        originID: String\n    ) -> [AppliedResolution] { [] }\n}",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Versioned local changes",
+        "contract": "Store the supplied records. edit changes selected fields, increments the\nrecord's version once, uses only the injected instant, and marks it dirty.\ndelete replaces a live record with a tombstone under the same rules.\npendingChanges returns a value snapshot, sorted by record ID, containing each\ndirty record and the clean baseline from which its local changes began."
+      },
+      {
+        "part": 2,
+        "title": "Rich reconciliation outcomes",
+        "contract": "reconcile(remote:) compares a batch with local state. It must call\npendingChanges() to discover dirty records and return one outcome per remote\nID, sorted by ID. Compare version first, then lastModified, then originID\nlexicographically as the deterministic tie-break. Identical records are\nunchanged. If all ordering metadata ties but content differs, report a\nconflicted outcome. Every non-unchanged outcome carries a SyncComparison with\nenough baseline/local/remote context for Part 3; do not expose parallel logic."
+      },
+      {
+        "part": 3,
+        "title": "Merge fields and preserve tombstones",
+        "contract": "apply(_:resolution:at:originID:) consumes Part 2 outcomes directly. With\nmergeFields, compare each field with the baseline: preserve one-sided edits,\nand use the chosen preference only when both sides changed the same field\ndifferently. A tombstone always beats a live edit, recording why deletion won.\nA synthesized merge has max(local, remote) version + 1 and the injected time\nand origin. Applying the exact same outcome batch again must be idempotent.\n\n\nExample\nlet base = SyncRecord(id: \"note-plan\", version: 2, lastModified: Date(timeIntervalSince1970: 20), originID: \"server\", content: .note(.init(title: \"Plan\", body: \"Draft\")))\nvar store = OfflineSyncStore(records: [base])\ntry store.edit(id: \"note-plan\", title: \"Launch plan\", at: Date(timeIntervalSince1970: 30), originID: \"phone\").version // -> 3\nstore.reconcile(remote: [base]).first?.kind // -> .localWins\nlet remote = SyncRecord(id: \"note-plan\", version: 4, lastModified: Date(timeIntervalSince1970: 40), originID: \"server\", content: .note(.init(title: \"Plan\", body: \"Approved\")))\nlet outcomes = store.reconcile(remote: [remote])\nstore.apply(outcomes, resolution: .mergeFields(prefer: .remote), at: Date(timeIntervalSince1970: 50), originID: \"phone\").first?.record.content // -> .note(.init(title: \"Launch plan\", body: \"Approved\"))\nAfter delete, applying a racing live edit returns .tombstone with reason .tombstonePrecedence.\n/\n\npublic struct NoteFields: Equatable, Sendable {\n    public let title: String\n    public let body: String\n\n    public init(title: String, body: String) {\n        self.title = title\n        self.body = body\n    }\n}\n\npublic enum DeletionReason: Equatable, Sendable {\n    case userDeleted\n    case tombstonePrecedence(deletedOriginID: String, editedOriginID: String)\n}\n\npublic enum RecordContent: Equatable, Sendable {\n    case note(NoteFields)\n    case tombstone(reason: DeletionReason)\n}\n\npublic struct SyncRecord: Equatable, Sendable {\n    public let id: String\n    public let version: Int\n    public let lastModified: Date\n    public let originID: String\n    public let content: RecordContent\n\n    public init(id: String, version: Int, lastModified: Date, originID: String, content: RecordContent) {\n        self.id = id\n        self.version = version\n        self.lastModified = lastModified\n        self.originID = originID\n        self.content = content\n    }\n}\n\npublic struct PendingChange: Equatable, Sendable {\n    public let baseline: SyncRecord\n    public let local: SyncRecord\n\n    public init(baseline: SyncRecord, local: SyncRecord) {\n        self.baseline = baseline\n        self.local = local\n    }\n}\n\npublic struct PendingChanges: Equatable, Sendable {\n    public let changes: [PendingChange]\n\n    public init(changes: [PendingChange]) {\n        self.changes = changes\n    }\n}\n\npublic struct SyncComparison: Equatable, Sendable {\n    public let baseline: SyncRecord?\n    public let local: SyncRecord?\n    public let remote: SyncRecord\n\n    public init(baseline: SyncRecord?, local: SyncRecord?, remote: SyncRecord) {\n        self.baseline = baseline\n        self.local = local\n        self.remote = remote\n    }\n}\n\npublic enum ReconciliationKind: Equatable, Sendable {\n    case unchanged\n    case remoteWins\n    case localWins\n    case conflicted\n}\n\npublic enum ReconciliationOutcome: Equatable, Sendable {\n    case unchanged(SyncRecord)\n    case remoteWins(SyncComparison)\n    case localWins(SyncComparison)\n    case conflicted(SyncComparison)\n\n    public var kind: ReconciliationKind {\n        switch self {\n        case .unchanged: .unchanged\n        case .remoteWins: .remoteWins\n        case .localWins: .localWins\n        case .conflicted: .conflicted\n        }\n    }\n\n    public var recordID: String {\n        switch self {\n        case let .unchanged(record): record.id\n        case let .remoteWins(comparison), let .localWins(comparison), let .conflicted(comparison): comparison.remote.id\n        }\n    }\n}\n\npublic enum MergePreference: Equatable, Sendable {\n    case local\n    case remote\n}\n\npublic enum ResolutionStrategy: Equatable, Sendable {\n    case acceptWinner\n    case mergeFields(prefer: MergePreference)\n}\n\npublic enum ResolutionReason: Equatable, Sendable {\n    case unchanged\n    case acceptedRemote\n    case retainedLocal\n    case fieldMerge\n    case tombstonePrecedence\n}\n\npublic struct AppliedResolution: Equatable, Sendable {\n    public let record: SyncRecord\n    public let reason: ResolutionReason\n\n    public init(record: SyncRecord, reason: ResolutionReason) {\n        self.record = record\n        self.reason = reason\n    }\n}\n\npublic enum SyncStoreError: Error, Equatable, Sendable {\n    case unknownRecord(String)\n    case recordDeleted(String)\n    case notImplemented\n}\n\npublic struct OfflineSyncStore: Sendable {\n    public init(records: [SyncRecord] = []) {}\n\nMARK: Part 1 — versioned local state and dirty snapshots\n    public func record(id: String) -> SyncRecord? { nil }\n\n    @discardableResult\n    public mutating func edit(\n        id: String,\n        title: String? = nil,\n        body: String? = nil,\n        at instant: Date,\n        originID: String\n    ) throws(SyncStoreError) -> SyncRecord {\n        throw .notImplemented\n    }\n\n    @discardableResult\n    public mutating func delete(\n        id: String,\n        at instant: Date,\n        originID: String\n    ) throws(SyncStoreError) -> SyncRecord {\n        throw .notImplemented\n    }\n\n    public func pendingChanges() -> PendingChanges { PendingChanges(changes: []) }\n\nMARK: Part 2 — deterministic reconciliation\n    public func reconcile(remote: [SyncRecord]) -> [ReconciliationOutcome] { [] }\n\nMARK: Part 3 — outcome-driven resolution\n    @discardableResult\n    public mutating func apply(\n        _ outcomes: [ReconciliationOutcome],\n        resolution: ResolutionStrategy,\n        at instant: Date,\n        originID: String\n    ) -> [AppliedResolution] { [] }\n}"
+      }
+    ],
+    "testSuites": [
+      "Part 1 — Versioned local changes",
+      "Part 2 — Rich reconciliation outcomes",
+      "Part 3 — Field merges and tombstones"
+    ],
+    "commands": {
+      "answerPath": "swift/practice_problem_answers/my_answer_20_offline_sync_conflict_resolver.swift",
+      "copyCommand": "cp swift/practice_problems/problem_20_offline_sync_conflict_resolver.swift swift/practice_problem_answers/my_answer_20_offline_sync_conflict_resolver.swift",
+      "openCommand": "code swift/practice_problems/problem_20_offline_sync_conflict_resolver.swift",
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_20_offline_sync_conflict_resolver.swift -c swift test"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Which snapshots preserve both the current local value and the clean ancestor needed by later reconciliation?",
+          "concepts": [
+            "value-semantic records",
+            "dirty baselines",
+            "injected time"
+          ],
+          "steps": [
+            "Keep the first clean baseline when a record becomes dirty.",
+            "Return sorted copies of baseline and current records from the pending query."
+          ],
+          "pitfalls": [
+            "replacing the baseline after every edit",
+            "reading the wall clock inside the store"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "What context must each outcome carry so resolution never compares ordering metadata again?",
+          "concepts": [
+            "lexicographic precedence",
+            "associated-value outcomes",
+            "deterministic ties"
+          ],
+          "steps": [
+            "Use the pending snapshot to identify dirty local records.",
+            "Compare version, timestamp, and origin in order while retaining all three record perspectives."
+          ],
+          "pitfalls": [
+            "recomputing dirty state",
+            "silently choosing a side when every ordering key ties"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "How can baseline-relative field choices and deletion precedence be derived only from reconciliation outcomes?",
+          "concepts": [
+            "three-way merge",
+            "tombstones",
+            "idempotent application"
+          ],
+          "steps": [
+            "Classify each field as unchanged, one-sided, or divergent against the baseline.",
+            "Resolve tombstone-versus-live pairs before field merging and preserve the recorded reason."
+          ],
+          "pitfalls": [
+            "letting an edit resurrect a tombstone",
+            "re-inspecting versions during application",
+            "bumping a synthesized result on replay"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "A second local edit loses the original merge ancestor",
+            "cause": "Dirty baseline is overwritten with the latest local value",
+            "check": "Capture a baseline only on the clean-to-dirty transition."
+          },
+          {
+            "symptom": "Equal metadata produces nondeterministic results",
+            "cause": "Dictionary order or arrival order acts as an undocumented tie-break",
+            "check": "Apply the documented origin ordering and emit conflict only when all keys tie."
+          },
+          {
+            "symptom": "A deleted note returns after sync",
+            "cause": "The winning live edit is applied before tombstone semantics",
+            "check": "Inspect the outcome's record contents and resolve deletion precedence first."
+          }
+        ]
+      }
+    }
+  },
   "swift-11": {
     "id": "swift-11",
     "title": "Coverage Tracker (Swift)",

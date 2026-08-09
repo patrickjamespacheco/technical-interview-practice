@@ -120,6 +120,9 @@ if [[ "$ANSWER_ABS" == *.swift ]]; then
     elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem22UndoRedoCommandStack/Problem.swift" ]]; then
         PROBLEM_ID="22_undo_redo_command_stack"
         SAME_FILE=1
+    elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem20OfflineSyncConflictResolver/Problem.swift" ]]; then
+        PROBLEM_ID="20_offline_sync_conflict_resolver"
+        SAME_FILE=1
     elif [[ "$ANSWER_BASENAME" =~ (^|_)([0-9][0-9]_[a-z0-9_]+)\.swift$ ]]; then
         PROBLEM_ID="${BASH_REMATCH[2]}"
     else
@@ -138,6 +141,7 @@ if [[ "$ANSWER_ABS" == *.swift ]]; then
         19_offline_telemetry_batch_processor) ACTIVE_REL="Sources/Problem19OfflineTelemetryBatchProcessor/Problem.swift" ;;
         21_versioned_payload_migration) ACTIVE_REL="Sources/Problem21VersionedPayloadMigration/Problem.swift" ;;
         22_undo_redo_command_stack) ACTIVE_REL="Sources/Problem22UndoRedoCommandStack/Problem.swift" ;;
+        20_offline_sync_conflict_resolver) ACTIVE_REL="Sources/Problem20OfflineSyncConflictResolver/Problem.swift" ;;
         *) echo "Error: unknown Swift problem ID '$PROBLEM_ID'; no target mapping exists."; exit 1 ;;
     esac
     if [[ "${CMD[0]}" != "swift" || "${CMD[1]:-}" != "test" ]]; then
