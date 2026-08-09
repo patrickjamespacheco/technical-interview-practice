@@ -135,5 +135,17 @@
       {"symptom": "A v1 payload fails even though both steps are registered", "cause": "The chain follows registry insertion order", "check": "Index steps by their source version and walk upward from the detected version."},
       {"symptom": "Batch counts disagree with item results", "cause": "Aggregation reclassifies raw payloads independently", "check": "Fold only over the MigrationOutcome returned for each item."}
     ]}
+  },
+  "swift-22": {
+    "approach": [
+      {"part": 1, "prompt": "Which history record lets one command move cleanly between undo and redo without copying mutation logic?", "concepts": ["command protocol", "value semantics", "two-stack history"], "steps": ["Keep the document and both histories inside each stack value.", "Make execute the only path that applies a new command and clears the abandoned redo future.", "Move the same command value between histories during undo and redo."], "pitfalls": ["forgetting to clear redo after a new edit", "reversing the order of stack operations", "sharing reference-backed history between copies"]},
+      {"part": 2, "prompt": "What metadata is needed to decide whether the newest two history entries may become one?", "concepts": ["injected time", "command-directed compatibility", "history rewriting"], "steps": ["Validate the supplied window before mutation.", "Call execute for the new command, then inspect the newest pair and their timestamps.", "Let the older command decide compatibility and replace only the history records."], "pitfalls": ["applying a command a second time while merging", "using the wall clock", "merging merely because timestamps are close"]},
+      {"part": 3, "prompt": "How can nesting change history ownership without introducing another document mutation path?", "concepts": ["composite command", "nested transaction stack", "forward apply and reverse revert"], "steps": ["Collect executed history in the innermost open group.", "Close a nested group into one composite entry in its parent.", "Publish only the completed outer group to undo history and ignore empty groups."], "pitfalls": ["placing grouped commands directly in global undo history", "reverting a group in forward order", "flattening nested groups into separate undo steps"]}
+    ],
+    "verify": {"commonFailures": [
+      {"symptom": "Typing is coalesced but undo removes only the last character", "cause": "The merged history command does not represent the full edit sequence", "check": "Inspect the command returned by the older entry's coalescing method and verify its revert covers both edits."},
+      {"symptom": "An edit after undo can still redo the abandoned command", "cause": "The execute path retained redo history", "check": "Trace every new command, including grouped and coalescing calls, through execute's redo-clearing boundary."},
+      {"symptom": "Undoing a transaction leaves an earlier grouped edit applied", "cause": "The composite reverts children in execution order", "check": "Walk the transaction commands from newest to oldest during revert."}
+    ]}
   }
 }
