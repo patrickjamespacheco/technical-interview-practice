@@ -227,6 +227,127 @@ window.JOURNEY_PROBLEMS = {
       }
     }
   },
+  "swift-18": {
+    "id": "swift-18",
+    "title": "Inventory Reservation Ledger",
+    "description": "Protect commerce inventory with actor-isolated stock adjustments, idempotent reservations, deterministic expiry, and atomic order commits.",
+    "language": "swift",
+    "industry": "commerce",
+    "tags": [
+      "actors",
+      "concurrency",
+      "idempotency",
+      "inventory",
+      "atomic-commit"
+    ],
+    "level": "senior",
+    "stubPath": "swift/practice_problems/problem_18_inventory_reservation_ledger.swift",
+    "testPath": "swift/Tests/Problem18InventoryReservationLedgerTests/Problem18InventoryReservationLedgerTests.swift",
+    "example": "let ledger = InventoryReservationLedger(initialStock: [\"camera\": 2])\nasync let first = ledger.reserve(id: \"res-a\", idempotencyKey: \"key-a\", sku: \"camera\", quantity: 2, expiresAt: Date(timeIntervalSince1970: 100))\nasync let second = ledger.reserve(id: \"res-b\", idempotencyKey: \"key-b\", sku: \"camera\", quantity: 2, expiresAt: Date(timeIntervalSince1970: 100))\nlet attempts = await [first, second] // -> exactly one success\nlet replay = await ledger.reserve(id: \"ignored\", idempotencyKey: \"key-a\", sku: \"camera\", quantity: 99, expiresAt: .distantFuture) // -> same res-a when key-a won\nlet expired = await ledger.expireReservations(at: Date(timeIntervalSince1970: 100)) // -> winner released; camera available is 2\n/\n\npublic struct InventorySnapshot: Equatable, Sendable {\n    public let sku: String\n    public let onHand: Int\n    public let reserved: Int\n    public let available: Int\n\n    public init(sku: String, onHand: Int, reserved: Int, available: Int) {\n        self.sku = sku\n        self.onHand = onHand\n        self.reserved = reserved\n        self.available = available\n    }\n}\n\npublic enum InventoryError: Error, Equatable, Sendable {\n    case invalidQuantity(Int)\n    case unknownSKU(String)\n    case insufficientAvailable(sku: String, requested: Int, available: Int)\n    case duplicateReservationID(String)\n    case unknownReservation(String)\n    case reservationNotActive(String)\n    case duplicateOrderID(String)\n    case emptyOrder\n    case notImplemented\n}\n\npublic enum ReservationState: Equatable, Sendable {\n    case active\n    case released\n    case expired\n    case committed(orderID: String)\n}\n\npublic struct Reservation: Equatable, Sendable {\n    public let id: String\n    public let idempotencyKey: String\n    public let sku: String\n    public let quantity: Int\n    public let expiresAt: Date\n    public let state: ReservationState\n\n    public init(id: String, idempotencyKey: String, sku: String, quantity: Int, expiresAt: Date, state: ReservationState = .active) {\n        self.id = id\n        self.idempotencyKey = idempotencyKey\n        self.sku = sku\n        self.quantity = quantity\n        self.expiresAt = expiresAt\n        self.state = state\n    }\n}\n\npublic struct CommittedOrder: Equatable, Sendable {\n    public let id: String\n    public let reservationIDs: [String]\n\n    public init(id: String, reservationIDs: [String]) {\n        self.id = id\n        self.reservationIDs = reservationIDs\n    }\n}\n\npublic actor InventoryReservationLedger {\n    public init(initialStock: [String: Int] = [:]) {}\n\nMARK: Part 1 — typed stock and availability\n    public func snapshot(for sku: String) -> Result<InventorySnapshot, InventoryError> { .failure(.notImplemented) }\n    public func availability(for sku: String, quantity: Int) -> Result<InventorySnapshot, InventoryError> { .failure(.notImplemented) }\n    public func adjustStock(sku: String, by quantity: Int) -> Result<InventorySnapshot, InventoryError> { .failure(.notImplemented) }\n\nMARK: Part 2 — idempotent concurrent reservations\n    public func reservation(id: String) -> Result<Reservation, InventoryError> { .failure(.notImplemented) }\n    public func reserve(id: String, idempotencyKey: String, sku: String, quantity: Int, expiresAt: Date) -> Result<Reservation, InventoryError> { .failure(.notImplemented) }\n    public func release(reservationID: String) -> Result<Reservation, InventoryError> { .failure(.notImplemented) }\n\nMARK: Part 3 — expiry and atomic commits\n    public func expireReservations(at instant: Date) -> [Reservation] { [] }\n    public func commit(orderID: String, reservationIDs: [String]) -> Result<CommittedOrder, InventoryError> { .failure(.notImplemented) }\n}",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Typed stock and availability",
+        "contract": "Seed stock by SKU, adjust it with typed Result failures, and return an\nInventorySnapshot from availability. A negative adjustment may consume only\navailable stock, never units held by reservations."
+      },
+      {
+        "part": 2,
+        "title": "Idempotent concurrent reservations",
+        "contract": "Reserve and release stock under readable string IDs and idempotency keys.\nreserve must consume availability's Result directly. Replaying any key returns\nits original reservation, even if the replay's other arguments differ. Because\nall checks and mutations occur inside this actor, concurrent calls must never\noversell. reservation(id:) is the lookup seam used by release."
+      },
+      {
+        "part": 3,
+        "title": "Expiry and atomic order commits",
+        "contract": "expireReservations(at:) uses the injected instant and calls release for every\nactive reservation whose expiry is at or before that instant. commit validates\nevery reservation through reservation(id:) before changing anything, then\ncommits the whole order atomically. Centralize terminal reservation bookkeeping\nso release, expiry, and commit never maintain parallel counter logic.\n\n\nExample\nlet ledger = InventoryReservationLedger(initialStock: [\"camera\": 2])\nasync let first = ledger.reserve(id: \"res-a\", idempotencyKey: \"key-a\", sku: \"camera\", quantity: 2, expiresAt: Date(timeIntervalSince1970: 100))\nasync let second = ledger.reserve(id: \"res-b\", idempotencyKey: \"key-b\", sku: \"camera\", quantity: 2, expiresAt: Date(timeIntervalSince1970: 100))\nlet attempts = await [first, second] // -> exactly one success\nlet replay = await ledger.reserve(id: \"ignored\", idempotencyKey: \"key-a\", sku: \"camera\", quantity: 99, expiresAt: .distantFuture) // -> same res-a when key-a won\nlet expired = await ledger.expireReservations(at: Date(timeIntervalSince1970: 100)) // -> winner released; camera available is 2\n/\n\npublic struct InventorySnapshot: Equatable, Sendable {\n    public let sku: String\n    public let onHand: Int\n    public let reserved: Int\n    public let available: Int\n\n    public init(sku: String, onHand: Int, reserved: Int, available: Int) {\n        self.sku = sku\n        self.onHand = onHand\n        self.reserved = reserved\n        self.available = available\n    }\n}\n\npublic enum InventoryError: Error, Equatable, Sendable {\n    case invalidQuantity(Int)\n    case unknownSKU(String)\n    case insufficientAvailable(sku: String, requested: Int, available: Int)\n    case duplicateReservationID(String)\n    case unknownReservation(String)\n    case reservationNotActive(String)\n    case duplicateOrderID(String)\n    case emptyOrder\n    case notImplemented\n}\n\npublic enum ReservationState: Equatable, Sendable {\n    case active\n    case released\n    case expired\n    case committed(orderID: String)\n}\n\npublic struct Reservation: Equatable, Sendable {\n    public let id: String\n    public let idempotencyKey: String\n    public let sku: String\n    public let quantity: Int\n    public let expiresAt: Date\n    public let state: ReservationState\n\n    public init(id: String, idempotencyKey: String, sku: String, quantity: Int, expiresAt: Date, state: ReservationState = .active) {\n        self.id = id\n        self.idempotencyKey = idempotencyKey\n        self.sku = sku\n        self.quantity = quantity\n        self.expiresAt = expiresAt\n        self.state = state\n    }\n}\n\npublic struct CommittedOrder: Equatable, Sendable {\n    public let id: String\n    public let reservationIDs: [String]\n\n    public init(id: String, reservationIDs: [String]) {\n        self.id = id\n        self.reservationIDs = reservationIDs\n    }\n}\n\npublic actor InventoryReservationLedger {\n    public init(initialStock: [String: Int] = [:]) {}\n\nMARK: Part 1 — typed stock and availability\n    public func snapshot(for sku: String) -> Result<InventorySnapshot, InventoryError> { .failure(.notImplemented) }\n    public func availability(for sku: String, quantity: Int) -> Result<InventorySnapshot, InventoryError> { .failure(.notImplemented) }\n    public func adjustStock(sku: String, by quantity: Int) -> Result<InventorySnapshot, InventoryError> { .failure(.notImplemented) }\n\nMARK: Part 2 — idempotent concurrent reservations\n    public func reservation(id: String) -> Result<Reservation, InventoryError> { .failure(.notImplemented) }\n    public func reserve(id: String, idempotencyKey: String, sku: String, quantity: Int, expiresAt: Date) -> Result<Reservation, InventoryError> { .failure(.notImplemented) }\n    public func release(reservationID: String) -> Result<Reservation, InventoryError> { .failure(.notImplemented) }\n\nMARK: Part 3 — expiry and atomic commits\n    public func expireReservations(at instant: Date) -> [Reservation] { [] }\n    public func commit(orderID: String, reservationIDs: [String]) -> Result<CommittedOrder, InventoryError> { .failure(.notImplemented) }\n}"
+      }
+    ],
+    "testSuites": [
+      "Part 1 — Typed stock and availability",
+      "Part 2 — Idempotent concurrent reservations",
+      "Part 3 — Expiry and atomic commits"
+    ],
+    "commands": {
+      "answerPath": "swift/practice_problem_answers/my_answer_18_inventory_reservation_ledger.swift",
+      "copyCommand": "cp swift/practice_problems/problem_18_inventory_reservation_ledger.swift swift/practice_problem_answers/my_answer_18_inventory_reservation_ledger.swift",
+      "openCommand": "code swift/practice_problems/problem_18_inventory_reservation_ledger.swift",
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_18_inventory_reservation_ledger.swift -c swift test"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "What snapshot can carry both the stock facts and the reason an availability check failed?",
+          "concepts": [
+            "actor-isolated state",
+            "typed Result outcomes",
+            "available versus reserved units"
+          ],
+          "steps": [
+            "Derive one immutable snapshot from on-hand and reserved counts.",
+            "Make adjustment validation reuse the same availability boundary."
+          ],
+          "pitfalls": [
+            "allowing negative available stock",
+            "returning an opaque Bool or thrown string"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "Where must idempotency lookup, availability validation, and reservation mutation occur to make overselling impossible?",
+          "concepts": [
+            "actor serialization",
+            "idempotency-key replay",
+            "single mutation boundary"
+          ],
+          "steps": [
+            "Check the idempotency key before validating replay arguments.",
+            "Consume the Part 1 availability result before recording one reservation."
+          ],
+          "pitfalls": [
+            "checking availability outside the actor",
+            "incrementing stock twice on key replay"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "How can expiry and commit share reservation transitions while preserving all-or-nothing order behavior?",
+          "concepts": [
+            "injected time",
+            "validate-then-apply",
+            "terminal reservation states"
+          ],
+          "steps": [
+            "Collect eligible IDs, then expire them through release.",
+            "Resolve and validate every commit member before applying any terminal transition."
+          ],
+          "pitfalls": [
+            "using the wall clock",
+            "partially committing before a later reservation fails"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "Concurrent attempts reserve more than the SKU owns",
+            "cause": "Availability and mutation are split across isolation boundaries",
+            "check": "Trace both operations through one uninterrupted actor method."
+          },
+          {
+            "symptom": "A replay changes counters or returns a new ID",
+            "cause": "The key lookup happens after request validation or mutation",
+            "check": "Make an existing idempotency key the first successful return path."
+          },
+          {
+            "symptom": "A failed multi-reservation commit changes earlier reservations",
+            "cause": "Validation and mutation are interleaved",
+            "check": "Resolve the complete active set before closing any reservation."
+          }
+        ]
+      }
+    }
+  },
   "python-01": {
     "id": "python-01",
     "title": "Geofence Alert Engine",

@@ -21,6 +21,18 @@
       {"symptom": "Playwright cannot find a control", "cause": "A required data-testid changed", "check": "Compare the rendered attribute with the stub contract."}
     ]}
   },
+  "swift-18": {
+    "approach": [
+      {"part": 1, "prompt": "What snapshot can carry both the stock facts and the reason an availability check failed?", "concepts": ["actor-isolated state", "typed Result outcomes", "available versus reserved units"], "steps": ["Derive one immutable snapshot from on-hand and reserved counts.", "Make adjustment validation reuse the same availability boundary."], "pitfalls": ["allowing negative available stock", "returning an opaque Bool or thrown string"]},
+      {"part": 2, "prompt": "Where must idempotency lookup, availability validation, and reservation mutation occur to make overselling impossible?", "concepts": ["actor serialization", "idempotency-key replay", "single mutation boundary"], "steps": ["Check the idempotency key before validating replay arguments.", "Consume the Part 1 availability result before recording one reservation."], "pitfalls": ["checking availability outside the actor", "incrementing stock twice on key replay"]},
+      {"part": 3, "prompt": "How can expiry and commit share reservation transitions while preserving all-or-nothing order behavior?", "concepts": ["injected time", "validate-then-apply", "terminal reservation states"], "steps": ["Collect eligible IDs, then expire them through release.", "Resolve and validate every commit member before applying any terminal transition."], "pitfalls": ["using the wall clock", "partially committing before a later reservation fails"]}
+    ],
+    "verify": {"commonFailures": [
+      {"symptom": "Concurrent attempts reserve more than the SKU owns", "cause": "Availability and mutation are split across isolation boundaries", "check": "Trace both operations through one uninterrupted actor method."},
+      {"symptom": "A replay changes counters or returns a new ID", "cause": "The key lookup happens after request validation or mutation", "check": "Make an existing idempotency key the first successful return path."},
+      {"symptom": "A failed multi-reservation commit changes earlier reservations", "cause": "Validation and mutation are interleaved", "check": "Resolve the complete active set before closing any reservation."}
+    ]}
+  },
   "python-01": {
     "approach": [
       {"part": 1, "prompt": "How will boundary coordinates and missing locations be handled consistently?", "concepts": ["inclusive bounds", "missing-coordinate guard"], "steps": ["Reject incomplete locations first.", "Check both axes against their inclusive ranges."], "pitfalls": ["exclusive edge comparisons", "truthiness checks that reject zero coordinates"]},
