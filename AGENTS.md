@@ -213,12 +213,24 @@ When adding a problem:
 7. Regenerate with `python3 tools/build_journey_data.py`, then run
    `python3 tools/build_journey_data.py --check` and the generator tests.
 
+For every Swift catalogue problem, also author `execution` in the same guide
+record. It is the deliberately solution-bearing, prep-only interview execution
+sheet: a 45-minute four-phase budget; problem-specific navigation, solution,
+coding commentary, and verification guidance; and the complete working Swift
+implementation. The generator validates phase coverage and emits
+`journey-execution/swift-NN.js` for lazy loading by `interview-execution.html`.
+Keep this surface separate from `journey.html`: the practice journey must never
+link to or load execution artifacts, and its stage 1–4 leak protections remain
+unchanged.
+
 The generator also writes one `journey-sources/<language>-<number>.js` file per
 catalogue entry. These contain the browser-readable stub and test source and are
 loaded on demand under `file://`; never edit or hand-merge them. Regenerate the
 whole set after catalogue, stub, test, or generator changes.
 Authored lessons are likewise emitted as `journey-lessons/<language>-<number>.js`
 and loaded only after Learn unlocks; never hand-edit those generated files.
+Execution sheets are emitted as `journey-execution/swift-<number>.js`; never
+hand-edit those generated files either.
 
 ### Use string IDs, not auto-incrementing integers
 String slugs like `"admin"`, `"viewer"`, `"pk.abc123"` are more readable in tests and
