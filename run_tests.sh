@@ -105,6 +105,12 @@ if [[ "$ANSWER_ABS" == *.swift ]]; then
     elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem15TicTacToeEngine/Problem.swift" ]]; then
         PROBLEM_ID="15_tic_tac_toe_engine"
         SAME_FILE=1
+    elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem02APIRateLimiter/Problem.swift" ]]; then
+        PROBLEM_ID="02_api_rate_limiter"
+        SAME_FILE=1
+    elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem11CoverageTracker/Problem.swift" ]]; then
+        PROBLEM_ID="11_coverage_tracker"
+        SAME_FILE=1
     elif [[ "$ANSWER_BASENAME" =~ (^|_)([0-9][0-9]_[a-z0-9_]+)\.swift$ ]]; then
         PROBLEM_ID="${BASH_REMATCH[2]}"
     else
@@ -112,12 +118,14 @@ if [[ "$ANSWER_ABS" == *.swift ]]; then
         exit 1
     fi
     case "$PROBLEM_ID" in
+        02_api_rate_limiter) ACTIVE_REL="Sources/Problem02APIRateLimiter/Problem.swift" ;;
         03_permission_manager) ACTIVE_REL="Sources/Problem03PermissionManager/Problem.swift" ;;
         18_inventory_reservation_ledger) ACTIVE_REL="Sources/Problem18InventoryReservationLedger/Problem.swift" ;;
         05_medication_titration) ACTIVE_REL="Sources/Problem05MedicationTitration/Problem.swift" ;;
         10_dispatch_manager) ACTIVE_REL="Sources/Problem10DispatchManager/Problem.swift" ;;
         13_contract_lifecycle) ACTIVE_REL="Sources/Problem13ContractLifecycle/Problem.swift" ;;
         15_tic_tac_toe_engine) ACTIVE_REL="Sources/Problem15TicTacToeEngine/Problem.swift" ;;
+        11_coverage_tracker) ACTIVE_REL="Sources/Problem11CoverageTracker/Problem.swift" ;;
         *) echo "Error: unknown Swift problem ID '$PROBLEM_ID'; no target mapping exists."; exit 1 ;;
     esac
     if [[ "${CMD[0]}" != "swift" || "${CMD[1]:-}" != "test" ]]; then

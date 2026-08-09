@@ -40,6 +40,10 @@ class JourneyGeneratorTests(unittest.TestCase):
             "swift/practice_problems/problem_15_tic_tac_toe_engine.swift",
             "swift/Tests/Problem13ContractLifecycleTests/Problem13ContractLifecycleTests.swift",
             "swift/Tests/Problem15TicTacToeEngineTests/Problem15TicTacToeEngineTests.swift",
+            "swift/practice_problems/problem_02_api_rate_limiter.swift",
+            "swift/Tests/Problem02APIRateLimiterTests/Problem02APIRateLimiterTests.swift",
+            "swift/practice_problems/problem_11_coverage_tracker.swift",
+            "swift/Tests/Problem11CoverageTrackerTests/Problem11CoverageTrackerTests.swift",
         ]:
             destination = self.root / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -64,7 +68,7 @@ class JourneyGeneratorTests(unittest.TestCase):
 
     def test_parses_catalogue_parts_examples_and_suite_names(self):
         data = builder.build_data(self.root)
-        self.assertEqual(set(data), {"python-01", "python-03", "react-02", "swift-05", "swift-10", "swift-13", "swift-15", "swift-18"})
+        self.assertEqual(set(data), {"python-01", "python-03", "react-02", "swift-02", "swift-05", "swift-10", "swift-11", "swift-13", "swift-15", "swift-18"})
         self.assertEqual([part["title"] for part in data["python-03"]["parts"]], [
             "Flat role/permission model", "Role inheritance", "Scoped permissions with wildcards"
         ])
@@ -89,6 +93,7 @@ class JourneyGeneratorTests(unittest.TestCase):
         self.assertTrue(react["commands"]["testCommand"].endswith("npm run test:02"))
         self.assertEqual(swift["commands"]["answerPath"], "swift/practice_problem_answers/my_answer_13_contract_lifecycle.swift")
         self.assertTrue(swift["commands"]["testCommand"].endswith("swift test"))
+        self.assertEqual(data["swift-02"]["commands"]["answerPath"], "swift/practice_problem_answers/my_answer_02_api_rate_limiter.swift")
 
     def test_rejects_solution_code_block(self):
         guides = self.guides()

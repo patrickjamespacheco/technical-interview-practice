@@ -10,7 +10,9 @@ let package = Package(
         .library(name: "Problem10DispatchManager", targets: ["Problem10DispatchManager"]),
         .library(name: "Problem05MedicationTitration", targets: ["Problem05MedicationTitration"]),
         .library(name: "Problem13ContractLifecycle", targets: ["Problem13ContractLifecycle"]),
-        .library(name: "Problem15TicTacToeEngine", targets: ["Problem15TicTacToeEngine"])
+        .library(name: "Problem15TicTacToeEngine", targets: ["Problem15TicTacToeEngine"]),
+        .library(name: "Problem02APIRateLimiter", targets: ["Problem02APIRateLimiter"]),
+        .library(name: "Problem11CoverageTracker", targets: ["Problem11CoverageTracker"])
     ],
     targets: [
         .target(name: "Problem03PermissionManager"),
@@ -24,6 +26,10 @@ let package = Package(
         .target(name: "Problem13ContractLifecycle"),
         .testTarget(name: "Problem13ContractLifecycleTests", dependencies: ["Problem13ContractLifecycle"]),
         .target(name: "Problem15TicTacToeEngine"),
-        .testTarget(name: "Problem15TicTacToeEngineTests", dependencies: ["Problem15TicTacToeEngine"])
+        .testTarget(name: "Problem15TicTacToeEngineTests", dependencies: ["Problem15TicTacToeEngine"]),
+        .target(name: "Problem02APIRateLimiter"),
+        .testTarget(name: "Problem02APIRateLimiterTests", dependencies: ["Problem02APIRateLimiter"]),
+        .target(name: "Problem11CoverageTracker"),
+        .testTarget(name: "Problem11CoverageTrackerTests", dependencies: ["Problem11CoverageTracker"])
     ]
 )
