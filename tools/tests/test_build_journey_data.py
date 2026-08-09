@@ -52,7 +52,19 @@ class JourneyGeneratorTests(unittest.TestCase):
             destination = self.root / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT / relative, destination)
-        (self.root / "journey-data.js").write_text(builder.render(builder.build_data(self.root)))
+        # Source artifacts cover the complete catalogue, not only authored journeys.
+        for problem in builder.parse_problems(ROOT / "index.html"):
+            for relative in (problem["path"], problem.get("test")):
+                if not relative:
+                    continue
+                destination = self.root / relative
+                if not destination.exists():
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(ROOT / relative, destination)
+        data = builder.build_data(self.root)
+        for path, content in builder.generated_outputs(data, self.root).items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content)
 
     def tearDown(self):
         self.temp.cleanup()
@@ -78,12 +90,14 @@ class JourneyGeneratorTests(unittest.TestCase):
         ])
         self.assertIn("pm = PermissionManager()", data["python-03"]["example"])
         self.assertIn("TestCreateRole", data["python-03"]["testSuites"])
+        self.assertEqual(data["python-03"]["sourceScript"], "journey-sources/python-03.js")
         self.assertEqual(data["react-02"]["testSuites"], ["Problem 02 — Incident Dashboard"])
         self.assertEqual(data["swift-15"]["testSuites"], [
             "Part 1 — Generic board analysis",
             "Part 2 — Mutating moves and value semantics",
             "Part 3 — Configurable dimensions and win runs",
         ])
+        self.assertNotIn("public struct Board", data["swift-15"]["example"])
 
     def test_derives_identity_paths_and_language_commands(self):
         data = builder.build_data(self.root)
@@ -109,6 +123,20 @@ class JourneyGeneratorTests(unittest.TestCase):
     def test_check_rejects_stale_output(self):
         (self.root / "journey-data.js").write_text("stale\n")
         self.assertIn("stale generated output", self.check_error())
+
+    def test_check_rejects_stale_on_demand_source(self):
+        (self.root / "journey-sources/python-03.js").write_text("stale\n")
+        self.assertIn("journey-sources/python-03.js differs", self.check_error())
+
+    def test_source_payload_contains_stub_tests_and_part_excerpts(self):
+        data = builder.build_data(self.root)
+        rendered = builder.render_source("python-03", builder.build_source_records(self.root)["python-03"], self.root)
+        self.assertIn('window.PROBLEM_SOURCES["python-03"]', rendered)
+        self.assertIn("def create_role", rendered)
+        self.assertIn("TestCreateRole", rendered)
+        self.assertIn("PART 2", rendered)
+        swift = builder.build_source_records(self.root)["swift-15"]
+        self.assertIn("public struct Board", builder.render_source("swift-15", swift, self.root))
 
     def test_check_rejects_missing_part(self):
         guides = self.guides()

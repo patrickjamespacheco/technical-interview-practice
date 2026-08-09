@@ -204,6 +204,11 @@ When adding a problem:
 6. Regenerate with `python3 tools/build_journey_data.py`, then run
    `python3 tools/build_journey_data.py --check` and the generator tests.
 
+The generator also writes one `journey-sources/<language>-<number>.js` file per
+catalogue entry. These contain the browser-readable stub and test source and are
+loaded on demand under `file://`; never edit or hand-merge them. Regenerate the
+whole set after catalogue, stub, test, or generator changes.
+
 ### Use string IDs, not auto-incrementing integers
 String slugs like `"admin"`, `"viewer"`, `"pk.abc123"` are more readable in tests and
 don't require the caller to track state. Auto-increment belongs in DB-backed systems,

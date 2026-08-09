@@ -26,7 +26,7 @@
     header h1 { margin: .55rem 0 .15rem; font-size: clamp(1.35rem, 3vw, 1.75rem); line-height: 1.2; }
     header p { color: var(--secondary); margin: 0; font-size: .9rem; }
     .layout { width: min(1180px, calc(100% - 2rem)); margin: 1.25rem auto 3rem; display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 1.25rem; align-items: start; }
-    .rail { position: sticky; top: 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: .8rem; box-shadow: var(--shadow); }
+    .rail { position: sticky; top: 1rem; min-width: 0; max-width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: .8rem; box-shadow: var(--shadow); }
     .rail h2 { margin: .2rem .45rem .7rem; font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
     .stage-list { list-style: none; padding: 0; margin: 0; display: grid; gap: .35rem; }
     .stage-btn { width: 100%; border: 1px solid transparent; border-radius: 7px; background: transparent; padding: .7rem; text-align: left; cursor: pointer; color: var(--secondary); display: grid; grid-template-columns: 1.7rem minmax(0, 1fr); gap: .55rem; align-items: center; }
@@ -35,7 +35,7 @@
     .stage-number { width: 1.65rem; height: 1.65rem; display: grid; place-items: center; border-radius: 50%; background: #e2e8f0; font-size: .75rem; font-weight: 700; }
     [aria-current="step"] .stage-number { background: var(--accent); color: white; }
     .stage-label { font-size: .84rem; font-weight: 650; min-width: 0; }
-    main { min-width: 0; }
+    main, .layout > div { min-width: 0; }
     .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: clamp(1rem, 3vw, 2rem); overflow: hidden; }
     .eyebrow { margin: 0 0 .35rem; color: var(--accent); text-transform: uppercase; letter-spacing: .08em; font-size: .72rem; font-weight: 750; }
     h2 { margin: 0 0 .55rem; font-size: clamp(1.35rem, 3vw, 1.8rem); line-height: 1.25; }
@@ -55,6 +55,13 @@
     .outline li::before { content: "Part " counter(part) " · "; font-weight: 700; color: var(--text); }
     pre, code { font-family: ui-monospace, "Cascadia Code", Menlo, monospace; }
     pre { margin: .5rem 0; padding: 1rem; background: #0f172a; color: #e2e8f0; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; }
+    .source-region { max-height: min(66vh, 720px); overflow: auto; overscroll-behavior: contain; border: 1px solid #1e293b; border-radius: 8px; background: #0f172a; min-width: 0; }
+    .source-region pre { margin: 0; min-width: max-content; white-space: pre; overflow: visible; overflow-wrap: normal; font: .8rem/1.65 ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; tab-size: 4; }
+    .tok-comment { color: #94a3b8; font-style: italic; } .tok-string { color: #bef264; } .tok-keyword { color: #93c5fd; font-weight: 600; } .tok-type { color: #67e8f9; } .tok-number { color: #fda4af; }
+    .source-meta { color: var(--muted); font: .72rem ui-monospace, "Cascadia Code", Menlo, monospace; overflow-wrap: anywhere; }
+    details.full-source { margin: 1rem 0; border: 1px solid var(--border); border-radius: 8px; padding: .75rem; min-width: 0; }
+    details.full-source summary { cursor: pointer; color: var(--secondary); font-weight: 650; }
+    details.full-source[open] summary { margin-bottom: .7rem; }
     .legacy { border: 1px dashed #f59e0b; background: var(--warning-bg); color: var(--warning); padding: .8rem; border-radius: 8px; font-size: .85rem; }
     .partbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-bottom: 1px solid var(--border); margin: -0.2rem 0 1.2rem; padding-bottom: .9rem; }
     .part-dots { display: flex; flex-wrap: wrap; gap: .35rem; }
@@ -128,6 +135,7 @@
   <div id="error" class="panel error" hidden></div>
   <div id="announcer" class="sr-only" aria-live="polite"></div>
   <script src="journey-data.js"></script>
+  <script src="problem-source-viewer.js"></script>
   <script>
     (function () {
       "use strict";
@@ -140,6 +148,7 @@
       var content = document.getElementById("stage-content");
       var storageKey = "practice-journey:v" + SCHEMA_VERSION + ":" + problemKey;
       var state = { stage: 0, part: 1, reveals: {}, checks: {}, verified: {} };
+      var sourcePayload = null, sourceStatus = "loading";
 
       if (!problem) {
         var error = document.getElementById("error");
@@ -157,6 +166,12 @@
       document.getElementById("problem-title").textContent = problem.title;
       document.getElementById("problem-subtitle").textContent = problem.description;
       app.hidden = false;
+
+      var sourceScript = document.createElement("script");
+      sourceScript.src = problem.sourceScript;
+      sourceScript.onload = function () { sourcePayload = window.PROBLEM_SOURCES && window.PROBLEM_SOURCES[problem.id]; sourceStatus = sourcePayload ? "loaded" : "error"; render(false); };
+      sourceScript.onerror = function () { sourceStatus = "error"; render(false); };
+      document.head.appendChild(sourceScript);
 
       function esc(value) { var d = document.createElement("div"); d.textContent = value == null ? "" : String(value); return d.innerHTML; }
       function label(value) { return value.split("-").map(function (w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(" "); }
@@ -197,10 +212,20 @@
         var part = currentPart(), vscode = "vscode://file" + location.pathname.replace(/\/journey\.html$/, "") + "/" + problem.stubPath;
         var scoped = scopedCommand();
         var checks = ["I kept the public signatures unchanged.", "I implemented this part without breaking earlier parts.", "I reviewed edge cases in the contract."];
-        return partBar() + '<p class="eyebrow">Stage 3 of 4 · Build</p><h2>Code part ' + state.part + ': ' + esc(part.title) + '</h2><h3>Signatures and contract</h3><pre><code>' + esc(part.contract) + '</code></pre>' +
+        var source = renderPartSource(part);
+        return partBar() + '<p class="eyebrow">Stage 3 of 4 · Build</p><h2>Code part ' + state.part + ': ' + esc(part.title) + '</h2>' + source +
           commandBlock(problem.commands.copyCommand, "Copy the stub") + '<p><strong>Answer file:</strong> <code>' + esc(problem.commands.answerPath) + '</code></p><p>The filename must preserve the problem number and slug so the runner can map it correctly.</p>' +
           '<p><a class="btn" href="' + esc(vscode) + '">Open stub in VS Code ↗</a></p>' + commandBlock(scoped.command, scoped.title) + (scoped.note ? '<p class="notice">' + esc(scoped.note) + '</p>' : '') +
           '<fieldset class="self-checks"><legend>Self-reported coding checklist</legend>' + checks.map(function (text, i) { var key = state.part + ":" + i; return '<label class="check"><input type="checkbox" data-check="' + key + '"' + (state.checks[key] ? ' checked' : '') + '><span>' + esc(text) + '</span></label>'; }).join("") + '</fieldset><p class="lede">These marks are stored locally. They are not machine verification.</p>';
+      }
+      function renderPartSource(part) {
+        if (sourceStatus === "loading") return '<h3>Requirements and implementation surface</h3><p class="notice" role="status">Loading the generated source excerpt…</p>';
+        if (!sourcePayload) return '<h3>Signatures and contract</h3><pre><code>' + esc(part.contract) + '</code></pre><p class="legacy">The generated source file could not be loaded. Run the journey data generator to restore it.</p>';
+        var excerpt = sourcePayload.parts.find(function (item) { return item.part === state.part; });
+        var actual = excerpt && excerpt.source ? excerpt.source : part.contract;
+        var sharedSurface = sourcePayload.implementationSurface ? '<h3>Shared implementation surface</h3><p class="source-meta">These declarations and stubs are shared by the requirements above.</p>' + ProblemSourceViewer.region(sourcePayload.implementationSurface, problem.language, 'Shared implementation surface') : '';
+        return '<h3>Part ' + state.part + ' source requirements</h3><p class="source-meta">Excerpt from ' + esc(sourcePayload.stub.path) + '</p>' + ProblemSourceViewer.region(actual, problem.language, 'Part ' + state.part + ' source requirements') + sharedSurface +
+          '<details class="full-source"><summary>Read the complete problem stub</summary><p class="source-meta">' + esc(sourcePayload.stub.path) + '</p>' + ProblemSourceViewer.region(sourcePayload.stub.source, problem.language, 'Complete problem stub') + '</details>';
       }
       function scopedCommand() {
         if (problem.language === "python") {
@@ -219,8 +244,11 @@
       function renderVerify() {
         var suites = suitesForPart(); var green = !!state.verified[String(state.part)];
         var success = problem.language === "react" ? "Playwright reports the selected suite passed with no failed tests." : problem.language === "swift" ? "Swift Testing finishes with zero issues." : "pytest reports all selected tests passed.";
+        var testReader = sourcePayload && sourcePayload.test ? '<details class="full-source"><summary>Read the test specification</summary><p class="source-meta">Test assertion bodies are available here only in the Verify stage: ' + esc(sourcePayload.test.path) + '</p>' + ProblemSourceViewer.region(sourcePayload.test.source, problem.language === "react" ? "react" : problem.language, 'Test specification') + '</details>' : '';
+        var testVscode = "vscode://file" + location.pathname.replace(/\/journey\.html$/, "") + "/" + problem.testPath;
         return partBar() + '<p class="eyebrow">Stage 4 of 4 · Observe the terminal</p><h2>Verify part ' + state.part + '</h2><div class="notice"><strong>This page does not run tests and cannot know their result.</strong> Run the command yourself, then report what you observed.</div>' +
           commandBlock(problem.commands.testCommand, "Exact terminal command") + '<h3>Test suites derived for this part</h3>' + (suites.length ? list(suites) : '<p>The available test metadata exposes only a full-problem suite. No part-specific suite is claimed.</p>') +
+          '<p><a class="btn" href="' + esc(testVscode) + '">Open tests in VS Code ↗</a></p>' + testReader +
           '<h3>What success looks like</h3><p>' + esc(success) + '</p><h3>Common failures</h3><div class="failures">' + problem.guide.verify.commonFailures.map(function (f) { return '<article class="failure"><strong>' + esc(f.symptom) + '</strong><p><b>Likely cause:</b> ' + esc(f.cause) + '</p><p><b>Check:</b> ' + esc(f.check) + '</p></article>'; }).join("") + '</div>' +
           '<fieldset class="self-checks"><legend>Self-reported result</legend><label class="check"><input type="checkbox" id="saw-green"' + (green ? ' checked' : '') + '><span>I saw green for this part in my terminal.</span></label></fieldset><p class="lede">This mark is local and self-reported, not machine verification.</p>';
       }
