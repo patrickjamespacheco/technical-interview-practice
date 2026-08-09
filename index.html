@@ -691,6 +691,15 @@ function renderCards() {
       ? `<a href="${vscodeTest}" class="action-btn action-secondary">Test file ↗</a>`
       : "";
 
+    const journeyKey = {
+      "python/practice_problems/problem_01_geofence_alert_engine.py": "python-01",
+      "python/practice_problems/problem_03_permission_manager.py": "python-03",
+      "react/practice_problems/problem_02_incident_dashboard.jsx": "react-02"
+    }[p.path];
+    const journeyBtn = journeyKey
+      ? `<a href="journey.html?problem=${journeyKey}" class="action-btn action-secondary">Start journey →</a>`
+      : "";
+
     return `
 <div class="problem-card">
   <div class="card-header">
@@ -708,6 +717,7 @@ function renderCards() {
   <p class="file-path">${p.path}</p>
   <div class="card-actions">
     <a href="${vscodeProblem}" class="action-btn action-primary">Open in VS Code ↗</a>
+    ${journeyBtn}
     ${testBtn}
     <button class="action-btn action-secondary" onclick="copyPath('${p.path}')">Copy path</button>
   </div>
