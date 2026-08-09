@@ -32,6 +32,10 @@ class JourneyGeneratorTests(unittest.TestCase):
             "react/tests/test_problem_02_incident_dashboard.spec.js",
             "swift/practice_problems/problem_18_inventory_reservation_ledger.swift",
             "swift/Tests/Problem18InventoryReservationLedgerTests/Problem18InventoryReservationLedgerTests.swift",
+            "swift/practice_problems/problem_05_medication_titration.swift",
+            "swift/Tests/Problem05MedicationTitrationTests/Problem05MedicationTitrationTests.swift",
+            "swift/practice_problems/problem_10_dispatch_manager.swift",
+            "swift/Tests/Problem10DispatchManagerTests/Problem10DispatchManagerTests.swift",
         ]:
             destination = self.root / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -56,7 +60,7 @@ class JourneyGeneratorTests(unittest.TestCase):
 
     def test_parses_catalogue_parts_examples_and_suite_names(self):
         data = builder.build_data(self.root)
-        self.assertEqual(set(data), {"python-01", "python-03", "react-02", "swift-18"})
+        self.assertEqual(set(data), {"python-01", "python-03", "react-02", "swift-05", "swift-10", "swift-18"})
         self.assertEqual([part["title"] for part in data["python-03"]["parts"]], [
             "Flat role/permission model", "Role inheritance", "Scoped permissions with wildcards"
         ])

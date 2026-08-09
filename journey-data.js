@@ -484,5 +484,251 @@ window.JOURNEY_PROBLEMS = {
         ]
       }
     }
+  },
+  "swift-10": {
+    "id": "swift-10",
+    "title": "Responder Dispatch Manager (Swift)",
+    "description": "Route typed incidents through a pluggable assignment strategy while enforcing responder capacity and reusable manual-assignment validation.",
+    "language": "swift",
+    "industry": "public-safety",
+    "tags": [
+      "dispatch",
+      "protocols",
+      "capacity-constraints",
+      "strategy-pattern"
+    ],
+    "level": "senior",
+    "stubPath": "swift/practice_problems/problem_10_dispatch_manager.swift",
+    "testPath": "swift/Tests/Problem10DispatchManagerTests/Problem10DispatchManagerTests.swift",
+    "example": "var manager = DispatchManager(strategy: LeastLoadedAssignmentStrategy())\ntry manager.registerResponder(Responder(id: \"unit-12\", name: \"Alpha\", subscribedTypes: [\"fire\"], capacity: 2))\ntry manager.addIncident(Incident(id: \"inc-001\", type: \"fire\", severity: 5, timestamp: DispatchTimestamp(100)))\nlet assignment = try manager.autoAssign(IncidentID(\"inc-001\"))\nassignment.responderID // -> ResponderID(\"unit-12\")\n/\n\npublic struct ResponderID: Hashable, Comparable, Sendable, ExpressibleByStringLiteral {\n    public let rawValue: String\n    public init(_ rawValue: String) { self.rawValue = rawValue }\n    public init(stringLiteral value: String) { self.init(value) }\n    public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }\n}\npublic struct IncidentID: Hashable, Comparable, Sendable, ExpressibleByStringLiteral {\n    public let rawValue: String\n    public init(_ rawValue: String) { self.rawValue = rawValue }\n    public init(stringLiteral value: String) { self.init(value) }\n    public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }\n}\npublic struct IncidentType: Hashable, Sendable, ExpressibleByStringLiteral {\n    public let rawValue: String\n    public init(_ rawValue: String) { self.rawValue = rawValue }\n    public init(stringLiteral value: String) { self.init(value) }\n}\npublic struct DispatchTimestamp: Hashable, Comparable, Sendable {\n    public let rawValue: Int\n    public init(_ rawValue: Int) { self.rawValue = rawValue }\n    public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }\n}\npublic struct Responder: Equatable, Sendable {\n    public let id: ResponderID; public let name: String\n    public let subscribedTypes: Set<IncidentType>; public let capacity: Int\n    public init(id: ResponderID, name: String, subscribedTypes: Set<IncidentType>, capacity: Int) {\n        self.id = id; self.name = name; self.subscribedTypes = subscribedTypes; self.capacity = capacity\n    }\n}\npublic struct Incident: Equatable, Sendable {\n    public let id: IncidentID; public let type: IncidentType; public let severity: Int\n    public let timestamp: DispatchTimestamp; public var responderID: ResponderID?; public var isResolved: Bool\n    public init(id: IncidentID, type: IncidentType, severity: Int, timestamp: DispatchTimestamp, responderID: ResponderID? = nil, isResolved: Bool = false) {\n        self.id = id; self.type = type; self.severity = severity; self.timestamp = timestamp; self.responderID = responderID; self.isResolved = isResolved\n    }\n}\npublic enum DispatchError: Error, Equatable, Sendable {\n    case duplicateResponder(ResponderID), duplicateIncident(IncidentID)\n    case unknownResponder(ResponderID), unknownIncident(IncidentID)\n    case alreadyAssigned(IncidentID), alreadyResolved(IncidentID)\n    case responderAtCapacity(ResponderID), noEligibleResponder(IncidentID), invalidCapacity(Int), notImplemented\n}\npublic struct AssignmentCandidate: Equatable, Sendable {\n    public let responder: Responder; public let openCount: Int\n    public init(responder: Responder, openCount: Int) { self.responder = responder; self.openCount = openCount }\n}\npublic struct AssignmentResult: Equatable, Sendable {\n    public let incident: Incident; public let responder: Responder\n    public let openCount: Int; public let availableCapacity: Int\n    public var responderID: ResponderID { responder.id }\n}\npublic struct DispatchSummary: Equatable, Sendable {\n    public let responderID: ResponderID; public let name: String\n    public let capacity: Int; public let openCount: Int; public let availableCapacity: Int\n}\npublic protocol AssignmentStrategy {\n    func selectResponder(for incident: Incident, from candidates: [AssignmentCandidate]) -> ResponderID?\n}\npublic struct LeastLoadedAssignmentStrategy: AssignmentStrategy, Sendable {\n    public init() {}\n    public func selectResponder(for incident: Incident, from candidates: [AssignmentCandidate]) -> ResponderID? {\n        candidates.sorted { ($0.openCount, -$0.responder.capacity, $0.responder.id) < ($1.openCount, -$1.responder.capacity, $1.responder.id) }.first?.responder.id\n    }\n}\npublic struct DispatchManager {\n    public init(strategy: any AssignmentStrategy = LeastLoadedAssignmentStrategy()) { self.strategy = strategy }\n    private let strategy: any AssignmentStrategy\n    public mutating func registerResponder(_ responder: Responder) throws(DispatchError) { throw .notImplemented }\n    public mutating func addIncident(_ incident: Incident) throws(DispatchError) { throw .notImplemented }\n    public func incidents(matching responderID: ResponderID) throws(DispatchError) -> [Incident] { throw .notImplemented }\n    public mutating func assignIncident(_ incidentID: IncidentID, to responderID: ResponderID) throws(DispatchError) -> AssignmentResult { throw .notImplemented }\n    public mutating func resolveIncident(_ incidentID: IncidentID) throws(DispatchError) -> Incident { throw .notImplemented }\n    public func openAssignments(for responderID: ResponderID) throws(DispatchError) -> [Incident] { throw .notImplemented }\n    public mutating func autoAssign(_ incidentID: IncidentID) throws(DispatchError) -> AssignmentResult { throw .notImplemented }\n    public func dispatchSummary() -> [DispatchSummary] { [] }\n}",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Registration and matching queries",
+        "contract": "Register uniquely identified responders and incidents. Matching incidents are\nordered by severity descending, then timestamp and incident ID ascending."
+      },
+      {
+        "part": 2,
+        "title": "Manual assignment and resolution",
+        "contract": "Enforce existence, single assignment, and responder capacity. Return an\nAssignmentResult snapshot from assignIncident so later behavior can reuse it.\nResolving an incident frees capacity. Manual assignment does not require a\nresponder subscription; subscriptions govern automatic selection."
+      },
+      {
+        "part": 3,
+        "title": "Strategy-based automatic assignment",
+        "contract": "Ask the injected AssignmentStrategy to select among subscribed responders with\ncapacity. Then call assignIncident to perform the assignment; do not duplicate\nits validation or mutation. Produce responder summaries ordered by ID.\n\n\nExample\nvar manager = DispatchManager(strategy: LeastLoadedAssignmentStrategy())\ntry manager.registerResponder(Responder(id: \"unit-12\", name: \"Alpha\", subscribedTypes: [\"fire\"], capacity: 2))\ntry manager.addIncident(Incident(id: \"inc-001\", type: \"fire\", severity: 5, timestamp: DispatchTimestamp(100)))\nlet assignment = try manager.autoAssign(IncidentID(\"inc-001\"))\nassignment.responderID // -> ResponderID(\"unit-12\")\n/\n\npublic struct ResponderID: Hashable, Comparable, Sendable, ExpressibleByStringLiteral {\n    public let rawValue: String\n    public init(_ rawValue: String) { self.rawValue = rawValue }\n    public init(stringLiteral value: String) { self.init(value) }\n    public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }\n}\npublic struct IncidentID: Hashable, Comparable, Sendable, ExpressibleByStringLiteral {\n    public let rawValue: String\n    public init(_ rawValue: String) { self.rawValue = rawValue }\n    public init(stringLiteral value: String) { self.init(value) }\n    public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }\n}\npublic struct IncidentType: Hashable, Sendable, ExpressibleByStringLiteral {\n    public let rawValue: String\n    public init(_ rawValue: String) { self.rawValue = rawValue }\n    public init(stringLiteral value: String) { self.init(value) }\n}\npublic struct DispatchTimestamp: Hashable, Comparable, Sendable {\n    public let rawValue: Int\n    public init(_ rawValue: Int) { self.rawValue = rawValue }\n    public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }\n}\npublic struct Responder: Equatable, Sendable {\n    public let id: ResponderID; public let name: String\n    public let subscribedTypes: Set<IncidentType>; public let capacity: Int\n    public init(id: ResponderID, name: String, subscribedTypes: Set<IncidentType>, capacity: Int) {\n        self.id = id; self.name = name; self.subscribedTypes = subscribedTypes; self.capacity = capacity\n    }\n}\npublic struct Incident: Equatable, Sendable {\n    public let id: IncidentID; public let type: IncidentType; public let severity: Int\n    public let timestamp: DispatchTimestamp; public var responderID: ResponderID?; public var isResolved: Bool\n    public init(id: IncidentID, type: IncidentType, severity: Int, timestamp: DispatchTimestamp, responderID: ResponderID? = nil, isResolved: Bool = false) {\n        self.id = id; self.type = type; self.severity = severity; self.timestamp = timestamp; self.responderID = responderID; self.isResolved = isResolved\n    }\n}\npublic enum DispatchError: Error, Equatable, Sendable {\n    case duplicateResponder(ResponderID), duplicateIncident(IncidentID)\n    case unknownResponder(ResponderID), unknownIncident(IncidentID)\n    case alreadyAssigned(IncidentID), alreadyResolved(IncidentID)\n    case responderAtCapacity(ResponderID), noEligibleResponder(IncidentID), invalidCapacity(Int), notImplemented\n}\npublic struct AssignmentCandidate: Equatable, Sendable {\n    public let responder: Responder; public let openCount: Int\n    public init(responder: Responder, openCount: Int) { self.responder = responder; self.openCount = openCount }\n}\npublic struct AssignmentResult: Equatable, Sendable {\n    public let incident: Incident; public let responder: Responder\n    public let openCount: Int; public let availableCapacity: Int\n    public var responderID: ResponderID { responder.id }\n}\npublic struct DispatchSummary: Equatable, Sendable {\n    public let responderID: ResponderID; public let name: String\n    public let capacity: Int; public let openCount: Int; public let availableCapacity: Int\n}\npublic protocol AssignmentStrategy {\n    func selectResponder(for incident: Incident, from candidates: [AssignmentCandidate]) -> ResponderID?\n}\npublic struct LeastLoadedAssignmentStrategy: AssignmentStrategy, Sendable {\n    public init() {}\n    public func selectResponder(for incident: Incident, from candidates: [AssignmentCandidate]) -> ResponderID? {\n        candidates.sorted { ($0.openCount, -$0.responder.capacity, $0.responder.id) < ($1.openCount, -$1.responder.capacity, $1.responder.id) }.first?.responder.id\n    }\n}\npublic struct DispatchManager {\n    public init(strategy: any AssignmentStrategy = LeastLoadedAssignmentStrategy()) { self.strategy = strategy }\n    private let strategy: any AssignmentStrategy\n    public mutating func registerResponder(_ responder: Responder) throws(DispatchError) { throw .notImplemented }\n    public mutating func addIncident(_ incident: Incident) throws(DispatchError) { throw .notImplemented }\n    public func incidents(matching responderID: ResponderID) throws(DispatchError) -> [Incident] { throw .notImplemented }\n    public mutating func assignIncident(_ incidentID: IncidentID, to responderID: ResponderID) throws(DispatchError) -> AssignmentResult { throw .notImplemented }\n    public mutating func resolveIncident(_ incidentID: IncidentID) throws(DispatchError) -> Incident { throw .notImplemented }\n    public func openAssignments(for responderID: ResponderID) throws(DispatchError) -> [Incident] { throw .notImplemented }\n    public mutating func autoAssign(_ incidentID: IncidentID) throws(DispatchError) -> AssignmentResult { throw .notImplemented }\n    public func dispatchSummary() -> [DispatchSummary] { [] }\n}"
+      }
+    ],
+    "testSuites": [
+      "Part 1 — Registration and matching queries",
+      "Part 2 — Manual assignment and resolution",
+      "Part 3 — Strategy-based automatic assignment"
+    ],
+    "commands": {
+      "answerPath": "swift/practice_problem_answers/my_answer_10_dispatch_manager.swift",
+      "copyCommand": "cp swift/practice_problems/problem_10_dispatch_manager.swift swift/practice_problem_answers/my_answer_10_dispatch_manager.swift",
+      "openCommand": "code swift/practice_problems/problem_10_dispatch_manager.swift",
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_10_dispatch_manager.swift -c swift test"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Which keyed stores and one canonical ordering rule make registration and matching predictable?",
+          "concepts": [
+            "typed identifiers",
+            "deterministic multi-key sorting"
+          ],
+          "steps": [
+            "Validate uniqueness before inserting records.",
+            "Centralize severity, timestamp, and ID ordering."
+          ],
+          "pitfalls": [
+            "using names as identity",
+            "different ordering rules across queries"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "What should manual assignment return so automatic assignment can reuse both its mutation and resulting capacity facts?",
+          "concepts": [
+            "typed expected failures",
+            "rich assignment snapshot"
+          ],
+          "steps": [
+            "Count only assigned unresolved incidents.",
+            "Return the updated incident, responder, and capacity snapshot together."
+          ],
+          "pitfalls": [
+            "counting resolved work",
+            "returning only a Boolean or responder ID"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "Where should eligibility selection end and authoritative assignment begin?",
+          "concepts": [
+            "strategy protocol",
+            "composition boundary"
+          ],
+          "steps": [
+            "Build candidates from subscriptions and current capacity.",
+            "Ask the strategy to choose, then delegate to manual assignment."
+          ],
+          "pitfalls": [
+            "letting the strategy mutate manager state",
+            "duplicating manual validation in auto-assignment"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "Automatic assignment chooses a full or unrelated responder",
+            "cause": "The strategy received unfiltered candidates",
+            "check": "Inspect the candidate boundary for both subscription and available capacity."
+          },
+          {
+            "symptom": "Manual and automatic results drift apart",
+            "cause": "Automatic assignment mutates incidents independently",
+            "check": "Trace the selected ID into the public manual-assignment method."
+          }
+        ]
+      }
+    }
+  },
+  "swift-05": {
+    "id": "swift-05",
+    "title": "Medication Titration Tracker (Swift)",
+    "description": "Reduce out-of-order typed medication events into immutable patient and population snapshots with injected temporal values.",
+    "language": "swift",
+    "industry": "health-tech",
+    "tags": [
+      "event-sourcing",
+      "value-semantics",
+      "time-series",
+      "clinical"
+    ],
+    "level": "senior",
+    "stubPath": "swift/practice_problems/problem_05_medication_titration.swift",
+    "testPath": "swift/Tests/Problem05MedicationTitrationTests/Problem05MedicationTitrationTests.swift",
+    "example": "let events = [MedicationEvent(patientID: \"pt-1\", medicationID: \"metformin\", direction: .start, dose: Dose(milligrams: 500), timestamp: MedicationTimestamp(10))]\nlet tracker = TitrationTracker(events: events)\ntracker.currentMedications(for: \"pt-1\").first?.dose // -> Dose(milligrams: 500)\ntracker.adding(MedicationEvent(patientID: \"pt-1\", medicationID: \"metformin\", direction: .stop, dose: .zero, timestamp: MedicationTimestamp(20))).currentMedications(for: \"pt-1\") // -> []\n/\n\npublic struct PatientID: Hashable, Comparable, Sendable, ExpressibleByStringLiteral {\n    public let rawValue: String; public init(_ rawValue: String) { self.rawValue = rawValue }\n    public init(stringLiteral value: String) { self.init(value) }\n    public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }\n}\npublic struct MedicationID: Hashable, Comparable, Sendable, ExpressibleByStringLiteral {\n    public let rawValue: String; public init(_ rawValue: String) { self.rawValue = rawValue }\n    public init(stringLiteral value: String) { self.init(value) }\n    public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }\n}\npublic struct MedicationTimestamp: Hashable, Comparable, Sendable {\n    public let rawValue: Int; public init(_ rawValue: Int) { self.rawValue = rawValue }\n    public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }\n}\npublic struct Dose: Equatable, Sendable {\n    public let milligrams: Decimal\n    public init(milligrams: Decimal) { self.milligrams = milligrams }\n    public static let zero = Dose(milligrams: 0)\n}\npublic enum TitrationDirection: Equatable, Sendable { case start, increase, decrease, stop }\npublic struct MedicationEvent: Equatable, Sendable {\n    public let patientID: PatientID; public let medicationID: MedicationID\n    public let direction: TitrationDirection; public let dose: Dose; public let timestamp: MedicationTimestamp\n    public init(patientID: PatientID, medicationID: MedicationID, direction: TitrationDirection, dose: Dose, timestamp: MedicationTimestamp) {\n        self.patientID = patientID; self.medicationID = medicationID; self.direction = direction; self.dose = dose; self.timestamp = timestamp\n    }\n}\npublic struct MedicationSnapshot: Equatable, Sendable {\n    public let medicationID: MedicationID; public let dose: Dose\n    public let lastChanged: MedicationTimestamp; public let totalChanges: Int\n}\npublic struct MedicationCount: Equatable, Sendable {\n    public let medicationID: MedicationID; public let count: Int\n}\npublic struct TitrationTracker: Sendable {\n    public init(events: [MedicationEvent] = []) { self.events = events }\n    private let events: [MedicationEvent]\n    public func medicationHistory(for patientID: PatientID, medicationID: MedicationID) -> [MedicationEvent] { [] }\n    public func currentMedications(for patientID: PatientID) -> [MedicationSnapshot] { [] }\n    public func titrationCount(for patientID: PatientID, medicationID: MedicationID, direction: TitrationDirection? = nil) -> Int { 0 }\n    public func deEscalationSummary(for patientID: PatientID) -> [MedicationID: Int] { [:] }\n    public func patients(on medicationID: MedicationID) -> [PatientID] { [] }\n    public func mostTitratedMedications(limit: Int = 3) -> [MedicationCount] { [] }\n    public func adding(_ event: MedicationEvent) -> TitrationTracker { self }\n}",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Patient medication snapshots",
+        "contract": "Return chronological history and active medication snapshots. The latest event\ndetermines activity and dose; a stop event makes the medication inactive."
+      },
+      {
+        "part": 2,
+        "title": "Patient-level reductions",
+        "contract": "Count events, optionally by direction, and summarize decreases plus stops per\nmedication. Reuse history rather than creating a parallel filtering path."
+      },
+      {
+        "part": 3,
+        "title": "Population-level reductions",
+        "contract": "Find sorted active patients and the most-titrated medications across patients.\nReuse the Part 1 snapshot behavior when determining active medications."
+      },
+      {
+        "part": 4,
+        "title": "Immutable event ingestion",
+        "contract": "Return a new tracker containing the event. For the same patient, medication,\nand timestamp, the new event replaces the old event (last write wins).\n\n\nExample\nlet events = [MedicationEvent(patientID: \"pt-1\", medicationID: \"metformin\", direction: .start, dose: Dose(milligrams: 500), timestamp: MedicationTimestamp(10))]\nlet tracker = TitrationTracker(events: events)\ntracker.currentMedications(for: \"pt-1\").first?.dose // -> Dose(milligrams: 500)\ntracker.adding(MedicationEvent(patientID: \"pt-1\", medicationID: \"metformin\", direction: .stop, dose: .zero, timestamp: MedicationTimestamp(20))).currentMedications(for: \"pt-1\") // -> []\n/\n\npublic struct PatientID: Hashable, Comparable, Sendable, ExpressibleByStringLiteral {\n    public let rawValue: String; public init(_ rawValue: String) { self.rawValue = rawValue }\n    public init(stringLiteral value: String) { self.init(value) }\n    public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }\n}\npublic struct MedicationID: Hashable, Comparable, Sendable, ExpressibleByStringLiteral {\n    public let rawValue: String; public init(_ rawValue: String) { self.rawValue = rawValue }\n    public init(stringLiteral value: String) { self.init(value) }\n    public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }\n}\npublic struct MedicationTimestamp: Hashable, Comparable, Sendable {\n    public let rawValue: Int; public init(_ rawValue: Int) { self.rawValue = rawValue }\n    public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }\n}\npublic struct Dose: Equatable, Sendable {\n    public let milligrams: Decimal\n    public init(milligrams: Decimal) { self.milligrams = milligrams }\n    public static let zero = Dose(milligrams: 0)\n}\npublic enum TitrationDirection: Equatable, Sendable { case start, increase, decrease, stop }\npublic struct MedicationEvent: Equatable, Sendable {\n    public let patientID: PatientID; public let medicationID: MedicationID\n    public let direction: TitrationDirection; public let dose: Dose; public let timestamp: MedicationTimestamp\n    public init(patientID: PatientID, medicationID: MedicationID, direction: TitrationDirection, dose: Dose, timestamp: MedicationTimestamp) {\n        self.patientID = patientID; self.medicationID = medicationID; self.direction = direction; self.dose = dose; self.timestamp = timestamp\n    }\n}\npublic struct MedicationSnapshot: Equatable, Sendable {\n    public let medicationID: MedicationID; public let dose: Dose\n    public let lastChanged: MedicationTimestamp; public let totalChanges: Int\n}\npublic struct MedicationCount: Equatable, Sendable {\n    public let medicationID: MedicationID; public let count: Int\n}\npublic struct TitrationTracker: Sendable {\n    public init(events: [MedicationEvent] = []) { self.events = events }\n    private let events: [MedicationEvent]\n    public func medicationHistory(for patientID: PatientID, medicationID: MedicationID) -> [MedicationEvent] { [] }\n    public func currentMedications(for patientID: PatientID) -> [MedicationSnapshot] { [] }\n    public func titrationCount(for patientID: PatientID, medicationID: MedicationID, direction: TitrationDirection? = nil) -> Int { 0 }\n    public func deEscalationSummary(for patientID: PatientID) -> [MedicationID: Int] { [:] }\n    public func patients(on medicationID: MedicationID) -> [PatientID] { [] }\n    public func mostTitratedMedications(limit: Int = 3) -> [MedicationCount] { [] }\n    public func adding(_ event: MedicationEvent) -> TitrationTracker { self }\n}"
+      }
+    ],
+    "testSuites": [
+      "Part 1 — Patient medication snapshots",
+      "Part 2 — Patient-level reductions",
+      "Part 3 — Population-level reductions",
+      "Part 4 — Immutable event ingestion"
+    ],
+    "commands": {
+      "answerPath": "swift/practice_problem_answers/my_answer_05_medication_titration.swift",
+      "copyCommand": "cp swift/practice_problems/problem_05_medication_titration.swift swift/practice_problem_answers/my_answer_05_medication_titration.swift",
+      "openCommand": "code swift/practice_problems/problem_05_medication_titration.swift",
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_05_medication_titration.swift -c swift test"
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "How can one chronological history reduction produce each active medication snapshot?",
+          "concepts": [
+            "immutable events",
+            "latest-event reduction"
+          ],
+          "steps": [
+            "Filter by typed patient and medication IDs.",
+            "Sort by the comparable timestamp before selecting the latest event."
+          ],
+          "pitfalls": [
+            "trusting arrival order",
+            "treating a stop event as an active zero dose"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "Which patient-level counts can be expressed directly over the Part 1 history?",
+          "concepts": [
+            "composed reductions",
+            "enum filtering"
+          ],
+          "steps": [
+            "Reuse chronological history for optional direction counts.",
+            "Accumulate only decrease and stop directions for the summary."
+          ],
+          "pitfalls": [
+            "parallel event filtering logic",
+            "including medications with no de-escalation"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "How can population queries reuse patient snapshots while remaining deterministic?",
+          "concepts": [
+            "set uniqueness",
+            "stable ranking"
+          ],
+          "steps": [
+            "Derive unique typed patient and medication IDs from events.",
+            "Sort patient IDs and break equal counts by medication ID."
+          ],
+          "pitfalls": [
+            "returning duplicate patients",
+            "depending on dictionary iteration order"
+          ]
+        },
+        {
+          "part": 4,
+          "prompt": "What event identity enables last-write-wins without mutating either the input collection or existing tracker?",
+          "concepts": [
+            "value semantics",
+            "composite event identity"
+          ],
+          "steps": [
+            "Remove an event matching patient, medication, and timestamp.",
+            "Return a new tracker containing the replacement event."
+          ],
+          "pitfalls": [
+            "mutating shared storage",
+            "treating direction as part of replacement identity"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "Out-of-order inputs produce an old current dose",
+            "cause": "Arrival order was used as chronology",
+            "check": "Confirm every latest-event decision follows comparable timestamp ordering."
+          },
+          {
+            "symptom": "Adding an event changes the original tracker",
+            "cause": "Mutable reference-backed storage is shared",
+            "check": "Verify ingestion constructs and returns a new value snapshot."
+          }
+        ]
+      }
+    }
   }
 };
