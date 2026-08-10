@@ -446,3 +446,9 @@ Kebab-case strings that describe the core algorithmic pattern or domain concept.
 Examples: `sliding-window`, `rbac`, `event-driven`, `time-series`,
 `consecutive-tracking`, `deadline-tracking`, `optimistic-updates`.
 Aim for 2–5 tags per problem.
+
+### Default language filter
+`index.html` opens on the Swift language filter for a first-run visitor.
+The choice is remembered in `localStorage` under the key `practice-index.language`, where the literal `all` means no language filter.
+A stored language that is no longer in the catalogue, and a catalogue with no Swift problems, both fall back to showing everything.
+Whenever a language filter is active, the results bar shows a note naming it plus a "Show all languages" button, so a filtered catalogue never reads as an empty one.

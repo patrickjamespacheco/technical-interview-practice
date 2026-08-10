@@ -133,8 +133,33 @@
     /* ── Main ── */
     main { max-width: 1200px; margin: 0 auto; padding: 1.25rem 2rem 3rem; }
 
-    .results-bar { margin-bottom: 0.85rem; }
+    .results-bar { margin-bottom: 0.85rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; }
     .results-count { font-size: 0.8rem; color: var(--text-muted); }
+    .results-note {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      padding: 0.25rem 0.6rem;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      color: var(--accent);
+      font-weight: 500;
+    }
+    .results-note:empty { display: none; }
+    .link-btn {
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 600;
+      color: var(--accent);
+      text-decoration: underline;
+    }
+    .link-btn:hover { opacity: 0.75; }
 
     /* ── Grid ── */
     .problem-grid {
@@ -344,6 +369,7 @@
 <main>
   <div class="results-bar">
     <span class="results-count" id="results-count"></span>
+    <span class="results-note" id="results-note"></span>
   </div>
   <div class="problem-grid" id="problem-grid"></div>
 </main>
@@ -743,6 +769,30 @@ const repoRoot = window.location.pathname.replace(/\/index\.html$/, "");
 // ── Filter state ─────────────────────────────────────────────────────────────
 const LEVELS = ["junior", "mid-level", "senior", "staff"]; // canonical order
 const state = { search: "", language: null, industry: null, level: null, tag: null, expanded: null, sourceTab: "stub" };
+
+// The captain's language choice is remembered across reloads. Swift is only the
+// first-run default, and it applies only while the catalogue still has Swift
+// problems. `null` (stored as "all") means every language.
+const LANGUAGE_PREF_KEY = "practice-index.language";
+const DEFAULT_LANGUAGE = "swift";
+const ALL_LANGUAGES = "all";
+
+function catalogueLanguages() { return new Set(PROBLEMS.map(p => p.language)); }
+
+function readLanguagePref() {
+  try { return window.localStorage.getItem(LANGUAGE_PREF_KEY); } catch { return null; }
+}
+
+function writeLanguagePref(language) {
+  try { window.localStorage.setItem(LANGUAGE_PREF_KEY, language || ALL_LANGUAGES); } catch { /* storage unavailable — the choice just won't persist */ }
+}
+
+function initialLanguage() {
+  const available = catalogueLanguages();
+  const stored = readLanguagePref();
+  if (stored) return stored !== ALL_LANGUAGES && available.has(stored) ? stored : null;
+  return available.has(DEFAULT_LANGUAGE) ? DEFAULT_LANGUAGE : null;
+}
 window.PROBLEM_SOURCES = window.PROBLEM_SOURCES || {};
 const sourceLoads = {};
 
@@ -845,6 +895,16 @@ function renderCards() {
       ? `${PROBLEMS.length} problems`
       : `${filtered.length} of ${PROBLEMS.length} problems`;
 
+  const note = document.getElementById("results-note");
+  if (state.language) {
+    const hidden = PROBLEMS.filter(p => p.language !== state.language).length;
+    note.innerHTML =
+      `Showing ${label(state.language)} only - ${hidden} problem${hidden === 1 ? "" : "s"} in other languages hidden. ` +
+      `<button type="button" class="link-btn" data-clear-language>Show all languages</button>`;
+  } else {
+    note.innerHTML = "";
+  }
+
   if (filtered.length === 0) {
     document.getElementById("problem-grid").innerHTML =
       `<div class="no-results"><strong>No problems match your filters.</strong><p>Try clearing some filters or adjusting your search.</p></div>`;
@@ -916,7 +976,15 @@ document.getElementById("search-input").addEventListener("input", e => {
 document.getElementById("language-filters").addEventListener("click", e => {
   const btn = e.target.closest("[data-lang]");
   if (!btn) return;
-  state.language = btn.dataset.lang === "all" ? null : btn.dataset.lang;
+  state.language = btn.dataset.lang === ALL_LANGUAGES ? null : btn.dataset.lang;
+  writeLanguagePref(state.language);
+  render();
+});
+
+document.querySelector(".results-bar").addEventListener("click", e => {
+  if (!e.target.closest("[data-clear-language]")) return;
+  state.language = null;
+  writeLanguagePref(null);
   render();
 });
 
@@ -950,6 +1018,7 @@ document.getElementById("problem-grid").addEventListener("click", e => {
 });
 
 // ── Init ─────────────────────────────────────────────────────────────────────
+state.language = initialLanguage();
 render();
 </script>
 </body>
