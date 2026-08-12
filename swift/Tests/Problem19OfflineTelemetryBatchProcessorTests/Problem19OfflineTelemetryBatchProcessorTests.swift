@@ -190,7 +190,10 @@ struct Part3 {
         let run = Task { try await coordinator.run(sink: sink) }
         try #require(await waitForStart(2, sink: sink, run: run))
         #expect(await sink.snapshot().peak == 2)
-        #expect(await sink.snapshot().started == [0, 1])
+        // Which of the two in-flight batches reaches the sink first is up to the
+        // scheduler, so assert the membership of the first window, not its order.
+        // The peak assertion above is what proves the bound is respected.
+        #expect(Set(await sink.snapshot().started) == [0, 1])
         await sink.succeed(0)
         try #require(await waitForStart(3, sink: sink, run: run))
         for sequence in 1..<6 {

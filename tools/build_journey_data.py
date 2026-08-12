@@ -35,6 +35,15 @@ LEGACY_PART_TITLES = {
     "python-17": ["Canonical ingestion and lookups", "Settlement matching", "Batch reconciliation"],
 }
 PART_RE = re.compile(r"\bPART\s+(\d+)\s+[—-]\s+(.+?)(?:\s{2,}\([^\n]*\))?\s*$", re.I | re.M)
+# Part markers inside test files. Test suites are ordered by part (an authoring
+# rule), so each file states where one part's suites end and the next begins.
+PYTHON_TEST_PART_RE = re.compile(r"^[ \t]*#[ \t─=-]*Part[ \t]+(\d+)[ \t]*[—–:-]", re.I | re.M)
+PYTHON_TEST_SUITE_RE = re.compile(r"^class[ \t]+(Test\w+)", re.M)
+SWIFT_TEST_SUITE_RE = re.compile(
+    r"@Suite\(\s*\"(Part\s+(\d+)[^\"]*)\"\s*\)\s*(?:@[\w(). :]+\s*)*(?:public\s+|final\s+|private\s+)*(?:struct|class|actor)\s+(\w+)",
+    re.I,
+)
+REACT_TEST_SUITE_RE = re.compile(r"test\.describe\(\s*['\"](Part\s+(\d+)[^'\"]*)", re.I)
 EXAMPLE_RE = re.compile(
     r"(?:^\s*(?:[#*]\s*)?EXAMPLE\s*$\s*(?:^\s*(?:[#*]\s*)?-{3,}\s*$)?|^\s*#\s*Example\s*$)",
     re.I | re.M,
@@ -306,16 +315,81 @@ def parse_suites(source: str, language: str) -> list[str]:
     return []
 
 
-def derive_commands(language: str, number: str, slug: str, stub_path: str, test_path: str) -> dict[str, str]:
+def parse_part_suites(source: str, language: str, part_count: int) -> list[list[dict[str, str]]]:
+    """Group a test file's suites under the part each one covers.
+
+    Returns one list per part, each entry carrying the suite's display `name`
+    and the `selector` a runner filters on. Returns an empty list when the file
+    does not mark every part, so the journey keeps its honest full-suite note
+    instead of inventing a command that scopes to nothing.
+    """
+    buckets: dict[int, list[dict[str, str]]] = {}
+    if language == "python":
+        markers = [(match.start(), int(match.group(1)), None) for match in PYTHON_TEST_PART_RE.finditer(source)]
+        classes = [(match.start(), None, match.group(1)) for match in PYTHON_TEST_SUITE_RE.finditer(source)]
+        current = None
+        for _position, part, suite in sorted(markers + classes):
+            if part is not None:
+                current = part
+            elif current is not None:
+                buckets.setdefault(current, []).append({"name": suite, "selector": suite})
+    elif language == "swift":
+        for match in SWIFT_TEST_SUITE_RE.finditer(source):
+            buckets.setdefault(int(match.group(2)), []).append({"name": match.group(1), "selector": match.group(3)})
+    elif language == "react":
+        for match in REACT_TEST_SUITE_RE.finditer(source):
+            part = int(match.group(2))
+            buckets.setdefault(part, []).append({"name": match.group(1).strip(), "selector": f"Part {part}"})
+    if set(buckets) != set(range(1, part_count + 1)):
+        return []
+    return [buckets[part] for part in range(1, part_count + 1)]
+
+
+def swift_test_module(test_path: str) -> str:
+    """The Swift Testing module a problem's suites live in, taken from its path."""
+    parts = Path(test_path).parts
+    if len(parts) < 3 or parts[0] != "swift" or parts[1] != "Tests":
+        raise JourneyDataError(f"bad Swift test path {test_path!r}; expected swift/Tests/<Module>/<file>.swift")
+    return parts[2]
+
+
+def derive_commands(
+    language: str,
+    number: str,
+    slug: str,
+    stub_path: str,
+    test_path: str,
+    part_suites: list[list[dict[str, str]]] | None = None,
+) -> dict[str, Any]:
+    part_suites = part_suites or []
     if language == "python":
         answer = f"python/practice_problem_answers/my_answer_{number}_{slug}.py"
         test_command = f"./run_tests.sh -f {answer} -c pytest {test_path} -v"
+        part_commands = [
+            "./run_tests.sh -f {answer} -c pytest {selection} -v".format(
+                answer=answer, selection=" ".join(f"{test_path}::{suite['selector']}" for suite in suites)
+            )
+            for suites in part_suites
+        ]
     elif language == "react":
         answer = f"react/my_answer_{number}_{slug}.jsx"
         test_command = f"./run_tests.sh -f {answer} -c npm run test:{number}"
+        part_commands = [
+            '{base} -- -g "{pattern}"'.format(
+                base=test_command, pattern="|".join(dict.fromkeys(suite["selector"] for suite in suites))
+            )
+            for suites in part_suites
+        ]
     elif language == "swift":
         answer = f"swift/practice_problem_answers/my_answer_{number}_{slug}.swift"
-        test_command = f"./run_tests.sh -f {answer} -c swift test"
+        module = swift_test_module(test_path)
+        test_command = f"./run_tests.sh -f {answer} -c swift test --filter {module}"
+        part_commands = [
+            "./run_tests.sh -f {answer} -c swift test {filters}".format(
+                answer=answer, filters=" ".join(f"--filter {module}.{suite['selector']}" for suite in suites)
+            )
+            for suites in part_suites
+        ]
     else:
         raise JourneyDataError(f"unsupported language {language!r}")
     return {
@@ -323,6 +397,7 @@ def derive_commands(language: str, number: str, slug: str, stub_path: str, test_
         "copyCommand": f"cp {stub_path} {answer}",
         "openCommand": f"code {stub_path}",
         "testCommand": test_command,
+        "partTestCommands": part_commands,
     }
 
 
@@ -434,6 +509,7 @@ def build_data(root: Path) -> dict[str, Any]:
             raise JourneyDataError(f"{key}: absent usage example in {problem['path']}; add a canonical `# Example` block")
         validate_guide(key, guide, expected_parts, source)
         test_source = (root / test_value).read_text()
+        part_suites = parse_part_suites(test_source, problem["language"], expected_parts)
         result[key] = {
             "id": key,
             "title": problem["title"],
@@ -451,7 +527,10 @@ def build_data(root: Path) -> dict[str, Any]:
             "exampleStatus": "canonical" if example else "legacy-missing",
             "parts": parts,
             "testSuites": parse_suites(test_source, problem["language"]),
-            "commands": derive_commands(problem["language"], problem["number"], problem["slug"], problem["path"], test_value),
+            "partSuites": [[suite["name"] for suite in suites] for suites in part_suites],
+            "commands": derive_commands(
+                problem["language"], problem["number"], problem["slug"], problem["path"], test_value, part_suites
+            ),
             "guide": {"approach": guide["approach"], "verify": guide["verify"]},
         }
     return result

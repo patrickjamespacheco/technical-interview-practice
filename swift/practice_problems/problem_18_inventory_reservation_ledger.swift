@@ -21,9 +21,10 @@ import Foundation
 // oversell. reservation(id:) is the lookup seam used by release.
 //
 // PART 3 — Expiry and atomic order commits  (~15 min)
-// expireReservations(at:) uses the injected instant and calls release for every
-// active reservation whose expiry is at or before that instant. commit validates
-// every reservation through reservation(id:) before changing anything, then
+// expireReservations(at:) uses the injected instant and terminates every active
+// reservation whose expiry is at or before that instant, returning them in the
+// .expired state with their held stock freed. commit validates every
+// reservation through reservation(id:) before changing anything, then
 // commits the whole order atomically. Centralize terminal reservation bookkeeping
 // so release, expiry, and commit never maintain parallel counter logic.
 //
@@ -34,7 +35,7 @@ import Foundation
  * async let second = ledger.reserve(id: "res-b", idempotencyKey: "key-b", sku: "camera", quantity: 2, expiresAt: Date(timeIntervalSince1970: 100))
  * let attempts = await [first, second] // -> exactly one success
  * let replay = await ledger.reserve(id: "ignored", idempotencyKey: "key-a", sku: "camera", quantity: 99, expiresAt: .distantFuture) // -> same res-a when key-a won
- * let expired = await ledger.expireReservations(at: Date(timeIntervalSince1970: 100)) // -> winner released; camera available is 2
+ * let expired = await ledger.expireReservations(at: Date(timeIntervalSince1970: 100)) // -> winner is .expired; camera available is 2
  */
 
 public struct InventorySnapshot: Equatable, Sendable {

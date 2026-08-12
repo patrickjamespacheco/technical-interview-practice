@@ -247,26 +247,21 @@
           '<details class="full-source"><summary>Read the complete problem stub</summary><p class="source-meta">' + esc(sourcePayload.stub.path) + '</p>' + ProblemSourceViewer.region(sourcePayload.stub.source, problem.language, 'Complete problem stub') + '</details>';
       }
       function scopedCommand() {
-        if (problem.language === "python") {
-          var suites = suitesForPart();
-          if (suites.length) return { title: "Run this part", command: problem.commands.testCommand.replace(/ -v$/, "::" + suites.join(" -v " + problem.testPath + "::") + " -v"), note: "This invokes the test classes derived for the current part." };
-        }
-        return { title: "Run the problem suite", command: problem.commands.testCommand, note: "This language's available metadata cannot honestly scope the runner to one part, so this runs the full problem suite." };
+        var command = (problem.commands.partTestCommands || [])[state.part - 1];
+        if (command) return { title: "Run this part", command: command, note: "This invokes only the test suites the test file marks as part " + state.part + "." };
+        return { title: "Run the problem suite", command: problem.commands.testCommand, note: "This problem's test file does not mark which suites belong to which part, so this honestly runs the full problem suite." };
       }
       function suitesForPart() {
-        var pilotSuites = {
-          "python-03": [["TestCreateRole", "TestGrantRevokePermission", "TestAssignUnassignRole", "TestHasPermission"], ["TestRoleInheritance"], ["TestScopedPermissions"]],
-          "python-01": [["TestIsInZone"], ["TestGetCurrentZoneId"], ["TestProcessLocationUpdate"], ["TestAddZone", "TestRemoveZone", "TestAddAsset", "TestAddAlertRule"]]
-        };
-        return pilotSuites[problem.id] ? pilotSuites[problem.id][state.part - 1] : [];
+        return (problem.partSuites || [])[state.part - 1] || [];
       }
       function renderVerify() {
-        var suites = suitesForPart(); var green = !!state.verified[String(state.part)];
+        var suites = suitesForPart(); var scoped = scopedCommand(); var green = !!state.verified[String(state.part)];
         var success = problem.language === "react" ? "Playwright reports the selected suite passed with no failed tests." : problem.language === "swift" ? "Swift Testing finishes with zero issues." : "pytest reports all selected tests passed.";
         var testReader = sourcePayload && sourcePayload.test ? '<details class="full-source"><summary>Read the test specification</summary><p class="source-meta">Test assertion bodies are available here only in the Verify stage: ' + esc(sourcePayload.test.path) + '</p>' + ProblemSourceViewer.region(sourcePayload.test.source, problem.language === "react" ? "react" : problem.language, 'Test specification') + '</details>' : '';
         var testVscode = "vscode://file" + location.pathname.replace(/\/journey\.html$/, "") + "/" + problem.testPath;
         return partBar() + '<p class="eyebrow">Stage 4 of 5 · Observe the terminal</p><h2>Verify part ' + state.part + '</h2><div class="notice"><strong>This page does not run tests and cannot know their result.</strong> Run the command yourself, then report what you observed.</div>' +
-          commandBlock(problem.commands.testCommand, "Exact terminal command") + '<h3>Test suites derived for this part</h3>' + (suites.length ? list(suites) : '<p>The available test metadata exposes only a full-problem suite. No part-specific suite is claimed.</p>') +
+          commandBlock(scoped.command, "Exact terminal command") + '<p class="notice">' + esc(scoped.note) + ' It is the same command the Code stage gave you.</p>' +
+          '<h3>Test suites derived for this part</h3>' + (suites.length ? list(suites) : '<p>The available test metadata exposes only a full-problem suite. No part-specific suite is claimed.</p>') +
           '<p><a class="btn" href="' + esc(testVscode) + '">Open tests in VS Code ↗</a></p>' + testReader +
           '<h3>What success looks like</h3><p>' + esc(success) + '</p><h3>Common failures</h3><div class="failures">' + problem.guide.verify.commonFailures.map(function (f) { return '<article class="failure"><strong>' + esc(f.symptom) + '</strong><p><b>Likely cause:</b> ' + esc(f.cause) + '</p><p><b>Check:</b> ' + esc(f.check) + '</p></article>'; }).join("") + '</div>' +
           '<fieldset class="self-checks"><legend>Self-reported result</legend><label class="check"><input type="checkbox" id="saw-green"' + (green ? ' checked' : '') + '><span>I saw green for this part in my terminal.</span></label></fieldset><p class="lede">This mark is local and self-reported, not machine verification.</p>';

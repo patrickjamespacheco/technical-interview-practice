@@ -46,11 +46,30 @@ window.JOURNEY_PROBLEMS = {
       "TestRoleInheritance",
       "TestScopedPermissions"
     ],
+    "partSuites": [
+      [
+        "TestCreateRole",
+        "TestGrantRevokePermission",
+        "TestAssignUnassignRole",
+        "TestHasPermission"
+      ],
+      [
+        "TestRoleInheritance"
+      ],
+      [
+        "TestScopedPermissions"
+      ]
+    ],
     "commands": {
       "answerPath": "python/practice_problem_answers/my_answer_03_permission_manager.py",
       "copyCommand": "cp python/practice_problems/problem_03_permission_manager.py python/practice_problem_answers/my_answer_03_permission_manager.py",
       "openCommand": "code python/practice_problems/problem_03_permission_manager.py",
-      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_03_permission_manager.py -c pytest python/tests/test_problem_03_permission_manager.py -v"
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_03_permission_manager.py -c pytest python/tests/test_problem_03_permission_manager.py -v",
+      "partTestCommands": [
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_03_permission_manager.py -c pytest python/tests/test_problem_03_permission_manager.py::TestCreateRole python/tests/test_problem_03_permission_manager.py::TestGrantRevokePermission python/tests/test_problem_03_permission_manager.py::TestAssignUnassignRole python/tests/test_problem_03_permission_manager.py::TestHasPermission -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_03_permission_manager.py -c pytest python/tests/test_problem_03_permission_manager.py::TestRoleInheritance -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_03_permission_manager.py -c pytest python/tests/test_problem_03_permission_manager.py::TestScopedPermissions -v"
+      ]
     },
     "guide": {
       "approach": [
@@ -160,11 +179,13 @@ window.JOURNEY_PROBLEMS = {
     "testSuites": [
       "Problem 02 — Incident Dashboard"
     ],
+    "partSuites": [],
     "commands": {
       "answerPath": "react/my_answer_02_incident_dashboard.jsx",
       "copyCommand": "cp react/practice_problems/problem_02_incident_dashboard.jsx react/my_answer_02_incident_dashboard.jsx",
       "openCommand": "code react/practice_problems/problem_02_incident_dashboard.jsx",
-      "testCommand": "./run_tests.sh -f react/my_answer_02_incident_dashboard.jsx -c npm run test:02"
+      "testCommand": "./run_tests.sh -f react/my_answer_02_incident_dashboard.jsx -c npm run test:02",
+      "partTestCommands": []
     },
     "guide": {
       "approach": [
@@ -252,7 +273,7 @@ window.JOURNEY_PROBLEMS = {
     "sourceScript": "journey-sources/swift-18.js",
     "lessonAvailable": true,
     "lessonScript": "journey-lessons/swift-18.js",
-    "example": "let ledger = InventoryReservationLedger(initialStock: [\"camera\": 2])\nasync let first = ledger.reserve(id: \"res-a\", idempotencyKey: \"key-a\", sku: \"camera\", quantity: 2, expiresAt: Date(timeIntervalSince1970: 100))\nasync let second = ledger.reserve(id: \"res-b\", idempotencyKey: \"key-b\", sku: \"camera\", quantity: 2, expiresAt: Date(timeIntervalSince1970: 100))\nlet attempts = await [first, second] // -> exactly one success\nlet replay = await ledger.reserve(id: \"ignored\", idempotencyKey: \"key-a\", sku: \"camera\", quantity: 99, expiresAt: .distantFuture) // -> same res-a when key-a won\nlet expired = await ledger.expireReservations(at: Date(timeIntervalSince1970: 100)) // -> winner released; camera available is 2\n\npublic struct InventorySnapshot: Equatable, Sendable {\n    public let sku: String\n    public let onHand: Int\n    public let reserved: Int\n    public let available: Int\n\n    public init(sku: String, onHand: Int, reserved: Int, available: Int) {\n        self.sku = sku\n        self.onHand = onHand\n        self.reserved = reserved\n        self.available = available\n    }\n}\n\npublic enum InventoryError: Error, Equatable, Sendable {\n    case invalidQuantity(Int)\n    case unknownSKU(String)\n    case insufficientAvailable(sku: String, requested: Int, available: Int)\n    case duplicateReservationID(String)\n    case unknownReservation(String)\n    case reservationNotActive(String)\n    case duplicateOrderID(String)\n    case emptyOrder\n    case notImplemented\n}\n\npublic enum ReservationState: Equatable, Sendable {\n    case active\n    case released\n    case expired\n    case committed(orderID: String)\n}\n\npublic struct Reservation: Equatable, Sendable {\n    public let id: String\n    public let idempotencyKey: String\n    public let sku: String\n    public let quantity: Int\n    public let expiresAt: Date\n    public let state: ReservationState\n\n    public init(id: String, idempotencyKey: String, sku: String, quantity: Int, expiresAt: Date, state: ReservationState = .active) {\n        self.id = id\n        self.idempotencyKey = idempotencyKey\n        self.sku = sku\n        self.quantity = quantity\n        self.expiresAt = expiresAt\n        self.state = state\n    }\n}\n\npublic struct CommittedOrder: Equatable, Sendable {\n    public let id: String\n    public let reservationIDs: [String]\n\n    public init(id: String, reservationIDs: [String]) {\n        self.id = id\n        self.reservationIDs = reservationIDs\n    }\n}\n\npublic actor InventoryReservationLedger {\n    public init(initialStock: [String: Int] = [:]) {}\n\nMARK: Part 1 — typed stock and availability\n    public func snapshot(for sku: String) -> Result<InventorySnapshot, InventoryError> { .failure(.notImplemented) }\n    public func availability(for sku: String, quantity: Int) -> Result<InventorySnapshot, InventoryError> { .failure(.notImplemented) }\n    public func adjustStock(sku: String, by quantity: Int) -> Result<InventorySnapshot, InventoryError> { .failure(.notImplemented) }\n\nMARK: Part 2 — idempotent concurrent reservations\n    public func reservation(id: String) -> Result<Reservation, InventoryError> { .failure(.notImplemented) }\n    public func reserve(id: String, idempotencyKey: String, sku: String, quantity: Int, expiresAt: Date) -> Result<Reservation, InventoryError> { .failure(.notImplemented) }\n    public func release(reservationID: String) -> Result<Reservation, InventoryError> { .failure(.notImplemented) }\n\nMARK: Part 3 — expiry and atomic commits\n    public func expireReservations(at instant: Date) -> [Reservation] { [] }\n    public func commit(orderID: String, reservationIDs: [String]) -> Result<CommittedOrder, InventoryError> { .failure(.notImplemented) }\n}",
+    "example": "let ledger = InventoryReservationLedger(initialStock: [\"camera\": 2])\nasync let first = ledger.reserve(id: \"res-a\", idempotencyKey: \"key-a\", sku: \"camera\", quantity: 2, expiresAt: Date(timeIntervalSince1970: 100))\nasync let second = ledger.reserve(id: \"res-b\", idempotencyKey: \"key-b\", sku: \"camera\", quantity: 2, expiresAt: Date(timeIntervalSince1970: 100))\nlet attempts = await [first, second] // -> exactly one success\nlet replay = await ledger.reserve(id: \"ignored\", idempotencyKey: \"key-a\", sku: \"camera\", quantity: 99, expiresAt: .distantFuture) // -> same res-a when key-a won\nlet expired = await ledger.expireReservations(at: Date(timeIntervalSince1970: 100)) // -> winner is .expired; camera available is 2\n\npublic struct InventorySnapshot: Equatable, Sendable {\n    public let sku: String\n    public let onHand: Int\n    public let reserved: Int\n    public let available: Int\n\n    public init(sku: String, onHand: Int, reserved: Int, available: Int) {\n        self.sku = sku\n        self.onHand = onHand\n        self.reserved = reserved\n        self.available = available\n    }\n}\n\npublic enum InventoryError: Error, Equatable, Sendable {\n    case invalidQuantity(Int)\n    case unknownSKU(String)\n    case insufficientAvailable(sku: String, requested: Int, available: Int)\n    case duplicateReservationID(String)\n    case unknownReservation(String)\n    case reservationNotActive(String)\n    case duplicateOrderID(String)\n    case emptyOrder\n    case notImplemented\n}\n\npublic enum ReservationState: Equatable, Sendable {\n    case active\n    case released\n    case expired\n    case committed(orderID: String)\n}\n\npublic struct Reservation: Equatable, Sendable {\n    public let id: String\n    public let idempotencyKey: String\n    public let sku: String\n    public let quantity: Int\n    public let expiresAt: Date\n    public let state: ReservationState\n\n    public init(id: String, idempotencyKey: String, sku: String, quantity: Int, expiresAt: Date, state: ReservationState = .active) {\n        self.id = id\n        self.idempotencyKey = idempotencyKey\n        self.sku = sku\n        self.quantity = quantity\n        self.expiresAt = expiresAt\n        self.state = state\n    }\n}\n\npublic struct CommittedOrder: Equatable, Sendable {\n    public let id: String\n    public let reservationIDs: [String]\n\n    public init(id: String, reservationIDs: [String]) {\n        self.id = id\n        self.reservationIDs = reservationIDs\n    }\n}\n\npublic actor InventoryReservationLedger {\n    public init(initialStock: [String: Int] = [:]) {}\n\nMARK: Part 1 — typed stock and availability\n    public func snapshot(for sku: String) -> Result<InventorySnapshot, InventoryError> { .failure(.notImplemented) }\n    public func availability(for sku: String, quantity: Int) -> Result<InventorySnapshot, InventoryError> { .failure(.notImplemented) }\n    public func adjustStock(sku: String, by quantity: Int) -> Result<InventorySnapshot, InventoryError> { .failure(.notImplemented) }\n\nMARK: Part 2 — idempotent concurrent reservations\n    public func reservation(id: String) -> Result<Reservation, InventoryError> { .failure(.notImplemented) }\n    public func reserve(id: String, idempotencyKey: String, sku: String, quantity: Int, expiresAt: Date) -> Result<Reservation, InventoryError> { .failure(.notImplemented) }\n    public func release(reservationID: String) -> Result<Reservation, InventoryError> { .failure(.notImplemented) }\n\nMARK: Part 3 — expiry and atomic commits\n    public func expireReservations(at instant: Date) -> [Reservation] { [] }\n    public func commit(orderID: String, reservationIDs: [String]) -> Result<CommittedOrder, InventoryError> { .failure(.notImplemented) }\n}",
     "exampleStatus": "canonical",
     "parts": [
       {
@@ -268,7 +289,7 @@ window.JOURNEY_PROBLEMS = {
       {
         "part": 3,
         "title": "Expiry and atomic order commits",
-        "contract": "expireReservations(at:) uses the injected instant and calls release for every\nactive reservation whose expiry is at or before that instant. commit validates\nevery reservation through reservation(id:) before changing anything, then\ncommits the whole order atomically. Centralize terminal reservation bookkeeping\nso release, expiry, and commit never maintain parallel counter logic.\n\n\nExample\nlet ledger = InventoryReservationLedger(initialStock: [\"camera\": 2])\nasync let first = ledger.reserve(id: \"res-a\", idempotencyKey: \"key-a\", sku: \"camera\", quantity: 2, expiresAt: Date(timeIntervalSince1970: 100))\nasync let second = ledger.reserve(id: \"res-b\", idempotencyKey: \"key-b\", sku: \"camera\", quantity: 2, expiresAt: Date(timeIntervalSince1970: 100))\nlet attempts = await [first, second] // -> exactly one success\nlet replay = await ledger.reserve(id: \"ignored\", idempotencyKey: \"key-a\", sku: \"camera\", quantity: 99, expiresAt: .distantFuture) // -> same res-a when key-a won\nlet expired = await ledger.expireReservations(at: Date(timeIntervalSince1970: 100)) // -> winner released; camera available is 2\n\npublic struct InventorySnapshot: Equatable, Sendable {\n    public let sku: String\n    public let onHand: Int\n    public let reserved: Int\n    public let available: Int\n\n    public init(sku: String, onHand: Int, reserved: Int, available: Int) {\n        self.sku = sku\n        self.onHand = onHand\n        self.reserved = reserved\n        self.available = available\n    }\n}\n\npublic enum InventoryError: Error, Equatable, Sendable {\n    case invalidQuantity(Int)\n    case unknownSKU(String)\n    case insufficientAvailable(sku: String, requested: Int, available: Int)\n    case duplicateReservationID(String)\n    case unknownReservation(String)\n    case reservationNotActive(String)\n    case duplicateOrderID(String)\n    case emptyOrder\n    case notImplemented\n}\n\npublic enum ReservationState: Equatable, Sendable {\n    case active\n    case released\n    case expired\n    case committed(orderID: String)\n}\n\npublic struct Reservation: Equatable, Sendable {\n    public let id: String\n    public let idempotencyKey: String\n    public let sku: String\n    public let quantity: Int\n    public let expiresAt: Date\n    public let state: ReservationState\n\n    public init(id: String, idempotencyKey: String, sku: String, quantity: Int, expiresAt: Date, state: ReservationState = .active) {\n        self.id = id\n        self.idempotencyKey = idempotencyKey\n        self.sku = sku\n        self.quantity = quantity\n        self.expiresAt = expiresAt\n        self.state = state\n    }\n}\n\npublic struct CommittedOrder: Equatable, Sendable {\n    public let id: String\n    public let reservationIDs: [String]\n\n    public init(id: String, reservationIDs: [String]) {\n        self.id = id\n        self.reservationIDs = reservationIDs\n    }\n}\n\npublic actor InventoryReservationLedger {\n    public init(initialStock: [String: Int] = [:]) {}\n\nMARK: Part 1 — typed stock and availability\n    public func snapshot(for sku: String) -> Result<InventorySnapshot, InventoryError> { .failure(.notImplemented) }\n    public func availability(for sku: String, quantity: Int) -> Result<InventorySnapshot, InventoryError> { .failure(.notImplemented) }\n    public func adjustStock(sku: String, by quantity: Int) -> Result<InventorySnapshot, InventoryError> { .failure(.notImplemented) }\n\nMARK: Part 2 — idempotent concurrent reservations\n    public func reservation(id: String) -> Result<Reservation, InventoryError> { .failure(.notImplemented) }\n    public func reserve(id: String, idempotencyKey: String, sku: String, quantity: Int, expiresAt: Date) -> Result<Reservation, InventoryError> { .failure(.notImplemented) }\n    public func release(reservationID: String) -> Result<Reservation, InventoryError> { .failure(.notImplemented) }\n\nMARK: Part 3 — expiry and atomic commits\n    public func expireReservations(at instant: Date) -> [Reservation] { [] }\n    public func commit(orderID: String, reservationIDs: [String]) -> Result<CommittedOrder, InventoryError> { .failure(.notImplemented) }\n}"
+        "contract": "expireReservations(at:) uses the injected instant and terminates every active\nreservation whose expiry is at or before that instant, returning them in the\n.expired state with their held stock freed. commit validates every\nreservation through reservation(id:) before changing anything, then\ncommits the whole order atomically. Centralize terminal reservation bookkeeping\nso release, expiry, and commit never maintain parallel counter logic.\n\n\nExample\nlet ledger = InventoryReservationLedger(initialStock: [\"camera\": 2])\nasync let first = ledger.reserve(id: \"res-a\", idempotencyKey: \"key-a\", sku: \"camera\", quantity: 2, expiresAt: Date(timeIntervalSince1970: 100))\nasync let second = ledger.reserve(id: \"res-b\", idempotencyKey: \"key-b\", sku: \"camera\", quantity: 2, expiresAt: Date(timeIntervalSince1970: 100))\nlet attempts = await [first, second] // -> exactly one success\nlet replay = await ledger.reserve(id: \"ignored\", idempotencyKey: \"key-a\", sku: \"camera\", quantity: 99, expiresAt: .distantFuture) // -> same res-a when key-a won\nlet expired = await ledger.expireReservations(at: Date(timeIntervalSince1970: 100)) // -> winner is .expired; camera available is 2\n\npublic struct InventorySnapshot: Equatable, Sendable {\n    public let sku: String\n    public let onHand: Int\n    public let reserved: Int\n    public let available: Int\n\n    public init(sku: String, onHand: Int, reserved: Int, available: Int) {\n        self.sku = sku\n        self.onHand = onHand\n        self.reserved = reserved\n        self.available = available\n    }\n}\n\npublic enum InventoryError: Error, Equatable, Sendable {\n    case invalidQuantity(Int)\n    case unknownSKU(String)\n    case insufficientAvailable(sku: String, requested: Int, available: Int)\n    case duplicateReservationID(String)\n    case unknownReservation(String)\n    case reservationNotActive(String)\n    case duplicateOrderID(String)\n    case emptyOrder\n    case notImplemented\n}\n\npublic enum ReservationState: Equatable, Sendable {\n    case active\n    case released\n    case expired\n    case committed(orderID: String)\n}\n\npublic struct Reservation: Equatable, Sendable {\n    public let id: String\n    public let idempotencyKey: String\n    public let sku: String\n    public let quantity: Int\n    public let expiresAt: Date\n    public let state: ReservationState\n\n    public init(id: String, idempotencyKey: String, sku: String, quantity: Int, expiresAt: Date, state: ReservationState = .active) {\n        self.id = id\n        self.idempotencyKey = idempotencyKey\n        self.sku = sku\n        self.quantity = quantity\n        self.expiresAt = expiresAt\n        self.state = state\n    }\n}\n\npublic struct CommittedOrder: Equatable, Sendable {\n    public let id: String\n    public let reservationIDs: [String]\n\n    public init(id: String, reservationIDs: [String]) {\n        self.id = id\n        self.reservationIDs = reservationIDs\n    }\n}\n\npublic actor InventoryReservationLedger {\n    public init(initialStock: [String: Int] = [:]) {}\n\nMARK: Part 1 — typed stock and availability\n    public func snapshot(for sku: String) -> Result<InventorySnapshot, InventoryError> { .failure(.notImplemented) }\n    public func availability(for sku: String, quantity: Int) -> Result<InventorySnapshot, InventoryError> { .failure(.notImplemented) }\n    public func adjustStock(sku: String, by quantity: Int) -> Result<InventorySnapshot, InventoryError> { .failure(.notImplemented) }\n\nMARK: Part 2 — idempotent concurrent reservations\n    public func reservation(id: String) -> Result<Reservation, InventoryError> { .failure(.notImplemented) }\n    public func reserve(id: String, idempotencyKey: String, sku: String, quantity: Int, expiresAt: Date) -> Result<Reservation, InventoryError> { .failure(.notImplemented) }\n    public func release(reservationID: String) -> Result<Reservation, InventoryError> { .failure(.notImplemented) }\n\nMARK: Part 3 — expiry and atomic commits\n    public func expireReservations(at instant: Date) -> [Reservation] { [] }\n    public func commit(orderID: String, reservationIDs: [String]) -> Result<CommittedOrder, InventoryError> { .failure(.notImplemented) }\n}"
       }
     ],
     "testSuites": [
@@ -276,11 +297,27 @@ window.JOURNEY_PROBLEMS = {
       "Part 2 — Idempotent concurrent reservations",
       "Part 3 — Expiry and atomic commits"
     ],
+    "partSuites": [
+      [
+        "Part 1 — Typed stock and availability"
+      ],
+      [
+        "Part 2 — Idempotent concurrent reservations"
+      ],
+      [
+        "Part 3 — Expiry and atomic commits"
+      ]
+    ],
     "commands": {
       "answerPath": "swift/practice_problem_answers/my_answer_18_inventory_reservation_ledger.swift",
       "copyCommand": "cp swift/practice_problems/problem_18_inventory_reservation_ledger.swift swift/practice_problem_answers/my_answer_18_inventory_reservation_ledger.swift",
       "openCommand": "code swift/practice_problems/problem_18_inventory_reservation_ledger.swift",
-      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_18_inventory_reservation_ledger.swift -c swift test"
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_18_inventory_reservation_ledger.swift -c swift test --filter Problem18InventoryReservationLedgerTests",
+      "partTestCommands": [
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_18_inventory_reservation_ledger.swift -c swift test --filter Problem18InventoryReservationLedgerTests.Part1Inventory",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_18_inventory_reservation_ledger.swift -c swift test --filter Problem18InventoryReservationLedgerTests.Part2Reservations",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_18_inventory_reservation_ledger.swift -c swift test --filter Problem18InventoryReservationLedgerTests.Part3Completion"
+      ]
     },
     "guide": {
       "approach": [
@@ -408,11 +445,34 @@ window.JOURNEY_PROBLEMS = {
       "TestAddAsset",
       "TestAddAlertRule"
     ],
+    "partSuites": [
+      [
+        "TestIsInZone"
+      ],
+      [
+        "TestGetCurrentZoneId"
+      ],
+      [
+        "TestProcessLocationUpdate"
+      ],
+      [
+        "TestAddZone",
+        "TestRemoveZone",
+        "TestAddAsset",
+        "TestAddAlertRule"
+      ]
+    ],
     "commands": {
       "answerPath": "python/practice_problem_answers/my_answer_01_geofence_alert_engine.py",
       "copyCommand": "cp python/practice_problems/problem_01_geofence_alert_engine.py python/practice_problem_answers/my_answer_01_geofence_alert_engine.py",
       "openCommand": "code python/practice_problems/problem_01_geofence_alert_engine.py",
-      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_01_geofence_alert_engine.py -c pytest python/tests/test_problem_01_geofence_alert_engine.py -v"
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_01_geofence_alert_engine.py -c pytest python/tests/test_problem_01_geofence_alert_engine.py -v",
+      "partTestCommands": [
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_01_geofence_alert_engine.py -c pytest python/tests/test_problem_01_geofence_alert_engine.py::TestIsInZone -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_01_geofence_alert_engine.py -c pytest python/tests/test_problem_01_geofence_alert_engine.py::TestGetCurrentZoneId -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_01_geofence_alert_engine.py -c pytest python/tests/test_problem_01_geofence_alert_engine.py::TestProcessLocationUpdate -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_01_geofence_alert_engine.py -c pytest python/tests/test_problem_01_geofence_alert_engine.py::TestAddZone python/tests/test_problem_01_geofence_alert_engine.py::TestRemoveZone python/tests/test_problem_01_geofence_alert_engine.py::TestAddAsset python/tests/test_problem_01_geofence_alert_engine.py::TestAddAlertRule -v"
+      ]
     },
     "guide": {
       "approach": [
@@ -539,11 +599,27 @@ window.JOURNEY_PROBLEMS = {
       "Part 2 — Manual assignment and resolution",
       "Part 3 — Strategy-based automatic assignment"
     ],
+    "partSuites": [
+      [
+        "Part 1 — Registration and matching queries"
+      ],
+      [
+        "Part 2 — Manual assignment and resolution"
+      ],
+      [
+        "Part 3 — Strategy-based automatic assignment"
+      ]
+    ],
     "commands": {
       "answerPath": "swift/practice_problem_answers/my_answer_10_dispatch_manager.swift",
       "copyCommand": "cp swift/practice_problems/problem_10_dispatch_manager.swift swift/practice_problem_answers/my_answer_10_dispatch_manager.swift",
       "openCommand": "code swift/practice_problems/problem_10_dispatch_manager.swift",
-      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_10_dispatch_manager.swift -c swift test"
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_10_dispatch_manager.swift -c swift test --filter Problem10DispatchManagerTests",
+      "partTestCommands": [
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_10_dispatch_manager.swift -c swift test --filter Problem10DispatchManagerTests.DispatchPart1",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_10_dispatch_manager.swift -c swift test --filter Problem10DispatchManagerTests.DispatchPart2",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_10_dispatch_manager.swift -c swift test --filter Problem10DispatchManagerTests.DispatchPart3"
+      ]
     },
     "guide": {
       "approach": [
@@ -660,11 +736,31 @@ window.JOURNEY_PROBLEMS = {
       "Part 3 — Population-level reductions",
       "Part 4 — Immutable event ingestion"
     ],
+    "partSuites": [
+      [
+        "Part 1 — Patient medication snapshots"
+      ],
+      [
+        "Part 2 — Patient-level reductions"
+      ],
+      [
+        "Part 3 — Population-level reductions"
+      ],
+      [
+        "Part 4 — Immutable event ingestion"
+      ]
+    ],
     "commands": {
       "answerPath": "swift/practice_problem_answers/my_answer_05_medication_titration.swift",
       "copyCommand": "cp swift/practice_problems/problem_05_medication_titration.swift swift/practice_problem_answers/my_answer_05_medication_titration.swift",
       "openCommand": "code swift/practice_problems/problem_05_medication_titration.swift",
-      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_05_medication_titration.swift -c swift test"
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_05_medication_titration.swift -c swift test --filter Problem05MedicationTitrationTests",
+      "partTestCommands": [
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_05_medication_titration.swift -c swift test --filter Problem05MedicationTitrationTests.MedicationPart1",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_05_medication_titration.swift -c swift test --filter Problem05MedicationTitrationTests.MedicationPart2",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_05_medication_titration.swift -c swift test --filter Problem05MedicationTitrationTests.MedicationPart3",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_05_medication_titration.swift -c swift test --filter Problem05MedicationTitrationTests.MedicationPart4"
+      ]
     },
     "guide": {
       "approach": [
@@ -791,11 +887,27 @@ window.JOURNEY_PROBLEMS = {
       "Part 2 — Audit queries and bulk advancement",
       "Part 3 — Lifecycle reporting"
     ],
+    "partSuites": [
+      [
+        "Part 1 — Typed contracts and exhaustive transitions"
+      ],
+      [
+        "Part 2 — Audit queries and bulk advancement"
+      ],
+      [
+        "Part 3 — Lifecycle reporting"
+      ]
+    ],
     "commands": {
       "answerPath": "swift/practice_problem_answers/my_answer_13_contract_lifecycle.swift",
       "copyCommand": "cp swift/practice_problems/problem_13_contract_lifecycle.swift swift/practice_problem_answers/my_answer_13_contract_lifecycle.swift",
       "openCommand": "code swift/practice_problems/problem_13_contract_lifecycle.swift",
-      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_13_contract_lifecycle.swift -c swift test"
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_13_contract_lifecycle.swift -c swift test --filter Problem13ContractLifecycleTests",
+      "partTestCommands": [
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_13_contract_lifecycle.swift -c swift test --filter Problem13ContractLifecycleTests.ContractLifecyclePart1Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_13_contract_lifecycle.swift -c swift test --filter Problem13ContractLifecycleTests.ContractLifecyclePart2Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_13_contract_lifecycle.swift -c swift test --filter Problem13ContractLifecycleTests.ContractLifecyclePart3Tests"
+      ]
     },
     "guide": {
       "approach": [
@@ -910,11 +1022,27 @@ window.JOURNEY_PROBLEMS = {
       "Part 2 — Mutating moves and value semantics",
       "Part 3 — Configurable dimensions and win runs"
     ],
+    "partSuites": [
+      [
+        "Part 1 — Generic board analysis"
+      ],
+      [
+        "Part 2 — Mutating moves and value semantics"
+      ],
+      [
+        "Part 3 — Configurable dimensions and win runs"
+      ]
+    ],
     "commands": {
       "answerPath": "swift/practice_problem_answers/my_answer_15_tic_tac_toe_engine.swift",
       "copyCommand": "cp swift/practice_problems/problem_15_tic_tac_toe_engine.swift swift/practice_problem_answers/my_answer_15_tic_tac_toe_engine.swift",
       "openCommand": "code swift/practice_problems/problem_15_tic_tac_toe_engine.swift",
-      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_15_tic_tac_toe_engine.swift -c swift test"
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_15_tic_tac_toe_engine.swift -c swift test --filter Problem15TicTacToeEngineTests",
+      "partTestCommands": [
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_15_tic_tac_toe_engine.swift -c swift test --filter Problem15TicTacToeEngineTests.TicTacToePart1Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_15_tic_tac_toe_engine.swift -c swift test --filter Problem15TicTacToeEngineTests.TicTacToePart2Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_15_tic_tac_toe_engine.swift -c swift test --filter Problem15TicTacToeEngineTests.TicTacToePart3Tests"
+      ]
     },
     "guide": {
       "approach": [
@@ -1029,11 +1157,27 @@ window.JOURNEY_PROBLEMS = {
       "Part 2 — Atomic request handling",
       "Part 3 — Usage and immutable snapshots"
     ],
+    "partSuites": [
+      [
+        "Part 1 — Keys and rich rate decisions"
+      ],
+      [
+        "Part 2 — Atomic request handling"
+      ],
+      [
+        "Part 3 — Usage and immutable snapshots"
+      ]
+    ],
     "commands": {
       "answerPath": "swift/practice_problem_answers/my_answer_02_api_rate_limiter.swift",
       "copyCommand": "cp swift/practice_problems/problem_02_api_rate_limiter.swift swift/practice_problem_answers/my_answer_02_api_rate_limiter.swift",
       "openCommand": "code swift/practice_problems/problem_02_api_rate_limiter.swift",
-      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_02_api_rate_limiter.swift -c swift test"
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_02_api_rate_limiter.swift -c swift test --filter Problem02APIRateLimiterTests",
+      "partTestCommands": [
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_02_api_rate_limiter.swift -c swift test --filter Problem02APIRateLimiterTests.RateLimiterPart1",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_02_api_rate_limiter.swift -c swift test --filter Problem02APIRateLimiterTests.RateLimiterPart2",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_02_api_rate_limiter.swift -c swift test --filter Problem02APIRateLimiterTests.RateLimiterPart3"
+      ]
     },
     "guide": {
       "approach": [
@@ -1147,11 +1291,27 @@ window.JOURNEY_PROBLEMS = {
       "Part 2 — Typed delivery outcomes",
       "Part 3 — Bounded coordination and checkpoints"
     ],
+    "partSuites": [
+      [
+        "Part 1 — Deduplicate and batch readings"
+      ],
+      [
+        "Part 2 — Typed delivery outcomes"
+      ],
+      [
+        "Part 3 — Bounded coordination and checkpoints"
+      ]
+    ],
     "commands": {
       "answerPath": "swift/practice_problem_answers/my_answer_19_offline_telemetry_batch_processor.swift",
       "copyCommand": "cp swift/practice_problems/problem_19_offline_telemetry_batch_processor.swift swift/practice_problem_answers/my_answer_19_offline_telemetry_batch_processor.swift",
       "openCommand": "code swift/practice_problems/problem_19_offline_telemetry_batch_processor.swift",
-      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_19_offline_telemetry_batch_processor.swift -c swift test"
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_19_offline_telemetry_batch_processor.swift -c swift test --filter Problem19OfflineTelemetryBatchProcessorTests",
+      "partTestCommands": [
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_19_offline_telemetry_batch_processor.swift -c swift test --filter Problem19OfflineTelemetryBatchProcessorTests.Part1",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_19_offline_telemetry_batch_processor.swift -c swift test --filter Problem19OfflineTelemetryBatchProcessorTests.Part2",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_19_offline_telemetry_batch_processor.swift -c swift test --filter Problem19OfflineTelemetryBatchProcessorTests.Part3"
+      ]
     },
     "guide": {
       "approach": [
@@ -1273,11 +1433,27 @@ window.JOURNEY_PROBLEMS = {
       "Part 2 — Rich reconciliation outcomes",
       "Part 3 — Field merges and tombstones"
     ],
+    "partSuites": [
+      [
+        "Part 1 — Versioned local changes"
+      ],
+      [
+        "Part 2 — Rich reconciliation outcomes"
+      ],
+      [
+        "Part 3 — Field merges and tombstones"
+      ]
+    ],
     "commands": {
       "answerPath": "swift/practice_problem_answers/my_answer_20_offline_sync_conflict_resolver.swift",
       "copyCommand": "cp swift/practice_problems/problem_20_offline_sync_conflict_resolver.swift swift/practice_problem_answers/my_answer_20_offline_sync_conflict_resolver.swift",
       "openCommand": "code swift/practice_problems/problem_20_offline_sync_conflict_resolver.swift",
-      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_20_offline_sync_conflict_resolver.swift -c swift test"
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_20_offline_sync_conflict_resolver.swift -c swift test --filter Problem20OfflineSyncConflictResolverTests",
+      "partTestCommands": [
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_20_offline_sync_conflict_resolver.swift -c swift test --filter Problem20OfflineSyncConflictResolverTests.Part1VersionedStore",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_20_offline_sync_conflict_resolver.swift -c swift test --filter Problem20OfflineSyncConflictResolverTests.Part2Reconciliation",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_20_offline_sync_conflict_resolver.swift -c swift test --filter Problem20OfflineSyncConflictResolverTests.Part3Resolution"
+      ]
     },
     "guide": {
       "approach": [
@@ -1397,11 +1573,27 @@ window.JOURNEY_PROBLEMS = {
       "Part 2 — Staleness and outage history",
       "Part 3 — Coverage and duration summaries"
     ],
+    "partSuites": [
+      [
+        "Part 1 — Stations and heartbeats"
+      ],
+      [
+        "Part 2 — Staleness and outage history"
+      ],
+      [
+        "Part 3 — Coverage and duration summaries"
+      ]
+    ],
     "commands": {
       "answerPath": "swift/practice_problem_answers/my_answer_11_coverage_tracker.swift",
       "copyCommand": "cp swift/practice_problems/problem_11_coverage_tracker.swift swift/practice_problem_answers/my_answer_11_coverage_tracker.swift",
       "openCommand": "code swift/practice_problems/problem_11_coverage_tracker.swift",
-      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_11_coverage_tracker.swift -c swift test"
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_11_coverage_tracker.swift -c swift test --filter Problem11CoverageTrackerTests",
+      "partTestCommands": [
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_11_coverage_tracker.swift -c swift test --filter Problem11CoverageTrackerTests.CoveragePart1",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_11_coverage_tracker.swift -c swift test --filter Problem11CoverageTrackerTests.CoveragePart2",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_11_coverage_tracker.swift -c swift test --filter Problem11CoverageTrackerTests.CoveragePart3"
+      ]
     },
     "guide": {
       "approach": [
@@ -1516,11 +1708,27 @@ window.JOURNEY_PROBLEMS = {
       "Part 2 — Compose migration steps",
       "Part 3 — Migrate a batch and report"
     ],
+    "partSuites": [
+      [
+        "Part 1 — Decode a versioned envelope"
+      ],
+      [
+        "Part 2 — Compose migration steps"
+      ],
+      [
+        "Part 3 — Migrate a batch and report"
+      ]
+    ],
     "commands": {
       "answerPath": "swift/practice_problem_answers/my_answer_21_versioned_payload_migration.swift",
       "copyCommand": "cp swift/practice_problems/problem_21_versioned_payload_migration.swift swift/practice_problem_answers/my_answer_21_versioned_payload_migration.swift",
       "openCommand": "code swift/practice_problems/problem_21_versioned_payload_migration.swift",
-      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_21_versioned_payload_migration.swift -c swift test"
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_21_versioned_payload_migration.swift -c swift test --filter Problem21VersionedPayloadMigrationTests",
+      "partTestCommands": [
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_21_versioned_payload_migration.swift -c swift test --filter Problem21VersionedPayloadMigrationTests.Part1",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_21_versioned_payload_migration.swift -c swift test --filter Problem21VersionedPayloadMigrationTests.Part2",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_21_versioned_payload_migration.swift -c swift test --filter Problem21VersionedPayloadMigrationTests.Part3"
+      ]
     },
     "guide": {
       "approach": [
@@ -1652,11 +1860,35 @@ window.JOURNEY_PROBLEMS = {
       "TestHandleRequest",
       "TestGetUsage"
     ],
+    "partSuites": [
+      [
+        "TestCreateKey",
+        "TestRevokeKey",
+        "TestUpdatePlan"
+      ],
+      [
+        "TestCountInWindow",
+        "TestIsAllowed"
+      ],
+      [
+        "TestRecordRequest"
+      ],
+      [
+        "TestHandleRequest",
+        "TestGetUsage"
+      ]
+    ],
     "commands": {
       "answerPath": "python/practice_problem_answers/my_answer_02_api_rate_limiter.py",
       "copyCommand": "cp python/practice_problems/problem_02_api_rate_limiter.py python/practice_problem_answers/my_answer_02_api_rate_limiter.py",
       "openCommand": "code python/practice_problems/problem_02_api_rate_limiter.py",
-      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_02_api_rate_limiter.py -c pytest python/tests/test_problem_02_api_rate_limiter.py -v"
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_02_api_rate_limiter.py -c pytest python/tests/test_problem_02_api_rate_limiter.py -v",
+      "partTestCommands": [
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_02_api_rate_limiter.py -c pytest python/tests/test_problem_02_api_rate_limiter.py::TestCreateKey python/tests/test_problem_02_api_rate_limiter.py::TestRevokeKey python/tests/test_problem_02_api_rate_limiter.py::TestUpdatePlan -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_02_api_rate_limiter.py -c pytest python/tests/test_problem_02_api_rate_limiter.py::TestCountInWindow python/tests/test_problem_02_api_rate_limiter.py::TestIsAllowed -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_02_api_rate_limiter.py -c pytest python/tests/test_problem_02_api_rate_limiter.py::TestRecordRequest -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_02_api_rate_limiter.py -c pytest python/tests/test_problem_02_api_rate_limiter.py::TestHandleRequest python/tests/test_problem_02_api_rate_limiter.py::TestGetUsage -v"
+      ]
     },
     "guide": {
       "approach": [
@@ -1794,11 +2026,31 @@ window.JOURNEY_PROBLEMS = {
       "TestGetOutreachList",
       "TestAddReading"
     ],
+    "partSuites": [
+      [
+        "TestIsOutOfRange"
+      ],
+      [
+        "TestMaxConsecutiveOutOfRangeDays"
+      ],
+      [
+        "TestGetOutreachList"
+      ],
+      [
+        "TestAddReading"
+      ]
+    ],
     "commands": {
       "answerPath": "python/practice_problem_answers/my_answer_04_biomarker_alert.py",
       "copyCommand": "cp python/practice_problems/problem_04_biomarker_alert.py python/practice_problem_answers/my_answer_04_biomarker_alert.py",
       "openCommand": "code python/practice_problems/problem_04_biomarker_alert.py",
-      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_04_biomarker_alert.py -c pytest python/tests/test_problem_04_biomarker_alert.py -v"
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_04_biomarker_alert.py -c pytest python/tests/test_problem_04_biomarker_alert.py -v",
+      "partTestCommands": [
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_04_biomarker_alert.py -c pytest python/tests/test_problem_04_biomarker_alert.py::TestIsOutOfRange -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_04_biomarker_alert.py -c pytest python/tests/test_problem_04_biomarker_alert.py::TestMaxConsecutiveOutOfRangeDays -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_04_biomarker_alert.py -c pytest python/tests/test_problem_04_biomarker_alert.py::TestGetOutreachList -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_04_biomarker_alert.py -c pytest python/tests/test_problem_04_biomarker_alert.py::TestAddReading -v"
+      ]
     },
     "guide": {
       "approach": [
@@ -1932,11 +2184,32 @@ window.JOURNEY_PROBLEMS = {
       "TestPopulationQueries",
       "TestAddEvent"
     ],
+    "partSuites": [
+      [
+        "TestCurrentMedications"
+      ],
+      [
+        "TestTitrationCount",
+        "TestDeEscalationSummary"
+      ],
+      [
+        "TestPopulationQueries"
+      ],
+      [
+        "TestAddEvent"
+      ]
+    ],
     "commands": {
       "answerPath": "python/practice_problem_answers/my_answer_05_medication_titration.py",
       "copyCommand": "cp python/practice_problems/problem_05_medication_titration.py python/practice_problem_answers/my_answer_05_medication_titration.py",
       "openCommand": "code python/practice_problems/problem_05_medication_titration.py",
-      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_05_medication_titration.py -c pytest python/tests/test_problem_05_medication_titration.py -v"
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_05_medication_titration.py -c pytest python/tests/test_problem_05_medication_titration.py -v",
+      "partTestCommands": [
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_05_medication_titration.py -c pytest python/tests/test_problem_05_medication_titration.py::TestCurrentMedications -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_05_medication_titration.py -c pytest python/tests/test_problem_05_medication_titration.py::TestTitrationCount python/tests/test_problem_05_medication_titration.py::TestDeEscalationSummary -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_05_medication_titration.py -c pytest python/tests/test_problem_05_medication_titration.py::TestPopulationQueries -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_05_medication_titration.py -c pytest python/tests/test_problem_05_medication_titration.py::TestAddEvent -v"
+      ]
     },
     "guide": {
       "approach": [
@@ -2075,11 +2348,37 @@ window.JOURNEY_PROBLEMS = {
       "TestSubmissionHistory",
       "TestDaysSinceLastSubmission"
     ],
+    "partSuites": [
+      [
+        "TestRegisterPatient",
+        "TestAddRequiredLab",
+        "TestGetRequiredLabs"
+      ],
+      [
+        "TestSetLabDeadline",
+        "TestRecordSubmission",
+        "TestIsOverdue"
+      ],
+      [
+        "TestOverdueLabs",
+        "TestComplianceReport"
+      ],
+      [
+        "TestSubmissionHistory",
+        "TestDaysSinceLastSubmission"
+      ]
+    ],
     "commands": {
       "answerPath": "python/practice_problem_answers/my_answer_06_lab_cadence.py",
       "copyCommand": "cp python/practice_problems/problem_06_lab_cadence.py python/practice_problem_answers/my_answer_06_lab_cadence.py",
       "openCommand": "code python/practice_problems/problem_06_lab_cadence.py",
-      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_06_lab_cadence.py -c pytest python/tests/test_problem_06_lab_cadence.py -v"
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_06_lab_cadence.py -c pytest python/tests/test_problem_06_lab_cadence.py -v",
+      "partTestCommands": [
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_06_lab_cadence.py -c pytest python/tests/test_problem_06_lab_cadence.py::TestRegisterPatient python/tests/test_problem_06_lab_cadence.py::TestAddRequiredLab python/tests/test_problem_06_lab_cadence.py::TestGetRequiredLabs -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_06_lab_cadence.py -c pytest python/tests/test_problem_06_lab_cadence.py::TestSetLabDeadline python/tests/test_problem_06_lab_cadence.py::TestRecordSubmission python/tests/test_problem_06_lab_cadence.py::TestIsOverdue -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_06_lab_cadence.py -c pytest python/tests/test_problem_06_lab_cadence.py::TestOverdueLabs python/tests/test_problem_06_lab_cadence.py::TestComplianceReport -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_06_lab_cadence.py -c pytest python/tests/test_problem_06_lab_cadence.py::TestSubmissionHistory python/tests/test_problem_06_lab_cadence.py::TestDaysSinceLastSubmission -v"
+      ]
     },
     "guide": {
       "approach": [
@@ -2211,11 +2510,32 @@ window.JOURNEY_PROBLEMS = {
       "TestGetHistory",
       "TestGetAssignmentAt"
     ],
+    "partSuites": [
+      [
+        "TestAddMember",
+        "TestAssign",
+        "TestGetAssignment",
+        "TestGetPatients"
+      ],
+      [
+        "TestCapacityEnforcement",
+        "TestAvailableMembers"
+      ],
+      [
+        "TestGetHistory",
+        "TestGetAssignmentAt"
+      ]
+    ],
     "commands": {
       "answerPath": "python/practice_problem_answers/my_answer_07_care_team_assignments.py",
       "copyCommand": "cp python/practice_problems/problem_07_care_team_assignments.py python/practice_problem_answers/my_answer_07_care_team_assignments.py",
       "openCommand": "code python/practice_problems/problem_07_care_team_assignments.py",
-      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_07_care_team_assignments.py -c pytest python/tests/test_problem_07_care_team_assignments.py -v"
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_07_care_team_assignments.py -c pytest python/tests/test_problem_07_care_team_assignments.py -v",
+      "partTestCommands": [
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_07_care_team_assignments.py -c pytest python/tests/test_problem_07_care_team_assignments.py::TestAddMember python/tests/test_problem_07_care_team_assignments.py::TestAssign python/tests/test_problem_07_care_team_assignments.py::TestGetAssignment python/tests/test_problem_07_care_team_assignments.py::TestGetPatients -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_07_care_team_assignments.py -c pytest python/tests/test_problem_07_care_team_assignments.py::TestCapacityEnforcement python/tests/test_problem_07_care_team_assignments.py::TestAvailableMembers -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_07_care_team_assignments.py -c pytest python/tests/test_problem_07_care_team_assignments.py::TestGetHistory python/tests/test_problem_07_care_team_assignments.py::TestGetAssignmentAt -v"
+      ]
     },
     "guide": {
       "approach": [
@@ -2332,11 +2652,32 @@ window.JOURNEY_PROBLEMS = {
       "TestPatientsOverdue",
       "TestAverageTimeInState"
     ],
+    "partSuites": [
+      [
+        "TestAddPatient",
+        "TestTransition",
+        "TestGetState",
+        "TestGetPatientsInState"
+      ],
+      [
+        "TestTimeInState",
+        "TestConversionRate"
+      ],
+      [
+        "TestPatientsOverdue",
+        "TestAverageTimeInState"
+      ]
+    ],
     "commands": {
       "answerPath": "python/practice_problem_answers/my_answer_08_enrollment_pipeline.py",
       "copyCommand": "cp python/practice_problems/problem_08_enrollment_pipeline.py python/practice_problem_answers/my_answer_08_enrollment_pipeline.py",
       "openCommand": "code python/practice_problems/problem_08_enrollment_pipeline.py",
-      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_08_enrollment_pipeline.py -c pytest python/tests/test_problem_08_enrollment_pipeline.py -v"
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_08_enrollment_pipeline.py -c pytest python/tests/test_problem_08_enrollment_pipeline.py -v",
+      "partTestCommands": [
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_08_enrollment_pipeline.py -c pytest python/tests/test_problem_08_enrollment_pipeline.py::TestAddPatient python/tests/test_problem_08_enrollment_pipeline.py::TestTransition python/tests/test_problem_08_enrollment_pipeline.py::TestGetState python/tests/test_problem_08_enrollment_pipeline.py::TestGetPatientsInState -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_08_enrollment_pipeline.py -c pytest python/tests/test_problem_08_enrollment_pipeline.py::TestTimeInState python/tests/test_problem_08_enrollment_pipeline.py::TestConversionRate -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_08_enrollment_pipeline.py -c pytest python/tests/test_problem_08_enrollment_pipeline.py::TestPatientsOverdue python/tests/test_problem_08_enrollment_pipeline.py::TestAverageTimeInState -v"
+      ]
     },
     "guide": {
       "approach": [
@@ -2452,11 +2793,32 @@ window.JOURNEY_PROBLEMS = {
       "TestAutoIngestReport",
       "TestGetActiveIncidents"
     ],
+    "partSuites": [
+      [
+        "TestIngestReport",
+        "TestGetReports"
+      ],
+      [
+        "TestCreateIncident",
+        "TestAddReportToIncident",
+        "TestGetIncident",
+        "TestGetUnassignedReports"
+      ],
+      [
+        "TestAutoIngestReport",
+        "TestGetActiveIncidents"
+      ]
+    ],
     "commands": {
       "answerPath": "python/practice_problem_answers/my_answer_09_incident_aggregator.py",
       "copyCommand": "cp python/practice_problems/problem_09_incident_aggregator.py python/practice_problem_answers/my_answer_09_incident_aggregator.py",
       "openCommand": "code python/practice_problems/problem_09_incident_aggregator.py",
-      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_09_incident_aggregator.py -c pytest python/tests/test_problem_09_incident_aggregator.py -v"
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_09_incident_aggregator.py -c pytest python/tests/test_problem_09_incident_aggregator.py -v",
+      "partTestCommands": [
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_09_incident_aggregator.py -c pytest python/tests/test_problem_09_incident_aggregator.py::TestIngestReport python/tests/test_problem_09_incident_aggregator.py::TestGetReports -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_09_incident_aggregator.py -c pytest python/tests/test_problem_09_incident_aggregator.py::TestCreateIncident python/tests/test_problem_09_incident_aggregator.py::TestAddReportToIncident python/tests/test_problem_09_incident_aggregator.py::TestGetIncident python/tests/test_problem_09_incident_aggregator.py::TestGetUnassignedReports -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_09_incident_aggregator.py -c pytest python/tests/test_problem_09_incident_aggregator.py::TestAutoIngestReport python/tests/test_problem_09_incident_aggregator.py::TestGetActiveIncidents -v"
+      ]
     },
     "guide": {
       "approach": [
@@ -2572,11 +2934,32 @@ window.JOURNEY_PROBLEMS = {
       "TestAutoAssign",
       "TestGetDispatchSummary"
     ],
+    "partSuites": [
+      [
+        "TestRegisterResponder",
+        "TestAddIncident",
+        "TestGetIncidentsForResponder"
+      ],
+      [
+        "TestAssignIncident",
+        "TestResolveIncident",
+        "TestGetOpenAssignments"
+      ],
+      [
+        "TestAutoAssign",
+        "TestGetDispatchSummary"
+      ]
+    ],
     "commands": {
       "answerPath": "python/practice_problem_answers/my_answer_10_dispatch_manager.py",
       "copyCommand": "cp python/practice_problems/problem_10_dispatch_manager.py python/practice_problem_answers/my_answer_10_dispatch_manager.py",
       "openCommand": "code python/practice_problems/problem_10_dispatch_manager.py",
-      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_10_dispatch_manager.py -c pytest python/tests/test_problem_10_dispatch_manager.py -v"
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_10_dispatch_manager.py -c pytest python/tests/test_problem_10_dispatch_manager.py -v",
+      "partTestCommands": [
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_10_dispatch_manager.py -c pytest python/tests/test_problem_10_dispatch_manager.py::TestRegisterResponder python/tests/test_problem_10_dispatch_manager.py::TestAddIncident python/tests/test_problem_10_dispatch_manager.py::TestGetIncidentsForResponder -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_10_dispatch_manager.py -c pytest python/tests/test_problem_10_dispatch_manager.py::TestAssignIncident python/tests/test_problem_10_dispatch_manager.py::TestResolveIncident python/tests/test_problem_10_dispatch_manager.py::TestGetOpenAssignments -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_10_dispatch_manager.py -c pytest python/tests/test_problem_10_dispatch_manager.py::TestAutoAssign python/tests/test_problem_10_dispatch_manager.py::TestGetDispatchSummary -v"
+      ]
     },
     "guide": {
       "approach": [
@@ -2692,11 +3075,32 @@ window.JOURNEY_PROBLEMS = {
       "TestGetRegionCoverage",
       "TestGetOutageSummary"
     ],
+    "partSuites": [
+      [
+        "TestRegisterStation",
+        "TestRecordHeartbeat",
+        "TestGetLastHeartbeat",
+        "TestGetStations"
+      ],
+      [
+        "TestGetStaleStations",
+        "TestRecordOutageStartEnd"
+      ],
+      [
+        "TestGetRegionCoverage",
+        "TestGetOutageSummary"
+      ]
+    ],
     "commands": {
       "answerPath": "python/practice_problem_answers/my_answer_11_coverage_tracker.py",
       "copyCommand": "cp python/practice_problems/problem_11_coverage_tracker.py python/practice_problem_answers/my_answer_11_coverage_tracker.py",
       "openCommand": "code python/practice_problems/problem_11_coverage_tracker.py",
-      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_11_coverage_tracker.py -c pytest python/tests/test_problem_11_coverage_tracker.py -v"
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_11_coverage_tracker.py -c pytest python/tests/test_problem_11_coverage_tracker.py -v",
+      "partTestCommands": [
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_11_coverage_tracker.py -c pytest python/tests/test_problem_11_coverage_tracker.py::TestRegisterStation python/tests/test_problem_11_coverage_tracker.py::TestRecordHeartbeat python/tests/test_problem_11_coverage_tracker.py::TestGetLastHeartbeat python/tests/test_problem_11_coverage_tracker.py::TestGetStations -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_11_coverage_tracker.py -c pytest python/tests/test_problem_11_coverage_tracker.py::TestGetStaleStations python/tests/test_problem_11_coverage_tracker.py::TestRecordOutageStartEnd -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_11_coverage_tracker.py -c pytest python/tests/test_problem_11_coverage_tracker.py::TestGetRegionCoverage python/tests/test_problem_11_coverage_tracker.py::TestGetOutageSummary -v"
+      ]
     },
     "guide": {
       "approach": [
@@ -2811,11 +3215,31 @@ window.JOURNEY_PROBLEMS = {
       "TestRecordAlertSent",
       "TestGetUpcomingAlerts"
     ],
+    "partSuites": [
+      [
+        "TestAddContract",
+        "TestAddAlertConfig",
+        "TestGetContractsExpiringBetween"
+      ],
+      [
+        "TestComputeAlertSchedule",
+        "TestGetDueAlerts"
+      ],
+      [
+        "TestRecordAlertSent",
+        "TestGetUpcomingAlerts"
+      ]
+    ],
     "commands": {
       "answerPath": "python/practice_problem_answers/my_answer_12_contract_alert_scheduler.py",
       "copyCommand": "cp python/practice_problems/problem_12_contract_alert_scheduler.py python/practice_problem_answers/my_answer_12_contract_alert_scheduler.py",
       "openCommand": "code python/practice_problems/problem_12_contract_alert_scheduler.py",
-      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_12_contract_alert_scheduler.py -c pytest python/tests/test_problem_12_contract_alert_scheduler.py -v"
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_12_contract_alert_scheduler.py -c pytest python/tests/test_problem_12_contract_alert_scheduler.py -v",
+      "partTestCommands": [
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_12_contract_alert_scheduler.py -c pytest python/tests/test_problem_12_contract_alert_scheduler.py::TestAddContract python/tests/test_problem_12_contract_alert_scheduler.py::TestAddAlertConfig python/tests/test_problem_12_contract_alert_scheduler.py::TestGetContractsExpiringBetween -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_12_contract_alert_scheduler.py -c pytest python/tests/test_problem_12_contract_alert_scheduler.py::TestComputeAlertSchedule python/tests/test_problem_12_contract_alert_scheduler.py::TestGetDueAlerts -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_12_contract_alert_scheduler.py -c pytest python/tests/test_problem_12_contract_alert_scheduler.py::TestRecordAlertSent python/tests/test_problem_12_contract_alert_scheduler.py::TestGetUpcomingAlerts -v"
+      ]
     },
     "guide": {
       "approach": [
@@ -2932,11 +3356,33 @@ window.JOURNEY_PROBLEMS = {
       "TestGetLifecycleMetrics",
       "TestGetOverdueContracts"
     ],
+    "partSuites": [
+      [
+        "TestCreateContract",
+        "TestSetField",
+        "TestGetContract",
+        "TestTransition"
+      ],
+      [
+        "TestGetAuditTrail",
+        "TestGetContractsByState",
+        "TestBulkAdvance"
+      ],
+      [
+        "TestGetLifecycleMetrics",
+        "TestGetOverdueContracts"
+      ]
+    ],
     "commands": {
       "answerPath": "python/practice_problem_answers/my_answer_13_contract_lifecycle.py",
       "copyCommand": "cp python/practice_problems/problem_13_contract_lifecycle.py python/practice_problem_answers/my_answer_13_contract_lifecycle.py",
       "openCommand": "code python/practice_problems/problem_13_contract_lifecycle.py",
-      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_13_contract_lifecycle.py -c pytest python/tests/test_problem_13_contract_lifecycle.py -v"
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_13_contract_lifecycle.py -c pytest python/tests/test_problem_13_contract_lifecycle.py -v",
+      "partTestCommands": [
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_13_contract_lifecycle.py -c pytest python/tests/test_problem_13_contract_lifecycle.py::TestCreateContract python/tests/test_problem_13_contract_lifecycle.py::TestSetField python/tests/test_problem_13_contract_lifecycle.py::TestGetContract python/tests/test_problem_13_contract_lifecycle.py::TestTransition -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_13_contract_lifecycle.py -c pytest python/tests/test_problem_13_contract_lifecycle.py::TestGetAuditTrail python/tests/test_problem_13_contract_lifecycle.py::TestGetContractsByState python/tests/test_problem_13_contract_lifecycle.py::TestBulkAdvance -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_13_contract_lifecycle.py -c pytest python/tests/test_problem_13_contract_lifecycle.py::TestGetLifecycleMetrics python/tests/test_problem_13_contract_lifecycle.py::TestGetOverdueContracts -v"
+      ]
     },
     "guide": {
       "approach": [
@@ -3051,11 +3497,31 @@ window.JOURNEY_PROBLEMS = {
       "TestGetValueHistory",
       "TestGetAmendmentSummary"
     ],
+    "partSuites": [
+      [
+        "TestAddContract",
+        "TestGetBaseContract"
+      ],
+      [
+        "TestAddAmendment",
+        "TestGetAmendments",
+        "TestGetEffectiveContract"
+      ],
+      [
+        "TestGetValueHistory",
+        "TestGetAmendmentSummary"
+      ]
+    ],
     "commands": {
       "answerPath": "python/practice_problem_answers/my_answer_14_contract_amendment.py",
       "copyCommand": "cp python/practice_problems/problem_14_contract_amendment.py python/practice_problem_answers/my_answer_14_contract_amendment.py",
       "openCommand": "code python/practice_problems/problem_14_contract_amendment.py",
-      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_14_contract_amendment.py -c pytest python/tests/test_problem_14_contract_amendment.py -v"
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_14_contract_amendment.py -c pytest python/tests/test_problem_14_contract_amendment.py -v",
+      "partTestCommands": [
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_14_contract_amendment.py -c pytest python/tests/test_problem_14_contract_amendment.py::TestAddContract python/tests/test_problem_14_contract_amendment.py::TestGetBaseContract -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_14_contract_amendment.py -c pytest python/tests/test_problem_14_contract_amendment.py::TestAddAmendment python/tests/test_problem_14_contract_amendment.py::TestGetAmendments python/tests/test_problem_14_contract_amendment.py::TestGetEffectiveContract -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_14_contract_amendment.py -c pytest python/tests/test_problem_14_contract_amendment.py::TestGetValueHistory python/tests/test_problem_14_contract_amendment.py::TestGetAmendmentSummary -v"
+      ]
     },
     "guide": {
       "approach": [
@@ -3173,11 +3639,34 @@ window.JOURNEY_PROBLEMS = {
       "TestMultiplePlayers",
       "TestCheckWinnerPart3"
     ],
+    "partSuites": [
+      [
+        "TestCheckWinner"
+      ],
+      [
+        "TestMakeMoveReturnsNone",
+        "TestMakeMoveWin",
+        "TestMakeMoveErrors",
+        "TestGetBoard",
+        "TestReset"
+      ],
+      [
+        "TestArbitrarySize",
+        "TestWinLengthLessThanSize",
+        "TestMultiplePlayers",
+        "TestCheckWinnerPart3"
+      ]
+    ],
     "commands": {
       "answerPath": "python/practice_problem_answers/my_answer_15_tic_tac_toe_engine.py",
       "copyCommand": "cp python/practice_problems/problem_15_tic_tac_toe_engine.py python/practice_problem_answers/my_answer_15_tic_tac_toe_engine.py",
       "openCommand": "code python/practice_problems/problem_15_tic_tac_toe_engine.py",
-      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_15_tic_tac_toe_engine.py -c pytest python/tests/test_problem_15_tic_tac_toe_engine.py -v"
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_15_tic_tac_toe_engine.py -c pytest python/tests/test_problem_15_tic_tac_toe_engine.py -v",
+      "partTestCommands": [
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_15_tic_tac_toe_engine.py -c pytest python/tests/test_problem_15_tic_tac_toe_engine.py::TestCheckWinner -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_15_tic_tac_toe_engine.py -c pytest python/tests/test_problem_15_tic_tac_toe_engine.py::TestMakeMoveReturnsNone python/tests/test_problem_15_tic_tac_toe_engine.py::TestMakeMoveWin python/tests/test_problem_15_tic_tac_toe_engine.py::TestMakeMoveErrors python/tests/test_problem_15_tic_tac_toe_engine.py::TestGetBoard python/tests/test_problem_15_tic_tac_toe_engine.py::TestReset -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_15_tic_tac_toe_engine.py -c pytest python/tests/test_problem_15_tic_tac_toe_engine.py::TestArbitrarySize python/tests/test_problem_15_tic_tac_toe_engine.py::TestWinLengthLessThanSize python/tests/test_problem_15_tic_tac_toe_engine.py::TestMultiplePlayers python/tests/test_problem_15_tic_tac_toe_engine.py::TestCheckWinnerPart3 -v"
+      ]
     },
     "guide": {
       "approach": [
@@ -3299,11 +3788,37 @@ window.JOURNEY_PROBLEMS = {
       "TestTransitiveCancellation",
       "TestIdempotentCompletion"
     ],
+    "partSuites": [
+      [
+        "TestRegistration",
+        "TestDuplicateId",
+        "TestMissingDependency",
+        "TestCycleDetection",
+        "TestInstanceIsolation"
+      ],
+      [
+        "TestReadyFiltering",
+        "TestStablePriorityOrdering",
+        "TestLimitArgument",
+        "TestMultipleDependencies"
+      ],
+      [
+        "TestSuccess",
+        "TestFailure",
+        "TestTransitiveCancellation",
+        "TestIdempotentCompletion"
+      ]
+    ],
     "commands": {
       "answerPath": "python/practice_problem_answers/my_answer_16_build_pipeline_scheduler.py",
       "copyCommand": "cp python/practice_problems/problem_16_build_pipeline_scheduler.py python/practice_problem_answers/my_answer_16_build_pipeline_scheduler.py",
       "openCommand": "code python/practice_problems/problem_16_build_pipeline_scheduler.py",
-      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_16_build_pipeline_scheduler.py -c pytest python/tests/test_problem_16_build_pipeline_scheduler.py -v"
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_16_build_pipeline_scheduler.py -c pytest python/tests/test_problem_16_build_pipeline_scheduler.py -v",
+      "partTestCommands": [
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_16_build_pipeline_scheduler.py -c pytest python/tests/test_problem_16_build_pipeline_scheduler.py::TestRegistration python/tests/test_problem_16_build_pipeline_scheduler.py::TestDuplicateId python/tests/test_problem_16_build_pipeline_scheduler.py::TestMissingDependency python/tests/test_problem_16_build_pipeline_scheduler.py::TestCycleDetection python/tests/test_problem_16_build_pipeline_scheduler.py::TestInstanceIsolation -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_16_build_pipeline_scheduler.py -c pytest python/tests/test_problem_16_build_pipeline_scheduler.py::TestReadyFiltering python/tests/test_problem_16_build_pipeline_scheduler.py::TestStablePriorityOrdering python/tests/test_problem_16_build_pipeline_scheduler.py::TestLimitArgument python/tests/test_problem_16_build_pipeline_scheduler.py::TestMultipleDependencies -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_16_build_pipeline_scheduler.py -c pytest python/tests/test_problem_16_build_pipeline_scheduler.py::TestSuccess python/tests/test_problem_16_build_pipeline_scheduler.py::TestFailure python/tests/test_problem_16_build_pipeline_scheduler.py::TestTransitiveCancellation python/tests/test_problem_16_build_pipeline_scheduler.py::TestIdempotentCompletion -v"
+      ]
     },
     "guide": {
       "approach": [
@@ -3424,11 +3939,34 @@ window.JOURNEY_PROBLEMS = {
       "TestStableAuditOrdering",
       "TestReconciliationDoesNotMutateFixtures"
     ],
+    "partSuites": [
+      [
+        "TestIngestion",
+        "TestIdempotentReingest",
+        "TestConflictingDuplicate",
+        "TestDecimalPrecision"
+      ],
+      [
+        "TestExactReferenceMatch",
+        "TestAmountWindowMatch",
+        "TestAmbiguityWithMultipleCandidates"
+      ],
+      [
+        "TestBatchCounts",
+        "TestStableAuditOrdering",
+        "TestReconciliationDoesNotMutateFixtures"
+      ]
+    ],
     "commands": {
       "answerPath": "python/practice_problem_answers/my_answer_17_payment_reconciliation.py",
       "copyCommand": "cp python/practice_problems/problem_17_payment_reconciliation.py python/practice_problem_answers/my_answer_17_payment_reconciliation.py",
       "openCommand": "code python/practice_problems/problem_17_payment_reconciliation.py",
-      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_17_payment_reconciliation.py -c pytest python/tests/test_problem_17_payment_reconciliation.py -v"
+      "testCommand": "./run_tests.sh -f python/practice_problem_answers/my_answer_17_payment_reconciliation.py -c pytest python/tests/test_problem_17_payment_reconciliation.py -v",
+      "partTestCommands": [
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_17_payment_reconciliation.py -c pytest python/tests/test_problem_17_payment_reconciliation.py::TestIngestion python/tests/test_problem_17_payment_reconciliation.py::TestIdempotentReingest python/tests/test_problem_17_payment_reconciliation.py::TestConflictingDuplicate python/tests/test_problem_17_payment_reconciliation.py::TestDecimalPrecision -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_17_payment_reconciliation.py -c pytest python/tests/test_problem_17_payment_reconciliation.py::TestExactReferenceMatch python/tests/test_problem_17_payment_reconciliation.py::TestAmountWindowMatch python/tests/test_problem_17_payment_reconciliation.py::TestAmbiguityWithMultipleCandidates -v",
+        "./run_tests.sh -f python/practice_problem_answers/my_answer_17_payment_reconciliation.py -c pytest python/tests/test_problem_17_payment_reconciliation.py::TestBatchCounts python/tests/test_problem_17_payment_reconciliation.py::TestStableAuditOrdering python/tests/test_problem_17_payment_reconciliation.py::TestReconciliationDoesNotMutateFixtures -v"
+      ]
     },
     "guide": {
       "approach": [
@@ -3539,11 +4077,13 @@ window.JOURNEY_PROBLEMS = {
     "testSuites": [
       "Problem 01 — Activity Feed"
     ],
+    "partSuites": [],
     "commands": {
       "answerPath": "react/my_answer_01_activity_feed.jsx",
       "copyCommand": "cp react/practice_problems/problem_01_activity_feed.jsx react/my_answer_01_activity_feed.jsx",
       "openCommand": "code react/practice_problems/problem_01_activity_feed.jsx",
-      "testCommand": "./run_tests.sh -f react/my_answer_01_activity_feed.jsx -c npm run test:01"
+      "testCommand": "./run_tests.sh -f react/my_answer_01_activity_feed.jsx -c npm run test:01",
+      "partTestCommands": []
     },
     "guide": {
       "approach": [
@@ -3654,11 +4194,13 @@ window.JOURNEY_PROBLEMS = {
     "testSuites": [
       "Problem 03 — Alert Triage Console"
     ],
+    "partSuites": [],
     "commands": {
       "answerPath": "react/my_answer_03_alert_triage_console.jsx",
       "copyCommand": "cp react/practice_problems/problem_03_alert_triage_console.jsx react/my_answer_03_alert_triage_console.jsx",
       "openCommand": "code react/practice_problems/problem_03_alert_triage_console.jsx",
-      "testCommand": "./run_tests.sh -f react/my_answer_03_alert_triage_console.jsx -c npm run test:03"
+      "testCommand": "./run_tests.sh -f react/my_answer_03_alert_triage_console.jsx -c npm run test:03",
+      "partTestCommands": []
     },
     "guide": {
       "approach": [
@@ -3768,11 +4310,13 @@ window.JOURNEY_PROBLEMS = {
     "testSuites": [
       "Problem 04 — Contract Review Dashboard"
     ],
+    "partSuites": [],
     "commands": {
       "answerPath": "react/my_answer_04_contract_dashboard.jsx",
       "copyCommand": "cp react/practice_problems/problem_04_contract_dashboard.jsx react/my_answer_04_contract_dashboard.jsx",
       "openCommand": "code react/practice_problems/problem_04_contract_dashboard.jsx",
-      "testCommand": "./run_tests.sh -f react/my_answer_04_contract_dashboard.jsx -c npm run test:04"
+      "testCommand": "./run_tests.sh -f react/my_answer_04_contract_dashboard.jsx -c npm run test:04",
+      "partTestCommands": []
     },
     "guide": {
       "approach": [
@@ -3884,11 +4428,27 @@ window.JOURNEY_PROBLEMS = {
       "Part 2 — debounce, errors, and stale-response suppression",
       "Part 3 — cache and optimistic recent selections"
     ],
+    "partSuites": [
+      [
+        "Part 1 — ARIA roles, keyboard navigation, and focus management"
+      ],
+      [
+        "Part 2 — debounce, errors, and stale-response suppression"
+      ],
+      [
+        "Part 3 — cache and optimistic recent selections"
+      ]
+    ],
     "commands": {
       "answerPath": "react/my_answer_05_search_combobox.jsx",
       "copyCommand": "cp react/practice_problems/problem_05_search_combobox.jsx react/my_answer_05_search_combobox.jsx",
       "openCommand": "code react/practice_problems/problem_05_search_combobox.jsx",
-      "testCommand": "./run_tests.sh -f react/my_answer_05_search_combobox.jsx -c npm run test:05"
+      "testCommand": "./run_tests.sh -f react/my_answer_05_search_combobox.jsx -c npm run test:05",
+      "partTestCommands": [
+        "./run_tests.sh -f react/my_answer_05_search_combobox.jsx -c npm run test:05 -- -g \"Part 1\"",
+        "./run_tests.sh -f react/my_answer_05_search_combobox.jsx -c npm run test:05 -- -g \"Part 2\"",
+        "./run_tests.sh -f react/my_answer_05_search_combobox.jsx -c npm run test:05 -- -g \"Part 3\""
+      ]
     },
     "guide": {
       "approach": [
@@ -4005,11 +4565,27 @@ window.JOURNEY_PROBLEMS = {
       "Part 2 — Role inheritance",
       "Part 3 — Scoped permissions"
     ],
+    "partSuites": [
+      [
+        "Part 1 — Flat roles and permissions"
+      ],
+      [
+        "Part 2 — Role inheritance"
+      ],
+      [
+        "Part 3 — Scoped permissions"
+      ]
+    ],
     "commands": {
       "answerPath": "swift/practice_problem_answers/my_answer_03_permission_manager.swift",
       "copyCommand": "cp swift/practice_problems/problem_03_permission_manager.swift swift/practice_problem_answers/my_answer_03_permission_manager.swift",
       "openCommand": "code swift/practice_problems/problem_03_permission_manager.swift",
-      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_03_permission_manager.swift -c swift test"
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_03_permission_manager.swift -c swift test --filter Problem03PermissionManagerTests",
+      "partTestCommands": [
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_03_permission_manager.swift -c swift test --filter Problem03PermissionManagerTests.Part1",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_03_permission_manager.swift -c swift test --filter Problem03PermissionManagerTests.Part2",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_03_permission_manager.swift -c swift test --filter Problem03PermissionManagerTests.Part3"
+      ]
     },
     "guide": {
       "approach": [
@@ -4121,11 +4697,27 @@ window.JOURNEY_PROBLEMS = {
       "Part 2 — Coalesce compatible commands",
       "Part 3 — Group commands into transactions"
     ],
+    "partSuites": [
+      [
+        "Part 1 — Execute, undo, and redo"
+      ],
+      [
+        "Part 2 — Coalesce compatible commands"
+      ],
+      [
+        "Part 3 — Group commands into transactions"
+      ]
+    ],
     "commands": {
       "answerPath": "swift/practice_problem_answers/my_answer_22_undo_redo_command_stack.swift",
       "copyCommand": "cp swift/practice_problems/problem_22_undo_redo_command_stack.swift swift/practice_problem_answers/my_answer_22_undo_redo_command_stack.swift",
       "openCommand": "code swift/practice_problems/problem_22_undo_redo_command_stack.swift",
-      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_22_undo_redo_command_stack.swift -c swift test"
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_22_undo_redo_command_stack.swift -c swift test --filter Problem22UndoRedoCommandStackTests",
+      "partTestCommands": [
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_22_undo_redo_command_stack.swift -c swift test --filter Problem22UndoRedoCommandStackTests.UndoRedoPart1Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_22_undo_redo_command_stack.swift -c swift test --filter Problem22UndoRedoCommandStackTests.UndoRedoPart2Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_22_undo_redo_command_stack.swift -c swift test --filter Problem22UndoRedoCommandStackTests.UndoRedoPart3Tests"
+      ]
     },
     "guide": {
       "approach": [
