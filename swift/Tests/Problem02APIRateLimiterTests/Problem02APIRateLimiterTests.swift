@@ -140,6 +140,9 @@ struct RateLimiterPart3 {
         _ = await limiter.handleRequest("pk.alpha", at: base)
         let second = await limiter.keySnapshots()
         #expect(first.map(\.id) == ["pk.alpha", "pk.zed"])
+        // Establish the counts before indexing, so empty snapshots fail here
+        // instead of trapping and taking down the whole run.
+        try #require(!first.isEmpty && !second.isEmpty)
         #expect(first[0].requestDates.isEmpty)
         #expect(second[0].requestDates == [base])
     }

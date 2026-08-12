@@ -238,6 +238,23 @@ hint-only guide. Use these exact machine-readable markers in every new stub:
   concrete calls and their `# -> result` outcomes. Do not put the example only
   in a test file.
 
+Test files carry a part marker too, and it is what lets the journey scope its
+"run this part" command to one part instead of the whole suite. The generator
+derives the mapping; nothing is hand-listed.
+
+- Python: a comment heading before the part's first test class, either
+  `# PART N — Title` or `# ── Part N: Title ──`. Every `class Test...` after it
+  belongs to that part until the next heading.
+- Swift: `@Suite("Part N — Title")` on the part's suite type. The type name is
+  what the journey passes to `swift test --filter <Module>.<Type>`.
+- React: `test.describe('Part N — Title', ...)` per part. The journey passes
+  `-- -g "Part N"` to Playwright.
+
+A file that does not mark every part gets no scoped command: the journey falls
+back to the full suite and says so. React 01 through 04 are that case - each has
+one describe covering the whole problem - and the honest note is the correct
+outcome there, not an invented command.
+
 Legacy exceptions are recorded rather than silently rewriting existing stubs.
 Python 01 Geofence Alert Engine has four stub parts while its index record says
 three. The explicit usage-example allowlist covers `python-01`, `python-02`,
@@ -472,10 +489,17 @@ to Part 1.
   Later stub methods fail explicitly only when invoked. Prefer a throwing
   `notImplemented` case where the signature permits it, so the test reports a
   failure instead of crashing the test worker.
+- Never index into a collection an implementation produced without asserting its
+  size first: `try #require(results.count == 3)` before `results[2]`. Against the
+  empty stub the subscript traps, and because Swift Testing runs one process a
+  trap takes down every other problem's tests, not just this one.
 - Tests import only the fixed problem module, never an answer module. The runner
   owns source substitution.
 - Avoid timing sleeps. Actor and concurrency tests coordinate with continuations,
   clocks, or deterministic injected time.
+- Assert what concurrency actually guarantees. Two task-group children have no
+  defined order of arrival, so assert set membership plus the bound
+  (`Set(started) == [0, 1]` and `peak == 2`), never a start sequence.
 - When concurrent operations accept timestamps, give competing tasks the same
   injected instant unless timestamp ordering is the behavior under test. Distinct
   synthetic times can make actor scheduling order change window membership.

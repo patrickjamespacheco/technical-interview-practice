@@ -119,13 +119,16 @@ struct Part2 {
 @Suite("Part 3 — Migrate a batch and report")
 struct Part3 {
     @Test("returns one result per payload with aggregate counts")
-    func resultsAndCounts() {
+    func resultsAndCounts() throws {
         let registry = makeSeededRegistry()
         let inputs = [BatchPayload(id: "payload-old", data: v1Ada), BatchPayload(id: "payload-current", data: v3Grace), BatchPayload(id: "payload-unknown", data: json(#"{"version":9,"body":{}}"#))]
         let report = registry.migrateBatch(inputs)
         #expect(report.migratedCount == 1)
         #expect(report.alreadyCurrentCount == 1)
         #expect(report.failedCount == 1)
+        // Establish the count before indexing: an unimplemented batch migration
+        // returns no results, and a trap here would take down the whole run.
+        try #require(report.results.count == inputs.count)
         #expect(report.results[2].outcome == .failed(.payload(.unknownVersion(9))))
     }
 

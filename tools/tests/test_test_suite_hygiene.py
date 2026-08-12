@@ -14,6 +14,10 @@ ROOT = Path(__file__).resolve().parents[2]
 PYTHON_TESTS = ROOT / "python" / "tests"
 REACT_TESTS = ROOT / "react" / "tests"
 PLAYWRIGHT_CONFIG = ROOT / "react" / "playwright.config.js"
+SWIFT_TESTS = ROOT / "swift" / "Tests"
+
+# A constant index into a named value, e.g. `results[2]` or `summary[0]`.
+LITERAL_SUBSCRIPT = re.compile(r"\b[A-Za-z_]\w*(?:\.\w+)*\[\d+\]")
 
 # Matches a live (uncommented) import of the answers package, in either the
 # `from practice_problem_answers...` or `import practice_problem_answers...`
@@ -121,6 +125,39 @@ class ReactDeterminismTests(unittest.TestCase):
             [],
             "These React specs call page.clock.install() without pausing the "
             "clock, which leaves fake timers ticking in real time: "
+            + ", ".join(offenders),
+        )
+
+
+class SwiftTrapTests(unittest.TestCase):
+    """Swift suites must assert a count before indexing into a result.
+
+    Swift Testing runs the whole package in one process. A subscript that
+    traps against the empty stub does not fail that test, it kills the run -
+    including every other problem's tests - and reports no summary at all.
+    `Problem21VersionedPayloadMigrationTests` did exactly this, so an
+    unfiltered `swift test` could not complete.
+    """
+
+    def test_no_test_indexes_a_result_without_requiring_its_size(self):
+        offenders = []
+        for path in sorted(SWIFT_TESTS.glob("*/*.swift")):
+            source = path.read_text(encoding="utf-8")
+            # Helpers and fixtures above the first @Test build their own values;
+            # only assertions inside a test can be reached with an empty stub.
+            for chunk in source.split("@Test")[1:]:
+                subscript = LITERAL_SUBSCRIPT.search(chunk)
+                if subscript and "#require(" not in chunk[: subscript.start()]:
+                    line = source[: source.index(chunk) + subscript.start()].count("\n") + 1
+                    offenders.append(f"{path.relative_to(ROOT).as_posix()}:{line}")
+
+        self.assertEqual(
+            offenders,
+            [],
+            "These assertions index into a value the implementation produced "
+            "without first establishing its size, so against the unimplemented "
+            "stub they trap and take down the entire test process. Add "
+            "`try #require(values.count == N)` before the subscript: "
             + ", ".join(offenders),
         )
 

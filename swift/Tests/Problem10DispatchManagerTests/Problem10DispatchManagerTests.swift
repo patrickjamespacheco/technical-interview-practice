@@ -139,6 +139,9 @@ struct DispatchPart3 {
     func summary() throws {
         let manager = try makeSeededManager(); let summary = manager.dispatchSummary()
         #expect(summary.map(\.responderID) == ["unit-12", "unit-14"])
+        // Establish the count before indexing, so an empty summary fails here
+        // instead of trapping and taking down the whole run.
+        try #require(!summary.isEmpty)
         #expect(summary[0].openCount == 1 && summary[0].availableCapacity == 2)
     }
 }

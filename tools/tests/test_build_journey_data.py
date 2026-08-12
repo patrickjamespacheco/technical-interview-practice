@@ -116,8 +116,54 @@ class JourneyGeneratorTests(unittest.TestCase):
         self.assertEqual(react["commands"]["copyCommand"], "cp react/practice_problems/problem_02_incident_dashboard.jsx react/my_answer_02_incident_dashboard.jsx")
         self.assertTrue(react["commands"]["testCommand"].endswith("npm run test:02"))
         self.assertEqual(swift["commands"]["answerPath"], "swift/practice_problem_answers/my_answer_13_contract_lifecycle.swift")
-        self.assertTrue(swift["commands"]["testCommand"].endswith("swift test"))
+        self.assertTrue(swift["commands"]["testCommand"].endswith("swift test --filter Problem13ContractLifecycleTests"))
         self.assertEqual(data["swift-02"]["commands"]["answerPath"], "swift/practice_problem_answers/my_answer_02_api_rate_limiter.swift")
+
+    def test_scopes_each_part_to_the_suites_its_test_file_marks(self):
+        data = builder.build_data(self.root)
+        python = data["python-03"]
+        self.assertEqual(python["partSuites"], [
+            ["TestCreateRole", "TestGrantRevokePermission", "TestAssignUnassignRole", "TestHasPermission"],
+            ["TestRoleInheritance"],
+            ["TestScopedPermissions"],
+        ])
+        self.assertEqual(
+            python["commands"]["partTestCommands"][1],
+            "./run_tests.sh -f python/practice_problem_answers/my_answer_03_permission_manager.py"
+            " -c pytest python/tests/test_problem_03_permission_manager.py::TestRoleInheritance -v",
+        )
+        self.assertEqual(data["swift-22"]["partSuites"][2], ["Part 3 — Group commands into transactions"])
+        self.assertEqual(
+            data["swift-22"]["commands"]["partTestCommands"][2],
+            "./run_tests.sh -f swift/practice_problem_answers/my_answer_22_undo_redo_command_stack.swift"
+            " -c swift test --filter Problem22UndoRedoCommandStackTests.UndoRedoPart3Tests",
+        )
+        self.assertTrue(data["react-05"]["commands"]["partTestCommands"][0].endswith('npm run test:05 -- -g "Part 1"'))
+        # Every problem whose test file marks parts is scoped, and the command
+        # list always lines up with the part list.
+        for key, problem in data.items():
+            commands = problem["commands"]["partTestCommands"]
+            self.assertIn(len(commands), (0, len(problem["parts"])), key)
+            self.assertEqual(len(problem["partSuites"]), len(commands), key)
+
+    def test_unmarked_test_file_keeps_the_honest_full_suite_command(self):
+        # react-02 has one describe covering the whole problem, so no part
+        # scoping is claimed rather than invented.
+        data = builder.build_data(self.root)
+        self.assertEqual(data["react-02"]["partSuites"], [])
+        self.assertEqual(data["react-02"]["commands"]["partTestCommands"], [])
+
+    def test_partial_part_markers_are_refused_rather_than_half_scoped(self):
+        path = self.root / "python/tests/test_problem_03_permission_manager.py"
+        path.write_text(path.read_text().replace("# PART 3 — Scoped permissions with wildcards", "# Scoped permissions with wildcards"))
+        data = builder.build_data(self.root)
+        self.assertEqual(data["python-03"]["partSuites"], [])
+        self.assertEqual(data["python-03"]["commands"]["partTestCommands"], [])
+
+    def test_journey_reads_its_part_command_from_generated_data(self):
+        source = (ROOT / "journey.html").read_text()
+        self.assertIn("partTestCommands", source)
+        self.assertNotIn("pilotSuites", source)
 
     def test_rejects_solution_code_block(self):
         guides = self.guides()
