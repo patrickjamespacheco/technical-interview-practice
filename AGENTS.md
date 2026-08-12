@@ -78,8 +78,14 @@ npx playwright install chromium
 | `npm run test:01` | Problem 01 — Activity Feed |
 | `npm run test:02` | Problem 02 — Incident Dashboard |
 | `npm run test:03` | Problem 03 — Alert Triage Console |
-| `npm test` | All 3 spec files |
+| `npm run test:04` | Problem 04 - Contract Review Dashboard |
+| `npm run test:05` | Problem 05 - Accessible Async Search Combobox |
+| `npm test` | All 5 spec files |
 | `npm run test:ui` | Playwright interactive UI |
+
+`npm test` runs every spec against whatever single file is currently in
+`src/App.jsx`, so only one suite can be green at a time. To check a suite, run
+its own `test:NN` through `run_tests.sh` with the matching answer file.
 
 Playwright auto-starts the Vite dev server when it isn't already running.
 If you already have `npm run dev` running, Playwright reuses that server.
@@ -88,7 +94,45 @@ If you already have `npm run dev` running, Playwright reuses that server.
 
 Problems 02 and 03 specify required `data-testid` attributes in their
 docstrings. The Playwright specs rely on those exact values. Problem 01 uses
-role/text selectors instead (it predates this setup).
+role/text selectors instead (it predates this setup), and its spec keeps to
+role and text selectors so it stays satisfiable from the stub alone.
+
+### React specs must be deterministic
+
+The provided mock APIs in problems 01-04 are non-deterministic by design: every
+mock write does `Math.random() < p ? reject : resolve`, and the feeds inject
+random records on a 2-2.5 s `setInterval`. That is behaviour the problems
+teach, so it stays in the stubs. The determinism belongs in the tests.
+
+`react/tests/helpers/deterministic.js` is the single place that does it. Every
+spec calls `installDeterminism(page)`, which:
+
+- installs `page.clock` and then **pauses** it. `page.clock.install()` alone
+  leaves the fake clock ticking with real time - it does not pause, and the
+  page cannot be loaded under an already-paused clock, so the pause happens
+  just after `goto`.
+- pins `Math.random` to a constant via `addInitScript`, chosen above every
+  reject threshold (`RANDOM_SUCCESS`) or below every one (`RANDOM_FAILURE`), so
+  both the success and the rollback path are reachable on purpose.
+
+Rules for new or edited React specs:
+
+- No `retries` in `playwright.config.js`, and no timeout inflation. If a spec
+  needs a longer timeout to pass, the fix is to control the input, not to wait.
+- Keep each test's total clock advance under the problem's background interval
+  (see the budget documented on `PAUSE_GRACE_MS`), so no random record can
+  arrive between two assertions.
+- Prefer exact counts (`toHaveCount(5)`) over relative ones
+  (`toBeLessThan(allCount)`). With the clock stopped the expected number is
+  knowable, and an exact count is what makes red mean "you have a bug".
+
+### React reference answers
+
+`react/practice_problem_answers/reference_answer_NN_*.jsx` holds one verified
+solution per React problem. They exist to prove each suite is satisfiable - a
+suite nobody has passed is not a signal. They are not part of the practice
+path: `journey.html` never loads them, and `index.html` does not list them.
+Run one with `./run_tests.sh -f react/practice_problem_answers/<file> -c npm run test:NN`.
 
 ## Python virtual environment
 
@@ -112,12 +156,20 @@ python3.11 -m venv .venv && .venv/bin/pip install pytest
 **Workflow per problem:**
 1. Problem file has the prompt + empty stubs.
 2. User copies the problem file to `practice_problem_answers/cw_answer_XX_<name>.py` and implements it there.
-3. He updates the test file's import to point at his answer file.
-4. He runs `pytest tests/test_problem_XX_<name>.py -v` from the `python/` directory.
+3. He runs the suite through `run_tests.sh`, which points `--answer` at his file:
+   `./run_tests.sh -f python/practice_problem_answers/cw_answer_XX_<name>.py -c pytest python/tests/test_problem_XX_<name>.py -v`
 
 Test files **always** import from `practice_problems.problem_NN_<name>` (the stub).
 The `--answer` flag in `python/conftest.py` injects the answer module under that same
 module path before test collection, so no manual import changes are ever needed.
+
+**Never edit a test file's import to point at an answer module.** It looks like a
+shortcut and it silently disables the whole harness: `conftest.py` injects the answer
+under the *stub's* module path, so a test that imports an answer path never sees the
+injection and `--answer` is ignored without any warning. Every run then grades one
+checked-in answer instead of yours. `test_problem_02_api_rate_limiter.py` carried this
+for long enough that an unimplemented stub scored 30 of 34 passing tests. If you want to
+run a specific answer, pass it with `-f`.
 
 ---
 

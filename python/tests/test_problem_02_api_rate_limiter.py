@@ -7,18 +7,7 @@ Run from the python/ directory:
 
 import pytest
 
-# from practice_problems.problem_02_api_rate_limiter import (
-#     make_gateway,
-#     create_key,
-#     revoke_key,
-#     update_plan,
-#     _count_in_window,
-#     is_allowed,
-#     record_request,
-#     handle_request,
-#     get_usage,
-# )
-from practice_problem_answers.cw_answer_02_api_rate_limiter import (
+from practice_problems.problem_02_api_rate_limiter import (
     make_gateway,
     create_key,
     revoke_key,
