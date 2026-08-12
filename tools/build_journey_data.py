@@ -64,7 +64,35 @@ def parse_guides(path: Path) -> dict[str, Any]:
         raise JourneyDataError(f"invalid guide YAML/JSON at {path}:{exc.lineno}:{exc.colno}: {exc.msg}") from exc
 
 
-def validate_execution(key: str, execution: Any) -> None:
+# Markers a candidate never leaves in a working answer: they are how each stub
+# says "not written yet". Their presence in a shipped payload means the stub was
+# pasted in place of a solution.
+UNIMPLEMENTED_MARKER_RE = re.compile(
+    r"throw\s+[\w.]*notImplemented"
+    r"|\.(?:failure|failed)\(\s*\.notImplemented\s*\)"
+    r"|raise\s+NotImplementedError"
+    r"|NotImplementedError\("
+    r"|\bTODO\b",
+    re.I,
+)
+FIX_THE_PAYLOAD = "paste an implementation verified by tools/verify_reference_answers.sh"
+
+
+def _code_fingerprint(text: str) -> str:
+    """Whitespace-insensitive identity, so a reformatted stub is still the stub."""
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def assert_real_implementation(label: str, code: str, stub_source: str) -> None:
+    """Reject a shipped code payload that is the unimplemented stub."""
+    if _code_fingerprint(code) == _code_fingerprint(stub_source):
+        raise JourneyDataError(f"{label}: this is the unimplemented problem stub, not a solution; {FIX_THE_PAYLOAD}")
+    marker = UNIMPLEMENTED_MARKER_RE.search(code)
+    if marker:
+        raise JourneyDataError(f"{label}: still contains the stub's unimplemented marker {marker.group(0)!r}; {FIX_THE_PAYLOAD}")
+
+
+def validate_execution(key: str, execution: Any, stub_source: str) -> None:
     required = {"timeBudget", "navigation", "solution", "coding", "verification", "code"}
     if not isinstance(execution, dict) or set(execution) != required:
         raise JourneyDataError(f"guide {key}.execution: fields must be exactly {sorted(required)}")
@@ -92,6 +120,7 @@ def validate_execution(key: str, execution: Any) -> None:
                 raise JourneyDataError(f"guide {key}.execution.{phase}.{field}: expected non-empty text or text list")
     if not isinstance(execution["code"], str) or not execution["code"].strip():
         raise JourneyDataError(f"guide {key}.execution.code: expected a full non-empty implementation")
+    assert_real_implementation(f"guide {key}.execution.code", execution["code"], stub_source)
 
 
 def _extract_array(source: str) -> str:
@@ -297,7 +326,7 @@ def derive_commands(language: str, number: str, slug: str, stub_path: str, test_
     }
 
 
-def validate_guide(key: str, guide: Any, part_count: int) -> None:
+def validate_guide(key: str, guide: Any, part_count: int, stub_source: str) -> None:
     if not isinstance(guide, dict):
         raise JourneyDataError(f"guide {key}: expected an object")
     allowed = {"approach", "verify", "lesson", "execution"}
@@ -346,7 +375,7 @@ def validate_guide(key: str, guide: Any, part_count: int) -> None:
     lesson = guide.get("lesson")
     if lesson is None:
         if "execution" in guide:
-            validate_execution(key, guide["execution"])
+            validate_execution(key, guide["execution"], stub_source)
         return
     if not isinstance(lesson, dict) or set(lesson) != {"parts", "reflection"}:
         raise JourneyDataError(f"guide {key}.lesson: fields must be exactly `parts` and `reflection`")
@@ -368,8 +397,9 @@ def validate_guide(key: str, guide: Any, part_count: int) -> None:
             for field in step:
                 if not isinstance(step[field], str) or not step[field].strip():
                     raise JourneyDataError(f"guide {key}.lesson part {part} step {index}.{field}: expected a non-empty string")
+            assert_real_implementation(f"guide {key}.lesson part {part} step {index}.code", step["code"], stub_source)
     if "execution" in guide:
-        validate_execution(key, guide["execution"])
+        validate_execution(key, guide["execution"], stub_source)
 
 
 def build_data(root: Path) -> dict[str, Any]:
@@ -402,7 +432,7 @@ def build_data(root: Path) -> dict[str, Any]:
         example = parse_example(source)
         if not example and key not in LEGACY_EXAMPLE_EXCEPTIONS:
             raise JourneyDataError(f"{key}: absent usage example in {problem['path']}; add a canonical `# Example` block")
-        validate_guide(key, guide, expected_parts)
+        validate_guide(key, guide, expected_parts, source)
         test_source = (root / test_value).read_text()
         result[key] = {
             "id": key,

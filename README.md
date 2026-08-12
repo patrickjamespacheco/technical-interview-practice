@@ -216,6 +216,22 @@ for one isolated build, and restores the active placeholder afterward. It also
 uses a per-run scratch build directory, so stale objects cannot affect results.
 When the active source itself is the answer, `swift test` runs without copying.
 
+#### Reference answers
+
+`swift/practice_problem_answers/reference_answer_<NN>_<name>.swift` holds a
+verified solution for every Swift problem. Each one is also the code shipped in
+that problem's interview execution sheet, so the sheets are known to work rather
+than assumed to. Peeking at one spoils the problem - it is the answer key.
+
+To reproduce that guarantee in one command:
+
+```bash
+./tools/verify_reference_answers.sh
+```
+
+It extracts each execution sheet's code, checks it matches the checked-in
+reference answer, builds all twelve into the package, and runs the full suite.
+
 ## Adding new problems with an AI agent
 ⚠️ WARNING - PLEASE READ: If contributing, please do not add any problems verbatim from actual technical interviews. We don't want to get each other in trouble or cause issues for people actively interviewing. The `CLAUDE.md` file has instructions to scrub actual company names from problems, but please double check the code for that before submitting a PR.
 

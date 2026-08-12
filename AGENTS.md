@@ -223,6 +223,40 @@ Keep this surface separate from `journey.html`: the practice journey must never
 link to or load execution artifacts, and its stage 1–4 leak protections remain
 unchanged.
 
+### Reference answers are the source of every execution sheet
+
+`execution.code` is a claim that the sheet ships working code, so the repo proves
+it rather than trusting it.
+
+Every Swift catalogue problem has a verified reference answer at
+`swift/practice_problem_answers/reference_answer_<NN>_<slug>.swift`, and each
+problem's `execution.code` is byte-identical to that file. Write the solution in
+the reference answer file first, run it against its own suite, then copy it into
+the guide - never the other way round.
+
+```bash
+# one problem, while writing it
+./run_tests.sh -f swift/practice_problem_answers/reference_answer_22_undo_redo_command_stack.swift \
+  -c swift test --filter Problem22UndoRedoCommandStackTests
+
+# every sheet at once: extracts each execution.code, checks it matches its
+# reference answer, builds all twelve into the package, and runs the whole suite
+./tools/verify_reference_answers.sh
+```
+
+Two generator guards back this up, and both fail `--check` naming the problem:
+
+- `execution.code` (and any lesson step's `code`) may not be the problem stub.
+  The comparison ignores whitespace, so a reformatted stub is still the stub.
+- Neither may contain a stub's unimplemented marker (`throw .notImplemented`,
+  `.failure(.notImplemented)`, `raise NotImplementedError`, `TODO`). Declaring
+  `case notImplemented` in a copied error enum is fine; throwing it is not.
+
+Reference answers are teaching artifacts. Write them the way a strong candidate
+writes under interview pressure: the composition chain between parts visible,
+idiomatic Swift, the design idea the problem exists to teach made obvious. Do
+not optimize for cleverness or brevity.
+
 The generator also writes one `journey-sources/<language>-<number>.js` file per
 catalogue entry. These contain the browser-readable stub and test source and are
 loaded on demand under `file://`; never edit or hand-merge them. Regenerate the
