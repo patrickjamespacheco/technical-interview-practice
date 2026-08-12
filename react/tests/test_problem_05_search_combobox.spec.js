@@ -1,4 +1,18 @@
+/**
+ * Playwright tests for Problem 05 — Accessible Async Search Combobox
+ *
+ * Run (from react/):
+ *   npm run test:05
+ *
+ * Determinism: this problem's service seams are real HTTP calls, so every test
+ * intercepts them with `page.route` and controls the debounce with a paused
+ * clock (see tests/helpers/deterministic.js). `page.clock.install()` alone
+ * leaves the fake clock ticking with real time, which lets the 300 ms debounce
+ * fire on its own between two assertions; pausing makes "exactly 300 ms" exact.
+ */
+
 import { test as base, expect } from '@playwright/test'
+import { installFakeTimers, pauseClock } from './helpers/deterministic.js'
 
 const ALPHA_RESULTS = [
   { id: 'result-alpha', label: 'Alpha', kind: 'Document' },
@@ -7,14 +21,18 @@ const ALPHA_RESULTS = [
 
 const test = base.extend({
   freshPage: async ({ page }, use) => {
+    await installFakeTimers(page)
     await page.route('**/api/recent-selections', route => route.fulfill({ status: 204 }))
     await page.goto('/')
+    await pauseClock(page)
     await use(page)
   },
   seededPage: async ({ page }, use) => {
+    await installFakeTimers(page)
     await page.route('**/api/search**', route => route.fulfill({ json: ALPHA_RESULTS.map(item => ({ ...item })) }))
     await page.route('**/api/recent-selections', route => route.fulfill({ status: 204 }))
     await page.goto('/')
+    await pauseClock(page)
     await use(page)
   },
 })
@@ -75,7 +93,9 @@ test.describe('Part 1 — ARIA roles, keyboard navigation, and focus management'
 })
 
 test.describe('Part 2 — debounce, errors, and stale-response suppression', () => {
-  test.beforeEach(async ({ page }) => { await page.clock.install() })
+  // Covers the tests that register their own routes and navigate themselves;
+  // the freshPage/seededPage fixtures install for the tests that use them.
+  test.beforeEach(async ({ page }) => { await installFakeTimers(page) })
 
   test('waits exactly 300 ms before searching and renders loading/results', async ({ seededPage: page }) => {
     let requests = 0
@@ -103,6 +123,7 @@ test.describe('Part 2 — debounce, errors, and stale-response suppression', () 
       else await route.fulfill({ json: [] })
     })
     await page.goto('/')
+    await pauseClock(page)
     const input = page.getByRole('combobox', { name: 'Search workspace' })
     await input.fill('empty-unique')
     await page.clock.fastForward(300)
@@ -118,6 +139,7 @@ test.describe('Part 2 — debounce, errors, and stale-response suppression', () 
       pending.set(new URL(route.request().url()).searchParams.get('q'), route)
     })
     await page.goto('/')
+    await pauseClock(page)
     const input = page.getByRole('combobox', { name: 'Search workspace' })
     await input.fill('al')
     await page.clock.fastForward(300)
@@ -134,7 +156,9 @@ test.describe('Part 2 — debounce, errors, and stale-response suppression', () 
 })
 
 test.describe('Part 3 — cache and optimistic recent selections', () => {
-  test.beforeEach(async ({ page }) => { await page.clock.install() })
+  // Covers the tests that register their own routes and navigate themselves;
+  // the freshPage/seededPage fixtures install for the tests that use them.
+  test.beforeEach(async ({ page }) => { await installFakeTimers(page) })
 
   test('serves a repeated successful query from the instance cache', async ({ page }) => {
     let requests = 0
@@ -144,6 +168,7 @@ test.describe('Part 3 — cache and optimistic recent selections', () => {
     })
     await page.route('**/api/recent-selections', route => route.fulfill({ status: 204 }))
     await page.goto('/')
+    await pauseClock(page)
     const input = page.getByRole('combobox', { name: 'Search workspace' })
     await input.fill('cache-unique')
     await page.clock.fastForward(300)
@@ -173,6 +198,7 @@ test.describe('Part 3 — cache and optimistic recent selections', () => {
     await page.route('**/api/search**', route => route.fulfill({ json: ALPHA_RESULTS.map(item => ({ ...item })) }))
     await page.route('**/api/recent-selections', route => { rejectPersist = route })
     await page.goto('/')
+    await pauseClock(page)
     const input = page.getByRole('combobox', { name: 'Search workspace' })
     await input.fill('rollback-unique')
     await page.clock.fastForward(300)
