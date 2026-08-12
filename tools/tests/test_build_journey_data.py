@@ -149,6 +149,38 @@ class JourneyGeneratorTests(unittest.TestCase):
         with self.assertRaisesRegex(builder.JourneyDataError, "expected a non-empty string"):
             builder.build_data(self.root)
 
+    def test_check_rejects_execution_code_that_is_the_stub(self):
+        guides = self.guides()
+        stub = (self.root / "swift/practice_problems/problem_22_undo_redo_command_stack.swift").read_text()
+        guides["swift-22"]["execution"]["code"] = stub
+        self.write_guides(guides)
+        error = self.check_error()
+        self.assertIn("guide swift-22.execution.code", error)
+        self.assertIn("unimplemented problem stub", error)
+
+    def test_check_rejects_a_reformatted_stub_as_execution_code(self):
+        guides = self.guides()
+        stub = (self.root / "swift/practice_problems/problem_15_tic_tac_toe_engine.swift").read_text()
+        guides["swift-15"]["execution"]["code"] = stub.replace("\n", "\n\n").replace("    ", "\t")
+        self.write_guides(guides)
+        self.assertIn("guide swift-15.execution.code", self.check_error())
+
+    def test_check_rejects_unimplemented_markers_in_shipped_code(self):
+        guides = self.guides()
+        guides["swift-18"]["execution"]["code"] += "\n\nfunc later() throws(InventoryError) { throw .notImplemented }\n"
+        self.write_guides(guides)
+        error = self.check_error()
+        self.assertIn("guide swift-18.execution.code", error)
+        self.assertIn("unimplemented marker", error)
+
+    def test_check_rejects_unimplemented_markers_in_a_lesson_step(self):
+        guides = self.guides()
+        guides["python-03"]["lesson"]["parts"][0]["steps"][0]["code"] = "def create_role(self):\n    raise NotImplementedError"
+        self.write_guides(guides)
+        error = self.check_error()
+        self.assertIn("guide python-03.lesson part 1 step 1.code", error)
+        self.assertIn("unimplemented marker", error)
+
     def test_check_rejects_stale_output(self):
         (self.root / "journey-data.js").write_text("stale\n")
         self.assertIn("stale generated output", self.check_error())
@@ -169,8 +201,13 @@ class JourneyGeneratorTests(unittest.TestCase):
             if problem["language"] == "swift"
         }
         self.assertEqual(swift_keys, {key for key, guide in guides.items() if "execution" in guide})
+        stubs = {
+            builder.problem_identity(problem)[0]: (self.root / problem["path"]).read_text()
+            for problem in builder.parse_problems(self.root / "index.html")
+            if problem["language"] == "swift"
+        }
         for key in swift_keys:
-            builder.validate_execution(key, guides[key]["execution"])
+            builder.validate_execution(key, guides[key]["execution"], stubs[key])
 
     def test_check_rejects_stale_execution_sheet(self):
         path = self.root / "journey-execution/swift-18.js"
