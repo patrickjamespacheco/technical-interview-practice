@@ -247,6 +247,8 @@
     .badge-fintech        { background: #d1fae5; color: #064e3b; }
     .badge-public-safety  { background: #dbeafe; color: #1e3a8a; }
     .badge-legal-tech     { background: #fef3c7; color: #92400e; }
+    .badge-commerce       { background: #ffe4e6; color: #9f1239; }
+    .badge-logistics      { background: #ccfbf1; color: #115e59; }
 
     /* Level */
     .badge-level-junior    { background: #f1f5f9; color: #64748b; }
@@ -758,6 +760,39 @@ const PROBLEMS = [
     industry: "general",
     tags: ["offline-first", "conflict-resolution", "merge", "tombstones", "value-semantics"],
     parts: 3,
+    level: "senior"
+  },
+  {
+    path: "swift/practice_problems/problem_23_availability_zone_maintenance_planner.swift",
+    test: "swift/Tests/Problem23AvailabilityZoneMaintenancePlannerTests/Problem23AvailabilityZoneMaintenancePlannerTests.swift",
+    title: "Availability-Zone Maintenance Planner",
+    description: "Count legal maintenance schedules under gap rules, then maximise cleared debt across linear, ring, and hierarchical fleet topologies with the selected zones reported.",
+    language: "swift",
+    industry: "dev-tools",
+    tags: ["dynamic-programming", "linear-recurrence", "tree-traversal", "scheduling", "reconstruction"],
+    parts: 4,
+    level: "senior"
+  },
+  {
+    path: "swift/practice_problems/problem_24_sensor_drift_window_detector.swift",
+    test: "swift/Tests/Problem24SensorDriftWindowDetectorTests/Problem24SensorDriftWindowDetectorTests.swift",
+    title: "Sensor Drift Window Detector",
+    description: "Locate the worst contiguous drift window in a signed telemetry stream, report its bounds, wrap the analysis around a circular duty cycle, and score drift magnitude in either direction.",
+    language: "swift",
+    industry: "iot",
+    tags: ["dynamic-programming", "kadane", "time-series", "reconstruction", "circular-array"],
+    parts: 4,
+    level: "mid-level"
+  },
+  {
+    path: "swift/practice_problems/problem_25_warehouse_grid_route_planner.swift",
+    test: "swift/Tests/Problem25WarehouseGridRoutePlannerTests/Problem25WarehouseGridRoutePlannerTests.swift",
+    title: "Warehouse Grid Route Planner",
+    description: "Count monotone pick routes across a blocked warehouse grid, minimise traversal cost under configurable drive moves, emit the cheapest route, and size the largest clear staging square.",
+    language: "swift",
+    industry: "logistics",
+    tags: ["dynamic-programming", "grid-traversal", "path-counting", "reconstruction", "obstacles"],
+    parts: 4,
     level: "senior"
   }
 ];
