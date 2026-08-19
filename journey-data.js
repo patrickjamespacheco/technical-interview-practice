@@ -5350,5 +5350,385 @@ window.JOURNEY_PROBLEMS = {
         ]
       }
     }
+  },
+  "swift-26": {
+    "id": "swift-26",
+    "title": "Firmware Bundle Budget Planner",
+    "description": "Fit a constrained over-the-air firmware bundle: fill a byte budget exactly, split modules evenly across A/B slots, maximise shipped value with the chosen modules reported, count skew-balanced assignments, then pad with repeatable parity blocks.",
+    "language": "swift",
+    "industry": "iot",
+    "tags": [
+      "dynamic-programming",
+      "knapsack",
+      "subset-sum",
+      "unbounded-knapsack",
+      "counting"
+    ],
+    "level": "senior",
+    "stubPath": "swift/practice_problems/problem_26_firmware_bundle_budget_planner.swift",
+    "testPath": "swift/Tests/Problem26FirmwareBundleBudgetPlannerTests/Problem26FirmwareBundleBudgetPlannerTests.swift",
+    "sourceScript": "journey-sources/swift-26.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": "let planner = BundlePlanner()\nlet modules = [\n    FeatureModule(id: \"telemetry-v3\", sizeBytes: 4, value: 9),\n    FeatureModule(id: \"ota-resume\",   sizeBytes: 3, value: 6),\n    FeatureModule(id: \"ble-pairing\",  sizeBytes: 5, value: 11),\n    FeatureModule(id: \"crash-dump\",   sizeBytes: 2, value: 3),\n]\ntry planner.canFillExactly(modules: modules, budgetBytes: 7)                       // -> true   (4 + 3)\ntry planner.canFillExactly(modules: modules, budgetBytes: 13)                      // -> false\ntry planner.canSplitEvenly(modules: modules)                                       // -> true   (14 total; 4 + 3 against 5 + 2)\ntry planner.bestSelection(modules: modules, budgetBytes: 8).moduleIDs              // -> [\"ota-resume\", \"ble-pairing\"]\ntry planner.bestValue(modules: modules, budgetBytes: 8)                            // -> 17\ntry planner.assignmentCount(modules: modules, targetSkewBytes: 0)                  // -> 2\ntry planner.assignmentCount(modules: modules, targetSkewBytes: 4)                  // -> 2\ntry planner.fewestParityBlocks(remainingBytes: 6, blockSizes: [4, 3])              // -> 2      (3 + 3, not 4 + ...)\ntry planner.parityBlockCombinationCount(remainingBytes: 5, blockSizes: [2, 3])     // -> 1\ntry planner.parityBlockOrderedSequenceCount(remainingBytes: 5, blockSizes: [2, 3]) // -> 2",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Exact fits and even A/B splits",
+        "contract": "Report whether some subset of the modules fills the budget to the byte, and\nwhether the modules divide into two slots of equal size. Both are the same\nscan, so put it in one private helper - call it reachableSums - and say what\none entry of it means before you write the transition. An odd total needs its\nown early exit; halving it with integer division asks a question nobody\nasked. A non-positive module size and a negative module value are each a\ntyped failure, as is a negative budget."
+      },
+      {
+        "part": 2,
+        "title": "Maximise shipped value and report the choice",
+        "contract": "Report the most valuable set of modules that fits the budget, as the value,\nthe bytes, and the module IDs in input order. Report the value alone too, and\nmake one of these two methods call the other rather than filling a second\ntable. Reporting which modules is what decides the table's shape here: a\nsingle row gives the right number and leaves nothing to walk back through.\nWhere taking a module ties with skipping it, skip it."
+      },
+      {
+        "part": 3,
+        "title": "Count skew-balanced A/B assignments",
+        "contract": "Every module goes to slot A or slot B, so count the assignments where slot A\nends up exactly targetSkewBytes larger than slot B. Naming the bytes in slot\nA names the assignment, and the skew pins that number down - work out what it\npins it to, and what has to be true of it before any assignment exists. What\nis left is Part 1's scan with counts in place of flags. A skew no assignment\ncan reach is zero, not a failure."
+      },
+      {
+        "part": 4,
+        "title": "Pad with repeatable parity blocks",
+        "contract": "Report the fewest parity blocks that pad remainingBytes exactly, how many\ndistinct multisets of blocks do it, and how many ordered sequences do it.\nPart 2's budget loop ran descending, and that is the only reason each module\nshipped once. Here every block size may repeat, so that loop turns around.\nWrite the two counting methods side by side and read them together: they\ndiffer in nothing but which loop is nested inside the other. Padding 5 bytes\nfrom blocks of 2 and 3 is one multiset and two ordered sequences.\nAn empty catalogue, a non-positive block size, and a negative target are each\na typed failure, as is padding that cannot land on the boundary at all - but\nonly for the fewest-blocks method. Counting an impossible padding is zero.\n\n/ One feature module in the over-the-air bundle. Each module is unique and\n/ ships at most once.\npublic struct FeatureModule: Equatable, Sendable {\n    public let id: String\n    public let sizeBytes: Int\n    public let value: Int\n\n    public init(id: String, sizeBytes: Int, value: Int) {\n        self.id = id\n        self.sizeBytes = sizeBytes\n        self.value = value\n    }\n}\n\n/ The modules a plan ships, reported alongside what they cost and what they buy.\npublic struct BundleSelection: Equatable, Sendable {\n    public let totalValue: Int\n    public let totalSizeBytes: Int\n/ The chosen module IDs in the order the modules were supplied.\n    public let moduleIDs: [String]\n\n    public init(totalValue: Int, totalSizeBytes: Int, moduleIDs: [String]) {\n        self.totalValue = totalValue\n        self.totalSizeBytes = totalSizeBytes\n        self.moduleIDs = moduleIDs\n    }\n}\n\npublic enum BundleError: Error, Equatable, Sendable {\n    case negativeBudget\n    case nonPositiveModuleSize(String)\n    case negativeModuleValue(String)\n    case nonPositiveBlockSize(Int)\n    case emptyBlockCatalogue\n    case cannotPadExactly\n    case notImplemented\n}\n\npublic struct BundlePlanner: Sendable {\n    public init() {}\n\nMARK: Part 1 - Exact fits and even A/B splits\n    public func canFillExactly(modules: [FeatureModule], budgetBytes: Int) throws(BundleError) -> Bool {\n        throw .notImplemented\n    }\n\n    public func canSplitEvenly(modules: [FeatureModule]) throws(BundleError) -> Bool {\n        throw .notImplemented\n    }\n\nMARK: Part 2 - Maximise shipped value and report the choice\n    public func bestSelection(modules: [FeatureModule], budgetBytes: Int) throws(BundleError) -> BundleSelection {\n        throw .notImplemented\n    }\n\n    public func bestValue(modules: [FeatureModule], budgetBytes: Int) throws(BundleError) -> Int {\n        throw .notImplemented\n    }\n\nMARK: Part 3 - Count skew-balanced A/B assignments\n    public func assignmentCount(modules: [FeatureModule], targetSkewBytes: Int) throws(BundleError) -> Int {\n        throw .notImplemented\n    }\n\nMARK: Part 4 - Pad with repeatable parity blocks\n    public func fewestParityBlocks(remainingBytes: Int, blockSizes: [Int]) throws(BundleError) -> Int {\n        throw .notImplemented\n    }\n\n    public func parityBlockCombinationCount(remainingBytes: Int, blockSizes: [Int]) throws(BundleError) -> Int {\n        throw .notImplemented\n    }\n\n    public func parityBlockOrderedSequenceCount(remainingBytes: Int, blockSizes: [Int]) throws(BundleError) -> Int {\n        throw .notImplemented\n    }\n}"
+      }
+    ],
+    "testSuites": [
+      "Part 1 - Exact fits and even A/B splits",
+      "Part 2 - Maximise shipped value and report the choice",
+      "Part 3 - Count skew-balanced A/B assignments",
+      "Part 4 - Pad with repeatable parity blocks"
+    ],
+    "partSuites": [
+      [
+        "Part 1 - Exact fits and even A/B splits"
+      ],
+      [
+        "Part 2 - Maximise shipped value and report the choice"
+      ],
+      [
+        "Part 3 - Count skew-balanced A/B assignments"
+      ],
+      [
+        "Part 4 - Pad with repeatable parity blocks"
+      ]
+    ],
+    "commands": {
+      "answerPath": "swift/practice_problem_answers/my_answer_26_firmware_bundle_budget_planner.swift",
+      "copyCommand": "cp swift/practice_problems/problem_26_firmware_bundle_budget_planner.swift swift/practice_problem_answers/my_answer_26_firmware_bundle_budget_planner.swift",
+      "openCommand": "code swift/practice_problems/problem_26_firmware_bundle_budget_planner.swift",
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_26_firmware_bundle_budget_planner.swift -c swift test --filter Problem26FirmwareBundleBudgetPlannerTests",
+      "partTestCommands": [
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_26_firmware_bundle_budget_planner.swift -c swift test --filter Problem26FirmwareBundleBudgetPlannerTests.BundlePart1Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_26_firmware_bundle_budget_planner.swift -c swift test --filter Problem26FirmwareBundleBudgetPlannerTests.BundlePart2Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_26_firmware_bundle_budget_planner.swift -c swift test --filter Problem26FirmwareBundleBudgetPlannerTests.BundlePart3Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_26_firmware_bundle_budget_planner.swift -c swift test --filter Problem26FirmwareBundleBudgetPlannerTests.BundlePart4Tests"
+      ]
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Before writing any loop: what does one entry of your table stand for, and what is true of the entry for a slot with nothing in it yet?",
+          "concepts": [
+            "subset reachability",
+            "one shared scan for both methods",
+            "the odd-total early exit"
+          ],
+          "steps": [
+            "Define one entry as whether some subset of the modules seen so far sums to exactly that many bytes.",
+            "An empty slot is filled by shipping nothing, so seed that entry as reachable and leave every other one unreachable.",
+            "Fold one module at a time across the whole budget, and walk the budget from the top downward so a module cannot be read back into its own pass.",
+            "An even split is the same question asked at half the total, so check the total is even first and then hand it to the exact-fill method rather than writing a second scan."
+          ],
+          "pitfalls": [
+            "halving an odd total with integer division, which quietly asks about a budget nobody has",
+            "walking the budget upward, which lets one module ship more than once",
+            "confusing an unreachable total with the total reached by shipping nothing"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "You have to report which modules ship, not only what they are worth. What does that demand of the table's shape?",
+          "concepts": [
+            "value in place of reachability",
+            "keeping the decisions, not just the answer",
+            "a stated tie rule"
+          ],
+          "steps": [
+            "Keep one row per module rather than reusing a single row, because the walk back has to compare a row against the row before it.",
+            "One entry is the most value obtainable from the modules seen so far inside that many bytes, and the row for no modules is worth nothing at every budget.",
+            "Each entry is the better of skipping the module and taking it, where taking it reads the previous row at a budget smaller by this module's size.",
+            "Walk back from the last row: the module was taken exactly where its entry differs from the entry above it, then reverse what you collected.",
+            "Let the value method call the selection method, so the number and the modules can never disagree."
+          ],
+          "pitfalls": [
+            "collapsing to one row, which still gives the right number and leaves nothing to walk back through",
+            "rebuilding the choice by taking whatever fits from the largest down, which is greed rather than the table's answer",
+            "leaving the tie rule unstated, so the reported modules shift with the input order"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "Every module lands in one slot or the other. What single number does naming the contents of slot A pin down?",
+          "concepts": [
+            "a signed target rewritten as a subset target",
+            "counting where Part 1 flagged",
+            "parity as a feasibility test"
+          ],
+          "steps": [
+            "Write the skew in terms of the bytes in slot A and the bundle total, then solve that for the bytes in slot A.",
+            "That number has to be whole, not negative, and no larger than the total; when it is not, the honest answer is zero assignments rather than a failure.",
+            "Reuse Part 1's scan with counts in place of flags: an empty slot A has exactly one way, and each module adds the ways stored its own size below.",
+            "Read the answer at the pinned slot A size."
+          ],
+          "pitfalls": [
+            "forgetting that the modules left out are slot B, so each subset already is a whole assignment",
+            "throwing on a skew no assignment reaches instead of reporting zero",
+            "seeding the empty slot at zero ways, which makes every later entry zero too"
+          ]
+        },
+        {
+          "part": 4,
+          "prompt": "Part 2's budget loop ran downward, and that is the only reason each module shipped once. What does turning it around buy you here?",
+          "concepts": [
+            "reuse expressed as loop direction",
+            "an unreachable value that cannot overflow",
+            "multisets against ordered sequences"
+          ],
+          "steps": [
+            "Walk the padding total upward, so a block already placed is visible again in the same pass and one size may repeat.",
+            "For the fewest blocks, make the unreachable value one more than the target: incrementing it is always safe and it can never be mistaken for a real answer.",
+            "For the multiset count, keep the block size on the outside, so every multiset is reached in one fixed block order and counted exactly once.",
+            "For the sequence count, put the padding total on the outside instead and let every block size take a turn at being written last. Nothing else about the two methods differs."
+          ],
+          "pitfalls": [
+            "using the largest representable integer as unreachable and then adding one to it",
+            "nesting the two counting loops the same way, which silently answers one question twice",
+            "taking the largest block that fits at each step, which can miss an exact padding entirely"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "The best value keeps rising with the budget long after every module could have shipped",
+            "cause": "The budget loop runs upward, so a module is read back into its own pass and ships several times",
+            "check": "Offer one module of one byte worth five against a four-byte budget and confirm the answer is five rather than twenty."
+          },
+          {
+            "symptom": "A bundle whose total is odd is reported as splitting evenly",
+            "cause": "The total was halved with integer division before anything checked that it was even",
+            "check": "Ask a two-module bundle of four and three bytes whether it splits evenly and confirm the answer is no."
+          },
+          {
+            "symptom": "The reported module IDs do not add up to the reported value or the reported bytes",
+            "cause": "The selection was rebuilt greedily instead of walked back out of the same table the value came from",
+            "check": "Sum the sizes and values of the reported IDs on the worked bundle at a budget of eight and compare them with the reported totals."
+          },
+          {
+            "symptom": "The multiset count and the ordered sequence count come out equal on every input",
+            "cause": "Both methods nest their loops the same way, so both are answering the same question",
+            "check": "Pad five bytes from blocks of two and three and confirm the two counts are one and two."
+          },
+          {
+            "symptom": "The fewest-blocks method returns a huge or negative number instead of refusing",
+            "cause": "The unreachable value was the largest representable integer, and adding one to it wrapped around into a winning candidate",
+            "check": "Pad seven bytes from a catalogue holding only a four-byte block and confirm it is a typed failure."
+          }
+        ]
+      }
+    }
+  },
+  "swift-27": {
+    "id": "swift-27",
+    "title": "Log Token Segmenter",
+    "description": "Segment unspaced service identifiers against a known-segment vocabulary: decide feasibility, return one canonical split, enumerate every valid split, then minimise segmentation penalty.",
+    "language": "swift",
+    "industry": "dev-tools",
+    "tags": [
+      "dynamic-programming",
+      "string-segmentation",
+      "memoisation",
+      "backtracking",
+      "vocabulary"
+    ],
+    "level": "senior",
+    "stubPath": "swift/practice_problems/problem_27_log_token_segmenter.swift",
+    "testPath": "swift/Tests/Problem27LogTokenSegmenterTests/Problem27LogTokenSegmenterTests.swift",
+    "sourceScript": "journey-sources/swift-27.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": "let segmenter = try LogTokenSegmenter(vocabulary: [\n    VocabularySegment(text: \"auth\",      penalty: 1),\n    VocabularySegment(text: \"token\",     penalty: 1),\n    VocabularySegment(text: \"authtoken\", penalty: 5),\n    VocabularySegment(text: \"refresh\",   penalty: 1),\n])\nsegmenter.canSegment(\"authtokenrefresh\")            // -> true\nsegmenter.canSegment(\"authtokenexpire\")             // -> false\ntry segmenter.firstSegmentation(\"authtokenrefresh\") // -> [\"auth\", \"token\", \"refresh\"]\nsegmenter.allSegmentations(\"authtokenrefresh\")\n-> [[\"auth\", \"token\", \"refresh\"], [\"authtoken\", \"refresh\"]]\ntry segmenter.cheapestSegmentation(\"authtokenrefresh\")\n-> Segmentation(segments: [\"auth\", \"token\", \"refresh\"], totalPenalty: 3)\nThe two-segment split costs 5 + 1; the three-segment split costs 1 + 1 + 1.",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Decide whether an identifier segments",
+        "contract": "Report whether the identifier is entirely covered by known segments. Work\nover prefixes: say what one entry of your table means before you write the\ntransition, and be deliberate about the shortest prefix of all, because\nwithout the right answer there every other entry stays false. Matching the\nlongest known segment at each step is a different and wrong question.\nThe vocabulary is validated in init: an empty vocabulary, an empty segment\ntext, a negative penalty, and a repeated segment text are each a typed\nfailure. Cache whatever init can compute once."
+      },
+      {
+        "part": 2,
+        "title": "Return one canonical segmentation",
+        "contract": "Report one segmentation. Part 1 already visits every place the last segment\ncould begin; recording which one worked is all this part adds, so share one\nprivate helper with Part 1 rather than scanning twice. Scan those split\npoints nearest-first and keep the first that works: that fixes the canonical\nanswer as the one whose last segment is shortest, and the same rule then\napplies at every earlier cut. An identifier that does not segment is a typed\nfailure rather than a partial answer."
+      },
+      {
+        "part": 3,
+        "title": "Enumerate every segmentation",
+        "contract": "Report every segmentation, ordered by ascending first-segment length. Part\n1's table answers \"is there one\" and cannot answer \"give me all of them\",\nbecause the answer is not a number. Change the shape from a table to a\nrecursion over start positions, and keep a memo. Be clear about what the memo\nbuys: it bounds the work spent per position, not the size of the output,\nwhich really can grow exponentially. Part 1 is still worth calling first as a\ncheap way to refuse the hopeless cases."
+      },
+      {
+        "part": 4,
+        "title": "Cheapest segmentation",
+        "contract": "Report the least-penalty segmentation and what it costs. This is Part 1's\nloop with a minimum in place of the yes-or-no, and Part 2's walk-back over\nthe cuts it records, so two of the three moving pieces already exist. Fewer\nsegments is not automatically cheaper. Decide what an unreached prefix holds\nbefore you write the comparison, and never let a cost be added to it. Resolve\nties the same way Part 2 does, toward the shorter last segment.\n\n/ One known segment in the service registry's vocabulary, with the confidence\n/ penalty the pipeline pays for using it. Lower is more confident.\npublic struct VocabularySegment: Equatable, Sendable {\n    public let text: String\n    public let penalty: Int\n\n    public init(text: String, penalty: Int) {\n        self.text = text\n        self.penalty = penalty\n    }\n}\n\n/ A segmentation and what it costs.\npublic struct Segmentation: Equatable, Sendable {\n    public let segments: [String]\n    public let totalPenalty: Int\n\n    public init(segments: [String], totalPenalty: Int) {\n        self.segments = segments\n        self.totalPenalty = totalPenalty\n    }\n}\n\npublic enum SegmenterError: Error, Equatable, Sendable {\n    case emptyVocabulary\n    case emptySegmentText\n    case negativePenalty(String)\n    case duplicateSegmentText(String)\n    case noValidSegmentation\n    case notImplemented\n}\n\npublic struct LogTokenSegmenter: Sendable {\n    public init(vocabulary: [VocabularySegment]) throws(SegmenterError) {\n        throw .notImplemented\n    }\n\nMARK: Part 1 - Decide whether an identifier segments\n    public func canSegment(_ identifier: String) -> Bool {\n        false\n    }\n\nMARK: Part 2 - Return one canonical segmentation\n    public func firstSegmentation(_ identifier: String) throws(SegmenterError) -> [String] {\n        throw .notImplemented\n    }\n\nMARK: Part 3 - Enumerate every segmentation\n    public func allSegmentations(_ identifier: String) -> [[String]] {\n        []\n    }\n\nMARK: Part 4 - Cheapest segmentation\n    public func cheapestSegmentation(_ identifier: String) throws(SegmenterError) -> Segmentation {\n        throw .notImplemented\n    }\n}"
+      }
+    ],
+    "testSuites": [
+      "Part 1 - Decide whether an identifier segments",
+      "Part 2 - Return one canonical segmentation",
+      "Part 3 - Enumerate every segmentation",
+      "Part 4 - Cheapest segmentation"
+    ],
+    "partSuites": [
+      [
+        "Part 1 - Decide whether an identifier segments"
+      ],
+      [
+        "Part 2 - Return one canonical segmentation"
+      ],
+      [
+        "Part 3 - Enumerate every segmentation"
+      ],
+      [
+        "Part 4 - Cheapest segmentation"
+      ]
+    ],
+    "commands": {
+      "answerPath": "swift/practice_problem_answers/my_answer_27_log_token_segmenter.swift",
+      "copyCommand": "cp swift/practice_problems/problem_27_log_token_segmenter.swift swift/practice_problem_answers/my_answer_27_log_token_segmenter.swift",
+      "openCommand": "code swift/practice_problems/problem_27_log_token_segmenter.swift",
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_27_log_token_segmenter.swift -c swift test --filter Problem27LogTokenSegmenterTests",
+      "partTestCommands": [
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_27_log_token_segmenter.swift -c swift test --filter Problem27LogTokenSegmenterTests.SegmenterPart1Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_27_log_token_segmenter.swift -c swift test --filter Problem27LogTokenSegmenterTests.SegmenterPart2Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_27_log_token_segmenter.swift -c swift test --filter Problem27LogTokenSegmenterTests.SegmenterPart3Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_27_log_token_segmenter.swift -c swift test --filter Problem27LogTokenSegmenterTests.SegmenterPart4Tests"
+      ]
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Index by prefix length rather than by character position, and say what one entry means before writing anything. What is true of the shortest prefix of all?",
+          "concepts": [
+            "state over prefixes",
+            "an inner loop over the last piece",
+            "the empty prefix as the base case"
+          ],
+          "steps": [
+            "Define one entry as whether the first so-many characters are covered entirely by known segments.",
+            "The empty prefix is covered by using no segments at all, so it starts true; without that every other entry stays false forever.",
+            "For each prefix in turn, try every place its last segment could have begun, and accept the prefix when that earlier prefix was covered and the piece between them is known.",
+            "Turn the identifier into an array of characters once in advance, and let the longest vocabulary entry bound how far back the inner loop looks."
+          ],
+          "pitfalls": [
+            "leaving the empty prefix false, which makes every identifier look unsegmentable",
+            "matching the longest known segment at each step and moving on, which answers a different and easier question",
+            "stepping a string index through the inner loop, which is linear work every time and turns a quadratic scan cubic"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "Part 1 already visits every place the last segment could begin. What is the smallest thing you can record while it does that?",
+          "concepts": [
+            "recording the cut, not just the flag",
+            "walking a cut record backwards",
+            "a canonical order chosen on purpose"
+          ],
+          "steps": [
+            "Extend Part 1's scan to remember, for each covered prefix, where its last segment began, and share that one helper between both parts.",
+            "Scan the candidate split points nearest first and keep the first that works, which fixes the canonical answer as the one whose last segment is shortest.",
+            "Walk that record back from the whole identifier to the empty prefix, collecting pieces, then reverse them into reading order.",
+            "An identifier the scan never covers is a typed failure rather than whatever partial walk you happen to have."
+          ],
+          "pitfalls": [
+            "running the scan a second time instead of recording the cut the first time round",
+            "overwriting the recorded cut on every later match, so the stated tie rule is not the one the code follows",
+            "returning the pieces in the order the walk produced them"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "One table entry can hold a yes or a count. What is it that it cannot hold cheaply, and what does that force you to change?",
+          "concepts": [
+            "memoised recursion over start positions",
+            "what a memo does and does not bound",
+            "an output that can outgrow the input"
+          ],
+          "steps": [
+            "Notice the answer is a set of splits rather than a number, so the shape has to change from a table filled forwards to a recursion asking about suffixes.",
+            "Ask for every split of the rest of the identifier from a given start, and prepend each known piece beginning there to each of those.",
+            "The empty suffix has exactly one split, and it is the one containing nothing.",
+            "Memoise by start position so each position is solved once, and say plainly that this bounds the work per position and not the size of the answer.",
+            "Try the pieces in increasing length so the results come out ordered by first-segment length, and let Part 1 refuse the hopeless identifiers cheaply first."
+          ],
+          "pitfalls": [
+            "recursing without a memo, which is exponential on a long run of repeats",
+            "keying the memo on the remaining text instead of the position, which works and allocates enormously",
+            "assuming the memo makes the whole call fast, when a long run genuinely has exponentially many splits to emit"
+          ]
+        },
+        {
+          "part": 4,
+          "prompt": "Same loop as Part 1, same walk back as Part 2. What has to change, and what has to be true of a prefix nothing reaches?",
+          "concepts": [
+            "a minimum in place of a yes or no",
+            "an unreached prefix as its own value",
+            "reusing the walk-back helper"
+          ],
+          "steps": [
+            "Keep Part 1's prefix loop and its inner scan over the last piece, and store the least penalty reaching each prefix instead of a flag.",
+            "The empty prefix costs nothing; every other prefix starts unreached, and a cost must never be added to an unreached one.",
+            "Record the split point that produced each improvement, and hand that record to the same walk-back helper Part 2 already uses.",
+            "Compare strictly so the first candidate a nearest-first scan finds survives a tie, which keeps this part's answer consistent with Part 2's."
+          ],
+          "pitfalls": [
+            "assuming the split with the fewest segments is the cheapest one, which the vocabulary can easily contradict",
+            "adding a penalty to a prefix nothing reaches, so an impossible route wins the minimum",
+            "building a second walk-back for this part and letting the two tie rules drift apart"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "Every identifier is reported as unsegmentable, even ones made of a single known segment",
+            "cause": "The empty prefix was left false, so no prefix ever has a covered predecessor to build on",
+            "check": "Ask an identifier that is exactly one vocabulary entry and confirm it segments."
+          },
+          {
+            "symptom": "An identifier is refused whose pieces are all in the vocabulary",
+            "cause": "Each step took the longest match it could and moved on, instead of trying every place the last segment could begin",
+            "check": "With entries of one, two and three repeated characters, confirm a run of four segments and a run of five followed by an unknown character does not."
+          },
+          {
+            "symptom": "The enumeration hangs or takes seconds on a long run of repeats",
+            "cause": "The recursion has no memo, so the same start position is solved once per path that reaches it",
+            "check": "Enumerate a twenty-character run against entries of one and two characters and confirm it returns promptly."
+          },
+          {
+            "symptom": "The canonical split and the cheapest split disagree on an identifier where every penalty is the same",
+            "cause": "The two parts resolve ties in opposite directions because each grew its own walk-back",
+            "check": "Give every entry the same penalty and confirm the cheapest split's penalty is that value times its number of segments."
+          },
+          {
+            "symptom": "The cheapest split is always the one with the fewest segments",
+            "cause": "The minimum is being taken over segment counts rather than penalties, or an unreached prefix is being treated as costing nothing",
+            "check": "Give one long entry a penalty higher than the sum of the short entries covering the same characters and confirm the longer split loses."
+          }
+        ]
+      }
+    }
   }
 };

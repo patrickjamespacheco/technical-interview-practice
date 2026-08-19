@@ -19,7 +19,9 @@ let package = Package(
         .library(name: "Problem20OfflineSyncConflictResolver", targets: ["Problem20OfflineSyncConflictResolver"]),
         .library(name: "Problem23AvailabilityZoneMaintenancePlanner", targets: ["Problem23AvailabilityZoneMaintenancePlanner"]),
         .library(name: "Problem24SensorDriftWindowDetector", targets: ["Problem24SensorDriftWindowDetector"]),
-        .library(name: "Problem25WarehouseGridRoutePlanner", targets: ["Problem25WarehouseGridRoutePlanner"])
+        .library(name: "Problem25WarehouseGridRoutePlanner", targets: ["Problem25WarehouseGridRoutePlanner"]),
+        .library(name: "Problem26FirmwareBundleBudgetPlanner", targets: ["Problem26FirmwareBundleBudgetPlanner"]),
+        .library(name: "Problem27LogTokenSegmenter", targets: ["Problem27LogTokenSegmenter"])
     ],
     targets: [
         .target(name: "Problem03PermissionManager"),
@@ -51,6 +53,10 @@ let package = Package(
         .target(name: "Problem24SensorDriftWindowDetector"),
         .testTarget(name: "Problem24SensorDriftWindowDetectorTests", dependencies: ["Problem24SensorDriftWindowDetector"]),
         .target(name: "Problem25WarehouseGridRoutePlanner"),
-        .testTarget(name: "Problem25WarehouseGridRoutePlannerTests", dependencies: ["Problem25WarehouseGridRoutePlanner"])
+        .testTarget(name: "Problem25WarehouseGridRoutePlannerTests", dependencies: ["Problem25WarehouseGridRoutePlanner"]),
+        .target(name: "Problem26FirmwareBundleBudgetPlanner"),
+        .testTarget(name: "Problem26FirmwareBundleBudgetPlannerTests", dependencies: ["Problem26FirmwareBundleBudgetPlanner"]),
+        .target(name: "Problem27LogTokenSegmenter"),
+        .testTarget(name: "Problem27LogTokenSegmenterTests", dependencies: ["Problem27LogTokenSegmenter"])
     ]
 )
