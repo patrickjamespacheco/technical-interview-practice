@@ -3879,5 +3879,384 @@
       },
       "code": "/// One cell of the warehouse floor: either drivable at a known cost, or closed\n/// for restocking.\npublic enum Aisle: Equatable, Sendable {\n    case open(traversalCost: Int)\n    case blocked\n}\n\npublic struct GridPosition: Hashable, Sendable {\n    public let row: Int\n    public let column: Int\n\n    public init(row: Int, column: Int) {\n        self.row = row\n        self.column = column\n    }\n}\n\n/// The forward moves a chassis can make. A rail chassis has east and south; a\n/// free chassis adds southEast. Every move increases the row or the column, so\n/// no route can revisit a cell.\npublic enum DriveMove: Hashable, Sendable, CaseIterable {\n    case east\n    case south\n    case southEast\n}\n\npublic enum RouteError: Error, Equatable, Sendable {\n    case emptyGrid\n    case raggedGrid\n    case negativeTraversalCost\n    case emptyMoveSet\n    case unreachableDestination\n    case notImplemented\n}\n\npublic struct RoutePlanner: Sendable {\n    /// The order ties are resolved in when a route is reconstructed. It is the\n    /// declaration order of DriveMove, stated once so the tie rule is a fact\n    /// about the planner rather than an accident of a loop.\n    private static let moveOrder: [DriveMove] = [.east, .south, .southEast]\n\n    public init() {}\n\n    // MARK: Part 1 - Count monotone routes\n\n    /// How many east/south routes cross the floor from the north-west corner to\n    /// the south-east one.\n    ///\n    /// One entry counts the routes that end on that cell, so a cell's entry is\n    /// the sum of the entries of the cells a picker could have arrived from. A\n    /// blocked cell ends no routes and therefore contributes nothing, which is\n    /// what propagates a closed aisle along the first row and the first column.\n    public func routeCount(grid: [[Aisle]]) throws(RouteError) -> Int {\n        try validate(grid)\n        let railMoves: Set<DriveMove> = [.east, .south]\n        var routes = Array(repeating: Array(repeating: 0, count: grid[0].count), count: grid.count)\n\n        for row in 0..<grid.count {\n            for column in 0..<grid[row].count {\n                guard case .open = grid[row][column] else { continue }\n                if row == 0 && column == 0 {\n                    routes[0][0] = 1\n                    continue\n                }\n                let position = GridPosition(row: row, column: column)\n                for predecessor in predecessors(of: position, in: grid, moves: railMoves) {\n                    routes[row][column] += routes[predecessor.row][predecessor.column]\n                }\n            }\n        }\n\n        return routes[grid.count - 1][grid[0].count - 1]\n    }\n\n    // MARK: Part 2 - Cheapest traversal cost\n\n    public func cheapestCost(grid: [[Aisle]], moves: Set<DriveMove>) throws(RouteError) -> Int {\n        let costs = try costTable(grid, moves)\n        guard let destination = costs[grid.count - 1][grid[0].count - 1] else {\n            throw .unreachableDestination\n        }\n        return destination\n    }\n\n    // MARK: Part 3 - Emit the cheapest route\n\n    /// The route is read back out of the same table the cost came from. A cell is\n    /// on the cheapest route when its own cost plus a predecessor's cost equals\n    /// its entry; ties resolve to the earliest move in the planner's move order.\n    public func cheapestRoute(grid: [[Aisle]], moves: Set<DriveMove>) throws(RouteError) -> [GridPosition] {\n        let costs = try costTable(grid, moves)\n        var position = GridPosition(row: grid.count - 1, column: grid[0].count - 1)\n        guard let total = costs[position.row][position.column] else { throw .unreachableDestination }\n\n        var reversedRoute = [position]\n        var remaining = total\n        while position.row != 0 || position.column != 0 {\n            let cost = traversalCost(of: position, in: grid) ?? 0\n            let step = predecessors(of: position, in: grid, moves: moves).first { predecessor in\n                costs[predecessor.row][predecessor.column].map { $0 + cost == remaining } ?? false\n            }\n            guard let step else { break }\n            reversedRoute.append(step)\n            remaining -= cost\n            position = step\n        }\n\n        return reversedRoute.reversed()\n    }\n\n    // MARK: Part 4 - Largest clear staging square\n\n    /// Parts 1 to 3 folded over the cells a route could arrive from. This folds\n    /// over a cell's three northern and western neighbours to grow a region, so\n    /// an entry now means the side of the largest all-open square whose\n    /// south-east corner is that cell. Same grid, same row-major order, a\n    /// different meaning for one entry.\n    public func largestClearSquareSide(grid: [[Aisle]]) throws(RouteError) -> Int {\n        try squareTable(grid).lazy.map { $0.max() ?? 0 }.max() ?? 0\n    }\n\n    /// Every entry of that table is also the number of all-open squares whose\n    /// south-east corner is that cell, so the count is the same table summed\n    /// rather than maximised. The table is the asset; the answer is a fold.\n    public func clearSquareCount(grid: [[Aisle]]) throws(RouteError) -> Int {\n        try squareTable(grid).reduce(0) { $0 + $1.reduce(0, +) }\n    }\n\n    // MARK: Shared machinery\n\n    private func validate(_ grid: [[Aisle]]) throws(RouteError) {\n        guard let firstRow = grid.first, !firstRow.isEmpty else { throw .emptyGrid }\n        for row in grid where row.count != firstRow.count { throw .raggedGrid }\n        for row in grid {\n            for aisle in row {\n                if case .open(let cost) = aisle, cost < 0 { throw .negativeTraversalCost }\n            }\n        }\n    }\n\n    private func traversalCost(of position: GridPosition, in grid: [[Aisle]]) -> Int? {\n        guard case .open(let cost) = grid[position.row][position.column] else { return nil }\n        return cost\n    }\n\n    /// The cells a picker could have arrived at `position` from, in the planner's\n    /// move order. The movement model lives here so Part 1 and Parts 2 and 3\n    /// cannot disagree about what a legal step is, even though they fold over\n    /// these cells differently.\n    private func predecessors(\n        of position: GridPosition,\n        in grid: [[Aisle]],\n        moves: Set<DriveMove>\n    ) -> [GridPosition] {\n        var found: [GridPosition] = []\n        for move in Self.moveOrder where moves.contains(move) {\n            let candidate: GridPosition\n            switch move {\n            case .east: candidate = GridPosition(row: position.row, column: position.column - 1)\n            case .south: candidate = GridPosition(row: position.row - 1, column: position.column)\n            case .southEast: candidate = GridPosition(row: position.row - 1, column: position.column - 1)\n            }\n            guard candidate.row >= 0, candidate.column >= 0 else { continue }\n            found.append(candidate)\n        }\n        return found\n    }\n\n    /// The cheapest cost of reaching each cell, or nil where no legal route\n    /// reaches it. Part 2 reads its corner; Part 3 walks it backwards.\n    private func costTable(_ grid: [[Aisle]], _ moves: Set<DriveMove>) throws(RouteError) -> [[Int?]] {\n        try validate(grid)\n        guard !moves.isEmpty else { throw .emptyMoveSet }\n\n        var costs: [[Int?]] = Array(repeating: Array(repeating: nil, count: grid[0].count), count: grid.count)\n        for row in 0..<grid.count {\n            for column in 0..<grid[row].count {\n                let position = GridPosition(row: row, column: column)\n                guard let cost = traversalCost(of: position, in: grid) else { continue }\n                if row == 0 && column == 0 {\n                    costs[0][0] = cost\n                    continue\n                }\n                let reachable = predecessors(of: position, in: grid, moves: moves).compactMap { costs[$0.row][$0.column] }\n                if let best = reachable.min() {\n                    costs[row][column] = best + cost\n                }\n            }\n        }\n        return costs\n    }\n\n    /// The side of the largest all-open square ending at each cell.\n    private func squareTable(_ grid: [[Aisle]]) throws(RouteError) -> [[Int]] {\n        try validate(grid)\n        var sides = Array(repeating: Array(repeating: 0, count: grid[0].count), count: grid.count)\n        for row in 0..<grid.count {\n            for column in 0..<grid[row].count {\n                guard case .open = grid[row][column] else { continue }\n                if row == 0 || column == 0 {\n                    sides[row][column] = 1\n                } else {\n                    sides[row][column] = 1 + min(\n                        sides[row - 1][column],\n                        sides[row][column - 1],\n                        sides[row - 1][column - 1]\n                    )\n                }\n            }\n        }\n        return sides\n    }\n}\n"
     }
-  }
+  },
+    "swift-26": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Before writing any loop: what does one entry of your table stand for, and what is true of the entry for a slot with nothing in it yet?",
+          "concepts": [
+            "subset reachability",
+            "one shared scan for both methods",
+            "the odd-total early exit"
+          ],
+          "steps": [
+            "Define one entry as whether some subset of the modules seen so far sums to exactly that many bytes.",
+            "An empty slot is filled by shipping nothing, so seed that entry as reachable and leave every other one unreachable.",
+            "Fold one module at a time across the whole budget, and walk the budget from the top downward so a module cannot be read back into its own pass.",
+            "An even split is the same question asked at half the total, so check the total is even first and then hand it to the exact-fill method rather than writing a second scan."
+          ],
+          "pitfalls": [
+            "halving an odd total with integer division, which quietly asks about a budget nobody has",
+            "walking the budget upward, which lets one module ship more than once",
+            "confusing an unreachable total with the total reached by shipping nothing"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "You have to report which modules ship, not only what they are worth. What does that demand of the table's shape?",
+          "concepts": [
+            "value in place of reachability",
+            "keeping the decisions, not just the answer",
+            "a stated tie rule"
+          ],
+          "steps": [
+            "Keep one row per module rather than reusing a single row, because the walk back has to compare a row against the row before it.",
+            "One entry is the most value obtainable from the modules seen so far inside that many bytes, and the row for no modules is worth nothing at every budget.",
+            "Each entry is the better of skipping the module and taking it, where taking it reads the previous row at a budget smaller by this module's size.",
+            "Walk back from the last row: the module was taken exactly where its entry differs from the entry above it, then reverse what you collected.",
+            "Let the value method call the selection method, so the number and the modules can never disagree."
+          ],
+          "pitfalls": [
+            "collapsing to one row, which still gives the right number and leaves nothing to walk back through",
+            "rebuilding the choice by taking whatever fits from the largest down, which is greed rather than the table's answer",
+            "leaving the tie rule unstated, so the reported modules shift with the input order"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "Every module lands in one slot or the other. What single number does naming the contents of slot A pin down?",
+          "concepts": [
+            "a signed target rewritten as a subset target",
+            "counting where Part 1 flagged",
+            "parity as a feasibility test"
+          ],
+          "steps": [
+            "Write the skew in terms of the bytes in slot A and the bundle total, then solve that for the bytes in slot A.",
+            "That number has to be whole, not negative, and no larger than the total; when it is not, the honest answer is zero assignments rather than a failure.",
+            "Reuse Part 1's scan with counts in place of flags: an empty slot A has exactly one way, and each module adds the ways stored its own size below.",
+            "Read the answer at the pinned slot A size."
+          ],
+          "pitfalls": [
+            "forgetting that the modules left out are slot B, so each subset already is a whole assignment",
+            "throwing on a skew no assignment reaches instead of reporting zero",
+            "seeding the empty slot at zero ways, which makes every later entry zero too"
+          ]
+        },
+        {
+          "part": 4,
+          "prompt": "Part 2's budget loop ran downward, and that is the only reason each module shipped once. What does turning it around buy you here?",
+          "concepts": [
+            "reuse expressed as loop direction",
+            "an unreachable value that cannot overflow",
+            "multisets against ordered sequences"
+          ],
+          "steps": [
+            "Walk the padding total upward, so a block already placed is visible again in the same pass and one size may repeat.",
+            "For the fewest blocks, make the unreachable value one more than the target: incrementing it is always safe and it can never be mistaken for a real answer.",
+            "For the multiset count, keep the block size on the outside, so every multiset is reached in one fixed block order and counted exactly once.",
+            "For the sequence count, put the padding total on the outside instead and let every block size take a turn at being written last. Nothing else about the two methods differs."
+          ],
+          "pitfalls": [
+            "using the largest representable integer as unreachable and then adding one to it",
+            "nesting the two counting loops the same way, which silently answers one question twice",
+            "taking the largest block that fits at each step, which can miss an exact padding entirely"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "The best value keeps rising with the budget long after every module could have shipped",
+            "cause": "The budget loop runs upward, so a module is read back into its own pass and ships several times",
+            "check": "Offer one module of one byte worth five against a four-byte budget and confirm the answer is five rather than twenty."
+          },
+          {
+            "symptom": "A bundle whose total is odd is reported as splitting evenly",
+            "cause": "The total was halved with integer division before anything checked that it was even",
+            "check": "Ask a two-module bundle of four and three bytes whether it splits evenly and confirm the answer is no."
+          },
+          {
+            "symptom": "The reported module IDs do not add up to the reported value or the reported bytes",
+            "cause": "The selection was rebuilt greedily instead of walked back out of the same table the value came from",
+            "check": "Sum the sizes and values of the reported IDs on the worked bundle at a budget of eight and compare them with the reported totals."
+          },
+          {
+            "symptom": "The multiset count and the ordered sequence count come out equal on every input",
+            "cause": "Both methods nest their loops the same way, so both are answering the same question",
+            "check": "Pad five bytes from blocks of two and three and confirm the two counts are one and two."
+          },
+          {
+            "symptom": "The fewest-blocks method returns a huge or negative number instead of refusing",
+            "cause": "The unreachable value was the largest representable integer, and adding one to it wrapped around into a winning candidate",
+            "check": "Pad seven bytes from a catalogue holding only a four-byte block and confirm it is a typed failure."
+          }
+        ]
+      },
+      "execution": {
+        "timeBudget": {
+          "navigation": 4,
+          "solution": 9,
+          "coding": 26,
+          "verification": 6
+        },
+        "navigation": {
+          "say": "There are two different supply models in this bundle, so before I write anything I want to separate the modules, which ship at most once, from the parity blocks, which repeat.",
+          "questions": [
+            "Is the budget a hard exact fill for Part 1, or an at-most ceiling like it is for the value question?",
+            "When two selections tie on value, which one should the planner report?",
+            "Does the skew count treat the two slots as labelled, so putting a module in A and in B are different assignments?"
+          ],
+          "assumptions": [
+            "Part 1 fills exactly; Part 2 fits within the budget and need not use all of it.",
+            "Where taking a module ties with skipping it, the planner skips it, and the reported IDs stay in input order.",
+            "The slots are labelled, so a skew of plus four and a skew of minus four are counted separately even though the totals mirror.",
+            "A non-positive module size, a negative value, a negative budget, an empty block catalogue, a non-positive block size, and padding that cannot land exactly are all typed failures."
+          ],
+          "edgeCases": [
+            "a budget of zero, which is filled exactly by shipping nothing",
+            "a module larger than the whole budget",
+            "an odd bundle total, which can never split evenly",
+            "a skew larger than the bundle, or of the wrong parity, which has no assignment at all",
+            "padding of zero bytes, which needs no blocks and has exactly one way of needing none"
+          ],
+          "restate": "Decide whether a byte budget fills exactly and whether the modules halve, pick the most valuable modules inside a budget and say which they are, count the A/B assignments hitting a target skew, and pad the leftover bytes with repeatable parity blocks."
+        },
+        "solution": {
+          "pitch": "One array indexed by bytes, one inner update, and the direction of the inner loop is the whole difference between a module that ships once and a parity block that repeats. Parts 1 to 3 walk it downward; Part 4 walks it upward. Everything else is which operator combines the entries.",
+          "dataStructures": [
+            "A one-dimensional array over byte totals for the reachability scan, the counting scan, and all three padding methods, since none of them has to report a choice.",
+            "A two-dimensional table for the value question, kept two-dimensional precisely because the selection has to be walked back out of it."
+          ],
+          "types": [
+            "FeatureModule carries the id alongside the size and value, so the answer can name modules rather than indices.",
+            "BundleSelection reports the value, the bytes and the IDs together, which is what lets the value method be a projection of it instead of a second table.",
+            "BundleError distinguishes a malformed input from padding that genuinely cannot land on the boundary, and the counting methods deliberately report zero rather than throwing."
+          ],
+          "composition": "canSplitEvenly is canFillExactly asked at half the total after the odd-total exit, and both go through one private reachableSums scan. assignmentCount runs that same scan with counts in place of flags, which is the same table under a different operator. bestValue is bestSelection projected, so there is exactly one value table in the file.",
+          "tradeoff": "The value table could collapse to one row and halve the memory. That is the standard optimisation and it forfeits the reconstruction entirely, which is why Part 2 keeps every row: with one row there is nothing left to compare against.",
+          "trap": "Turning the inner loop around by accident. Ascending in Part 2 turns 0/1 into unbounded and produces a larger, entirely plausible answer that survives a casual test; descending in Part 4 makes each block usable once and quietly answers a subset question instead."
+        },
+        "coding": {
+          "order": [
+            "Validate the modules once in a private helper, then write the reachability scan and let both Part 1 methods call it.",
+            "Write the counting scan next while the descending loop is still fresh, and note out loud that only the operator changed.",
+            "Build the two-dimensional value table, return its corner, then walk it back for the selection.",
+            "Finish with the three padding methods, writing the two counting ones next to each other so the nesting difference is visible."
+          ],
+          "commentary": [
+            "One entry here means some subset reaches exactly this many bytes, and the empty slot is reachable by shipping nothing.",
+            "I am walking the budget downward on purpose: that is what stops a module being read back into its own pass, and it is the only thing making this a ship-once problem.",
+            "The counting scan is the same loop with a sum where the reachability scan had a disjunction. Same table, different operator.",
+            "I am keeping the whole value table because the question asks which modules ship, and a single collapsed row cannot answer that.",
+            "For the padding I turn the inner loop around, and now a block placed earlier in this pass is visible again, which is exactly what makes it repeatable.",
+            "These last two methods differ in nothing but which loop is on the outside: block-outer counts multisets, total-outer counts ordered sequences."
+          ],
+          "checkIn": "Before Part 4, say: the next three methods reuse the array from Part 1 with the inner loop reversed. Would you rather I write the minimum first, or go straight to the two counting variants so the loop-order contrast is on the board?"
+        },
+        "verification": {
+          "walkthroughs": [
+            "Walk the reachability scan over modules of four, three, five and two bytes: after all four the reachable totals are 0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 and 14, so a budget of thirteen is refused and half of fourteen is reached.",
+            "Walk the value table at a budget of eight: skipping the five-byte module leaves fifteen from the first two, taking it with the three-byte one gives seventeen, and the walk back names those two modules and eight bytes.",
+            "Walk the counting scan at a skew of zero: slot A is pinned at seven bytes, and two subsets reach seven, so there are two balanced assignments.",
+            "Walk the padding array upward for six bytes from blocks of four and three: the four-byte block fills index four only, the three-byte block fills three and then six from three, so the answer is two blocks and the largest-first guess never lands.",
+            "Walk five bytes from blocks of two and three both ways round: block-outer gives one, total-outer gives two, and the two extra sequences are the same pair written in the other order."
+          ],
+          "tests": "Run swift test --filter Problem26FirmwareBundleBudgetPlannerTests and read the four suites in part order. The one-byte module against a four-byte budget and the pair of counting assertions on the same padding input are the two that separate a real understanding of loop direction from a lucky one.",
+          "complexity": "Every part is O(module count times budget) or O(block count times padding target) in time. That is pseudo-polynomial rather than polynomial in the input's size on the page, and it is worth saying so out loud. Space is one array everywhere except the value table, which keeps a row per module so the selection can be recovered.",
+          "moreTime": "The same table answers a signed-assignment question directly once you see the transformation, and it extends to two simultaneous budgets by adding a dimension and collapsing both inner loops downward. A block available a fixed number of times rather than once or unlimited is the interesting middle case: split it into power-of-two copies and the unlimited problem becomes the ship-once one, which is the cleanest evidence that these really are one family."
+        },
+        "code": "/// One feature module in the over-the-air bundle. Each module is unique and\n/// ships at most once.\npublic struct FeatureModule: Equatable, Sendable {\n    public let id: String\n    public let sizeBytes: Int\n    public let value: Int\n\n    public init(id: String, sizeBytes: Int, value: Int) {\n        self.id = id\n        self.sizeBytes = sizeBytes\n        self.value = value\n    }\n}\n\n/// The modules a plan ships, reported alongside what they cost and what they buy.\npublic struct BundleSelection: Equatable, Sendable {\n    public let totalValue: Int\n    public let totalSizeBytes: Int\n    public let moduleIDs: [String]\n\n    public init(totalValue: Int, totalSizeBytes: Int, moduleIDs: [String]) {\n        self.totalValue = totalValue\n        self.totalSizeBytes = totalSizeBytes\n        self.moduleIDs = moduleIDs\n    }\n}\n\npublic enum BundleError: Error, Equatable, Sendable {\n    case negativeBudget\n    case nonPositiveModuleSize(String)\n    case negativeModuleValue(String)\n    case nonPositiveBlockSize(Int)\n    case emptyBlockCatalogue\n    case cannotPadExactly\n    case notImplemented\n}\n\npublic struct BundlePlanner: Sendable {\n    public init() {}\n\n    // MARK: Part 1 - Exact fits and even A/B splits\n\n    /// Whether some subset of the modules fills the budget to the byte.\n    ///\n    /// The shared scan does the work: one entry means \"some subset of the\n    /// modules seen so far sums to exactly this many bytes\", and the answer is\n    /// the entry at the budget.\n    public func canFillExactly(modules: [FeatureModule], budgetBytes: Int) throws(BundleError) -> Bool {\n        try validate(modules)\n        guard budgetBytes >= 0 else { throw .negativeBudget }\n        return reachableSums(modules, upTo: budgetBytes)[budgetBytes]\n    }\n\n    /// Whether the modules divide into two slots of equal size.\n    ///\n    /// An odd total can never halve, and that early exit matters: without it the\n    /// integer division silently rounds and asks the wrong question. Otherwise\n    /// this is exactly the Part 1 question asked at half the total.\n    public func canSplitEvenly(modules: [FeatureModule]) throws(BundleError) -> Bool {\n        try validate(modules)\n        let total = modules.reduce(0) { $0 + $1.sizeBytes }\n        guard total % 2 == 0 else { return false }\n        return try canFillExactly(modules: modules, budgetBytes: total / 2)\n    }\n\n    // MARK: Part 2 - Maximise shipped value and report the choice\n\n    /// The most valuable set of modules that fits the budget, and which modules\n    /// those are.\n    ///\n    /// This keeps the full two-dimensional table on purpose. Collapsing it to a\n    /// single row would still produce the right value and would destroy the\n    /// backtrack, because with one row there is nothing left to walk. Ties\n    /// resolve to not taking the later module, so the reported set is stable.\n    public func bestSelection(modules: [FeatureModule], budgetBytes: Int) throws(BundleError) -> BundleSelection {\n        try validate(modules)\n        guard budgetBytes >= 0 else { throw .negativeBudget }\n\n        // best[i][w] is the most value obtainable from the first i modules\n        // within w bytes. Row 0 is \"no modules\", which is worth nothing at every\n        // budget, and that is what makes this an at-most rather than an\n        // exactly-fill table.\n        var best = Array(\n            repeating: Array(repeating: 0, count: budgetBytes + 1),\n            count: modules.count + 1\n        )\n        for index in modules.indices {\n            let module = modules[index]\n            for budget in 0...budgetBytes {\n                var candidate = best[index][budget]\n                if module.sizeBytes <= budget {\n                    candidate = max(candidate, module.value + best[index][budget - module.sizeBytes])\n                }\n                best[index + 1][budget] = candidate\n            }\n        }\n\n        // A module was taken exactly when including it changed the answer, so\n        // the walk back reads the decisions the table already made.\n        var chosen: [String] = []\n        var totalSize = 0\n        var remaining = budgetBytes\n        var index = modules.count\n        while index > 0 {\n            if best[index][remaining] != best[index - 1][remaining] {\n                let module = modules[index - 1]\n                chosen.append(module.id)\n                totalSize += module.sizeBytes\n                remaining -= module.sizeBytes\n            }\n            index -= 1\n        }\n\n        return BundleSelection(\n            totalValue: best[modules.count][budgetBytes],\n            totalSizeBytes: totalSize,\n            moduleIDs: chosen.reversed()\n        )\n    }\n\n    /// The value alone. The selection is the primitive and this is its projection,\n    /// so the two can never disagree about what the best bundle is worth.\n    public func bestValue(modules: [FeatureModule], budgetBytes: Int) throws(BundleError) -> Int {\n        try bestSelection(modules: modules, budgetBytes: budgetBytes).totalValue\n    }\n\n    // MARK: Part 3 - Count skew-balanced A/B assignments\n\n    /// How many ways the modules assign to slot A and slot B so that slot A ends\n    /// up exactly `targetSkewBytes` larger than slot B.\n    ///\n    /// Every module goes somewhere, so naming slot A names the assignment. If\n    /// slot A holds `a` bytes out of a total of `t`, the skew is `a - (t - a)`,\n    /// which pins slot A at half of the total plus the skew. That has to be a\n    /// whole number inside the total, and when it is not there is no assignment\n    /// at all rather than an error. What is left is Part 1's scan with counts in\n    /// place of flags: the same table, a different semiring.\n    public func assignmentCount(modules: [FeatureModule], targetSkewBytes: Int) throws(BundleError) -> Int {\n        try validate(modules)\n        let total = modules.reduce(0) { $0 + $1.sizeBytes }\n        let doubledSlotA = total + targetSkewBytes\n        guard doubledSlotA >= 0, doubledSlotA % 2 == 0 else { return 0 }\n        let slotA = doubledSlotA / 2\n        guard slotA <= total else { return 0 }\n        return countingSums(modules, upTo: slotA)[slotA]\n    }\n\n    // MARK: Part 4 - Pad with repeatable parity blocks\n\n    /// The fewest parity blocks that pad the slot to exactly full.\n    ///\n    /// The sentinel is one more than the remaining bytes rather than the largest\n    /// representable integer, so incrementing it can never overflow and it can\n    /// never be mistaken for a real answer.\n    public func fewestParityBlocks(remainingBytes: Int, blockSizes: [Int]) throws(BundleError) -> Int {\n        let sizes = try validated(blockSizes, remainingBytes: remainingBytes)\n        let unreachable = remainingBytes + 1\n        var fewest = Array(repeating: unreachable, count: remainingBytes + 1)\n        fewest[0] = 0\n\n        for size in sizes where size <= remainingBytes {\n            // Ascending, so a block already placed at `total - size` is visible\n            // again at `total`. That is what lets one block size repeat.\n            for total in size...remainingBytes {\n                fewest[total] = min(fewest[total], fewest[total - size] + 1)\n            }\n        }\n\n        guard fewest[remainingBytes] < unreachable else { throw .cannotPadExactly }\n        return fewest[remainingBytes]\n    }\n\n    /// How many distinct multisets of parity blocks pad the slot exactly.\n    ///\n    /// The block loop is on the outside, so every multiset is reached in one\n    /// fixed block order and is counted once.\n    public func parityBlockCombinationCount(remainingBytes: Int, blockSizes: [Int]) throws(BundleError) -> Int {\n        let sizes = try validated(blockSizes, remainingBytes: remainingBytes)\n        var ways = Array(repeating: 0, count: remainingBytes + 1)\n        ways[0] = 1\n\n        for size in sizes where size <= remainingBytes {\n            for total in size...remainingBytes {\n                ways[total] += ways[total - size]\n            }\n        }\n\n        return ways[remainingBytes]\n    }\n\n    /// How many ordered sequences of parity blocks pad the slot exactly.\n    ///\n    /// Nothing changes but the nesting. With the total on the outside, every\n    /// block size gets a turn at being the last one written, so two blocks\n    /// written in the other order are a second sequence. Padding five bytes from\n    /// blocks of two and three is one multiset and two sequences, and the only\n    /// difference between the two methods is which loop is inside the other.\n    public func parityBlockOrderedSequenceCount(remainingBytes: Int, blockSizes: [Int]) throws(BundleError) -> Int {\n        let sizes = try validated(blockSizes, remainingBytes: remainingBytes)\n        var ways = Array(repeating: 0, count: remainingBytes + 1)\n        ways[0] = 1\n\n        guard remainingBytes >= 1 else { return ways[remainingBytes] }\n        for total in 1...remainingBytes {\n            for size in sizes where size <= total {\n                ways[total] += ways[total - size]\n            }\n        }\n\n        return ways[remainingBytes]\n    }\n\n    // MARK: Shared machinery\n\n    private func validate(_ modules: [FeatureModule]) throws(BundleError) {\n        for module in modules {\n            guard module.sizeBytes > 0 else { throw .nonPositiveModuleSize(module.id) }\n            guard module.value >= 0 else { throw .negativeModuleValue(module.id) }\n        }\n    }\n\n    private func validated(_ blockSizes: [Int], remainingBytes: Int) throws(BundleError) -> [Int] {\n        guard remainingBytes >= 0 else { throw .negativeBudget }\n        guard !blockSizes.isEmpty else { throw .emptyBlockCatalogue }\n        for size in blockSizes where size <= 0 { throw .nonPositiveBlockSize(size) }\n        return blockSizes\n    }\n\n    /// Which byte totals up to `limit` some subset of the modules reaches exactly.\n    ///\n    /// The budget loop runs descending, and that single choice is what makes each\n    /// module ship at most once: a descending pass only ever reads entries this\n    /// module has not touched yet. Run it ascending and each module becomes\n    /// reusable, which is the Part 4 recurrence wearing this method's name.\n    private func reachableSums(_ modules: [FeatureModule], upTo limit: Int) -> [Bool] {\n        var reachable = Array(repeating: false, count: limit + 1)\n        reachable[0] = true\n        for module in modules where module.sizeBytes <= limit {\n            for total in stride(from: limit, through: module.sizeBytes, by: -1) {\n                reachable[total] = reachable[total] || reachable[total - module.sizeBytes]\n            }\n        }\n        return reachable\n    }\n\n    /// The same descending scan, counting subsets instead of flagging them.\n    /// Combining with `||` answers whether a total is reachable; combining with\n    /// `+` answers in how many ways.\n    private func countingSums(_ modules: [FeatureModule], upTo limit: Int) -> [Int] {\n        var ways = Array(repeating: 0, count: limit + 1)\n        ways[0] = 1\n        for module in modules where module.sizeBytes <= limit {\n            for total in stride(from: limit, through: module.sizeBytes, by: -1) {\n                ways[total] += ways[total - module.sizeBytes]\n            }\n        }\n        return ways\n    }\n}\n"
+      }
+    },
+    "swift-27": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Index by prefix length rather than by character position, and say what one entry means before writing anything. What is true of the shortest prefix of all?",
+          "concepts": [
+            "state over prefixes",
+            "an inner loop over the last piece",
+            "the empty prefix as the base case"
+          ],
+          "steps": [
+            "Define one entry as whether the first so-many characters are covered entirely by known segments.",
+            "The empty prefix is covered by using no segments at all, so it starts true; without that every other entry stays false forever.",
+            "For each prefix in turn, try every place its last segment could have begun, and accept the prefix when that earlier prefix was covered and the piece between them is known.",
+            "Turn the identifier into an array of characters once in advance, and let the longest vocabulary entry bound how far back the inner loop looks."
+          ],
+          "pitfalls": [
+            "leaving the empty prefix false, which makes every identifier look unsegmentable",
+            "matching the longest known segment at each step and moving on, which answers a different and easier question",
+            "stepping a string index through the inner loop, which is linear work every time and turns a quadratic scan cubic"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "Part 1 already visits every place the last segment could begin. What is the smallest thing you can record while it does that?",
+          "concepts": [
+            "recording the cut, not just the flag",
+            "walking a cut record backwards",
+            "a canonical order chosen on purpose"
+          ],
+          "steps": [
+            "Extend Part 1's scan to remember, for each covered prefix, where its last segment began, and share that one helper between both parts.",
+            "Scan the candidate split points nearest first and keep the first that works, which fixes the canonical answer as the one whose last segment is shortest.",
+            "Walk that record back from the whole identifier to the empty prefix, collecting pieces, then reverse them into reading order.",
+            "An identifier the scan never covers is a typed failure rather than whatever partial walk you happen to have."
+          ],
+          "pitfalls": [
+            "running the scan a second time instead of recording the cut the first time round",
+            "overwriting the recorded cut on every later match, so the stated tie rule is not the one the code follows",
+            "returning the pieces in the order the walk produced them"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "One table entry can hold a yes or a count. What is it that it cannot hold cheaply, and what does that force you to change?",
+          "concepts": [
+            "memoised recursion over start positions",
+            "what a memo does and does not bound",
+            "an output that can outgrow the input"
+          ],
+          "steps": [
+            "Notice the answer is a set of splits rather than a number, so the shape has to change from a table filled forwards to a recursion asking about suffixes.",
+            "Ask for every split of the rest of the identifier from a given start, and prepend each known piece beginning there to each of those.",
+            "The empty suffix has exactly one split, and it is the one containing nothing.",
+            "Memoise by start position so each position is solved once, and say plainly that this bounds the work per position and not the size of the answer.",
+            "Try the pieces in increasing length so the results come out ordered by first-segment length, and let Part 1 refuse the hopeless identifiers cheaply first."
+          ],
+          "pitfalls": [
+            "recursing without a memo, which is exponential on a long run of repeats",
+            "keying the memo on the remaining text instead of the position, which works and allocates enormously",
+            "assuming the memo makes the whole call fast, when a long run genuinely has exponentially many splits to emit"
+          ]
+        },
+        {
+          "part": 4,
+          "prompt": "Same loop as Part 1, same walk back as Part 2. What has to change, and what has to be true of a prefix nothing reaches?",
+          "concepts": [
+            "a minimum in place of a yes or no",
+            "an unreached prefix as its own value",
+            "reusing the walk-back helper"
+          ],
+          "steps": [
+            "Keep Part 1's prefix loop and its inner scan over the last piece, and store the least penalty reaching each prefix instead of a flag.",
+            "The empty prefix costs nothing; every other prefix starts unreached, and a cost must never be added to an unreached one.",
+            "Record the split point that produced each improvement, and hand that record to the same walk-back helper Part 2 already uses.",
+            "Compare strictly so the first candidate a nearest-first scan finds survives a tie, which keeps this part's answer consistent with Part 2's."
+          ],
+          "pitfalls": [
+            "assuming the split with the fewest segments is the cheapest one, which the vocabulary can easily contradict",
+            "adding a penalty to a prefix nothing reaches, so an impossible route wins the minimum",
+            "building a second walk-back for this part and letting the two tie rules drift apart"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "Every identifier is reported as unsegmentable, even ones made of a single known segment",
+            "cause": "The empty prefix was left false, so no prefix ever has a covered predecessor to build on",
+            "check": "Ask an identifier that is exactly one vocabulary entry and confirm it segments."
+          },
+          {
+            "symptom": "An identifier is refused whose pieces are all in the vocabulary",
+            "cause": "Each step took the longest match it could and moved on, instead of trying every place the last segment could begin",
+            "check": "With entries of one, two and three repeated characters, confirm a run of four segments and a run of five followed by an unknown character does not."
+          },
+          {
+            "symptom": "The enumeration hangs or takes seconds on a long run of repeats",
+            "cause": "The recursion has no memo, so the same start position is solved once per path that reaches it",
+            "check": "Enumerate a twenty-character run against entries of one and two characters and confirm it returns promptly."
+          },
+          {
+            "symptom": "The canonical split and the cheapest split disagree on an identifier where every penalty is the same",
+            "cause": "The two parts resolve ties in opposite directions because each grew its own walk-back",
+            "check": "Give every entry the same penalty and confirm the cheapest split's penalty is that value times its number of segments."
+          },
+          {
+            "symptom": "The cheapest split is always the one with the fewest segments",
+            "cause": "The minimum is being taken over segment counts rather than penalties, or an unreached prefix is being treated as costing nothing",
+            "check": "Give one long entry a penalty higher than the sum of the short entries covering the same characters and confirm the longer split loses."
+          }
+        ]
+      },
+      "execution": {
+        "timeBudget": {
+          "navigation": 4,
+          "solution": 9,
+          "coding": 26,
+          "verification": 6
+        },
+        "navigation": {
+          "say": "This is one sequence cut into pieces from a fixed set, with no reordering, so I want to fix the indexing convention before I write a line: everything here is indexed by prefix length, not by character position.",
+          "questions": [
+            "Can a vocabulary entry appear more than once in a single segmentation?",
+            "When several segmentations are legal and the caller wants only one, which should I return?",
+            "Is the vocabulary fixed for the lifetime of the segmenter, so I can precompute from it in init?"
+          ],
+          "assumptions": [
+            "Entries may repeat within one segmentation, and the identifier must be covered completely with no gaps.",
+            "The canonical single answer is the one whose last segment is shortest, applied again at every earlier cut.",
+            "The vocabulary is fixed at construction, so the lookup and the longest entry length are computed once in init.",
+            "An empty vocabulary, an empty segment text, a negative penalty and a repeated segment text are construction failures; an identifier that does not segment is a typed failure at the call."
+          ],
+          "edgeCases": [
+            "the empty identifier, which is covered by no segments at all",
+            "an identifier longer than every vocabulary entry",
+            "a run of repeated characters, where greedy matching fails and the enumeration count explodes",
+            "an identifier with one unknown character in the middle",
+            "a vocabulary where a long entry overlaps several short ones, so the cheapest split has more segments than the shortest"
+          ],
+          "restate": "Given a vocabulary of known segments with penalties, decide whether an unspaced identifier splits cleanly, return one canonical split, enumerate every split, and return the least-penalty split."
+        },
+        "solution": {
+          "pitch": "One array indexed by prefix length, and an inner loop over where the last piece began. That single shape answers three of the four parts: yes-or-no, cheapest, and with one recorded cut, which split. The third part is the one that cannot use it, and saying why is most of the value.",
+          "dataStructures": [
+            "A dictionary from segment text to penalty, which serves as both the membership test and the cost lookup so there is only one thing to keep in step.",
+            "The longest entry length, cached in init, to bound the inner loop so it never proposes a piece nothing could match.",
+            "The identifier as an array of characters, converted once, because stepping a string index through a nested loop is linear work per step."
+          ],
+          "types": [
+            "VocabularySegment pairs the text with its penalty, so a vocabulary is one list rather than a list and a parallel map.",
+            "Segmentation returns the pieces and the penalty together, since a caller comparing splits needs both.",
+            "SegmenterError separates the four construction failures from the one call-time failure, so a caller can tell a bad vocabulary from an identifier this vocabulary simply does not cover."
+          ],
+          "composition": "canSegment and firstSegmentation are one private scan that returns both the coverage flags and the recorded cuts; the first reads the last flag, the second walks the cuts. cheapestSegmentation reuses that same loop with a minimum and hands its own cuts to the very same walk-back helper. allSegmentations calls canSegment as a cheap refusal and then deliberately abandons the table.",
+          "tradeoff": "A trie over the vocabulary would remove every substring allocation from the inner loop and bound it by the longest entry without a separate length cache. For interview-scale identifiers a dictionary plus that cached bound is the same complexity with far less code, and I would name the trie as the move if the identifiers were long or the vocabulary huge.",
+          "trap": "Trying to keep tabulating in the enumeration part. A table entry holding a growing list of splits copies those lists at every step and buys nothing, because the output can be exponentially large no matter how it is stored. The memo bounds the work per start position; it cannot bound the answer."
+        },
+        "coding": {
+          "order": [
+            "Validate the vocabulary in init and cache the penalty lookup and the longest entry length there.",
+            "Write the private scan that fills the coverage flags and the recorded cuts, and let Part 1 read its last flag.",
+            "Write the walk-back helper, then Part 2 is two lines on top of the scan.",
+            "Write the memoised recursion for the enumeration, stating out loud why the table is being left behind.",
+            "Finish with the cheapest split by copying the scan's loop and replacing the acceptance with a minimum."
+          ],
+          "commentary": [
+            "Everything here is indexed by prefix length, so entry zero is the empty prefix, and I am fixing that convention now rather than half way through.",
+            "The empty prefix is covered because there is nothing left to cover, and that base case is what every other entry is eventually built on.",
+            "I scan the split points nearest first and stop at the first that works, which is what makes the canonical answer the one with the shortest last segment.",
+            "This part cannot use the table, because the answer is a set of splits and not a number. I keep the memo and change the shape.",
+            "The memo means each start position is solved once. It does not mean the call is fast on a pathological run, because the output itself can be exponential.",
+            "The cheapest split is the same loop with a minimum, and it reuses the walk-back from Part 2 so the two parts cannot drift apart on ties."
+          ],
+          "checkIn": "Before Part 3, say: this is the part where the table stops being the right tool. Do you want me to explain why before I write the recursion, or write it and then justify the change of shape?"
+        },
+        "verification": {
+          "walkthroughs": [
+            "Walk the coverage flags over the worked identifier: prefix four is covered by the first entry, prefix nine by the second and also by the long entry, and prefix sixteen by the last, so the identifier segments.",
+            "Walk the recorded cuts back from sixteen: the cut at sixteen points to nine, the cut at nine points to four, and four points to zero, giving three segments in reading order.",
+            "Walk the enumeration from position zero: the four-character piece leads to one split of the rest, the nine-character piece leads to another, so exactly two splits come back and the shorter first piece comes first.",
+            "Walk the penalties on the same identifier: the two-segment split costs five plus one and the three-segment split costs one plus one plus one, so the cheapest answer has more segments than the shortest one, which is the whole point of that fixture."
+          ],
+          "tests": "Run swift test --filter Problem27LogTokenSegmenterTests and read the four suites in part order. The run of repeated characters in the first suite is what catches greedy matching, and the twenty-character run in the third is what catches a missing memo.",
+          "complexity": "The prefix scans are O(n times the longest entry length) comparisons, with a substring built per candidate piece, and O(n) space. The enumeration is bounded per start position by the memo but its output can be exponential in the identifier length, so its total cost is the number of splits it has to emit and not the number of states it visits.",
+          "moreTime": "Allowing unmatched characters at a fixed cost turns the feasibility question into a minimisation that is always defined, which is the same loop with one extra branch. Counting the splits rather than listing them goes back to the table and needs only a sum where the flag was, and a minimum-cuts variant over pieces validated by a precomputed property is the same prefix loop sitting on top of a small second table."
+        },
+        "code": "/// One known segment in the service registry's vocabulary, with the confidence\n/// penalty the pipeline pays for using it. Lower is more confident.\npublic struct VocabularySegment: Equatable, Sendable {\n    public let text: String\n    public let penalty: Int\n\n    public init(text: String, penalty: Int) {\n        self.text = text\n        self.penalty = penalty\n    }\n}\n\n/// A segmentation and what it costs.\npublic struct Segmentation: Equatable, Sendable {\n    public let segments: [String]\n    public let totalPenalty: Int\n\n    public init(segments: [String], totalPenalty: Int) {\n        self.segments = segments\n        self.totalPenalty = totalPenalty\n    }\n}\n\npublic enum SegmenterError: Error, Equatable, Sendable {\n    case emptyVocabulary\n    case emptySegmentText\n    case negativePenalty(String)\n    case duplicateSegmentText(String)\n    case noValidSegmentation\n    case notImplemented\n}\n\npublic struct LogTokenSegmenter: Sendable {\n    /// The vocabulary, arranged for the two questions the scan actually asks:\n    /// is this piece known, and what does it cost. The longest entry bounds the\n    /// inner loop, so a scan never proposes a piece no entry could match.\n    private let penalties: [String: Int]\n    private let longestSegmentLength: Int\n\n    public init(vocabulary: [VocabularySegment]) throws(SegmenterError) {\n        guard !vocabulary.isEmpty else { throw .emptyVocabulary }\n\n        var penalties: [String: Int] = [:]\n        for segment in vocabulary {\n            guard !segment.text.isEmpty else { throw .emptySegmentText }\n            guard segment.penalty >= 0 else { throw .negativePenalty(segment.text) }\n            guard penalties[segment.text] == nil else { throw .duplicateSegmentText(segment.text) }\n            penalties[segment.text] = segment.penalty\n        }\n\n        self.penalties = penalties\n        self.longestSegmentLength = vocabulary.map(\\.text.count).max() ?? 0\n    }\n\n    // MARK: Part 1 - Can the identifier be segmented?\n\n    /// Whether the identifier is entirely covered by known segments.\n    ///\n    /// One entry means \"the first i characters split cleanly\", so the empty\n    /// prefix is the base case and it is true: nothing left to cover is covered.\n    public func canSegment(_ identifier: String) -> Bool {\n        let characters = Array(identifier)\n        return reachability(characters).feasible[characters.count]\n    }\n\n    // MARK: Part 2 - Return one canonical segmentation\n\n    /// One segmentation, chosen canonically: at every cut the shortest possible\n    /// last segment wins, because the split points are scanned from the closest\n    /// one backwards and the first that works is recorded.\n    public func firstSegmentation(_ identifier: String) throws(SegmenterError) -> [String] {\n        let characters = Array(identifier)\n        let table = reachability(characters)\n        guard table.feasible[characters.count] else { throw .noValidSegmentation }\n        return rebuild(from: table.previousCut, characters: characters)\n    }\n\n    // MARK: Part 3 - Enumerate every segmentation\n\n    /// Every segmentation of the identifier, ordered by ascending first-segment\n    /// length, and recursively so within each branch.\n    ///\n    /// Part 1's table answers \"is there one\". It cannot answer \"give me all of\n    /// them\", because the answer is not a number and no single entry can hold a\n    /// growing list of splits cheaply. So the shape changes from a table walked\n    /// forwards to a recursion over start positions, and the memo is what keeps\n    /// the work per position bounded. The memo bounds the work, not the size of\n    /// the output: an identifier can genuinely have exponentially many splits.\n    public func allSegmentations(_ identifier: String) -> [[String]] {\n        let characters = Array(identifier)\n        guard canSegment(identifier) else { return [] }\n\n        var memo: [Int: [[String]]] = [:]\n\n        func segmentations(from start: Int) -> [[String]] {\n            if let cached = memo[start] { return cached }\n            if start == characters.count { return [[]] }\n\n            var found: [[String]] = []\n            let furthest = min(characters.count, start + longestSegmentLength)\n            for end in stride(from: start + 1, through: furthest, by: 1) {\n                let piece = String(characters[start..<end])\n                guard penalties[piece] != nil else { continue }\n                for rest in segmentations(from: end) {\n                    found.append([piece] + rest)\n                }\n            }\n\n            memo[start] = found\n            return found\n        }\n\n        return segmentations(from: 0)\n    }\n\n    // MARK: Part 4 - Cheapest segmentation\n\n    /// The least-penalty segmentation. Fewer segments is not automatically\n    /// cheaper, which is why this cannot be read off Part 2's answer.\n    ///\n    /// This is Part 1's loop with a minimum in place of the disjunction, and it\n    /// hands its cut record to the same rebuild helper Part 2 uses. Ties resolve\n    /// to the shorter last segment, matching Part 2's canonical order, because\n    /// the strict comparison keeps the first cut a backwards scan reaches.\n    public func cheapestSegmentation(_ identifier: String) throws(SegmenterError) -> Segmentation {\n        let characters = Array(identifier)\n        let unreachable = Int.max\n\n        var cost = Array(repeating: unreachable, count: characters.count + 1)\n        var previousCut = Array(repeating: Int?.none, count: characters.count + 1)\n        cost[0] = 0\n\n        for end in stride(from: 1, through: characters.count, by: 1) {\n            for start in cuts(before: end) where cost[start] != unreachable {\n                guard let penalty = penalties[String(characters[start..<end])] else { continue }\n                if cost[start] + penalty < cost[end] {\n                    cost[end] = cost[start] + penalty\n                    previousCut[end] = start\n                }\n            }\n        }\n\n        guard cost[characters.count] != unreachable else { throw .noValidSegmentation }\n        return Segmentation(\n            segments: rebuild(from: previousCut, characters: characters),\n            totalPenalty: cost[characters.count]\n        )\n    }\n\n    // MARK: Shared machinery\n\n    /// The split points that could begin the last segment ending at `end`,\n    /// nearest first. Nearest first is what makes the canonical segmentation\n    /// prefer the shorter last segment, and bounding the scan by the longest\n    /// vocabulary entry keeps it from proposing pieces nothing could match.\n    private func cuts(before end: Int) -> StrideThrough<Int> {\n        stride(from: end - 1, through: max(0, end - longestSegmentLength), by: -1)\n    }\n\n    /// Whether each prefix splits cleanly, and where the last segment of that\n    /// prefix began. Part 1 reads the final flag; Part 2 walks the cuts back.\n    private func reachability(_ characters: [Character]) -> (feasible: [Bool], previousCut: [Int?]) {\n        var feasible = Array(repeating: false, count: characters.count + 1)\n        var previousCut = Array(repeating: Int?.none, count: characters.count + 1)\n        feasible[0] = true\n\n        for end in stride(from: 1, through: characters.count, by: 1) {\n            for start in cuts(before: end) where feasible[start] {\n                if penalties[String(characters[start..<end])] != nil {\n                    feasible[end] = true\n                    previousCut[end] = start\n                    break\n                }\n            }\n        }\n\n        return (feasible, previousCut)\n    }\n\n    /// Walks a cut record back from the whole identifier to the empty prefix and\n    /// turns it into segments in reading order.\n    private func rebuild(from previousCut: [Int?], characters: [Character]) -> [String] {\n        var reversedSegments: [String] = []\n        var end = characters.count\n        while end > 0, let start = previousCut[end] {\n            reversedSegments.append(String(characters[start..<end]))\n            end = start\n        }\n        return reversedSegments.reversed()\n    }\n}\n"
+      }
+    }
 }

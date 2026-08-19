@@ -132,6 +132,12 @@ if [[ "$ANSWER_ABS" == *.swift ]]; then
     elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem25WarehouseGridRoutePlanner/Problem.swift" ]]; then
         PROBLEM_ID="25_warehouse_grid_route_planner"
         SAME_FILE=1
+    elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem26FirmwareBundleBudgetPlanner/Problem.swift" ]]; then
+        PROBLEM_ID="26_firmware_bundle_budget_planner"
+        SAME_FILE=1
+    elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem27LogTokenSegmenter/Problem.swift" ]]; then
+        PROBLEM_ID="27_log_token_segmenter"
+        SAME_FILE=1
     elif [[ "$ANSWER_BASENAME" =~ (^|_)([0-9][0-9]_[a-z0-9_]+)\.swift$ ]]; then
         PROBLEM_ID="${BASH_REMATCH[2]}"
     else
@@ -154,6 +160,8 @@ if [[ "$ANSWER_ABS" == *.swift ]]; then
         23_availability_zone_maintenance_planner) ACTIVE_REL="Sources/Problem23AvailabilityZoneMaintenancePlanner/Problem.swift" ;;
         24_sensor_drift_window_detector) ACTIVE_REL="Sources/Problem24SensorDriftWindowDetector/Problem.swift" ;;
         25_warehouse_grid_route_planner) ACTIVE_REL="Sources/Problem25WarehouseGridRoutePlanner/Problem.swift" ;;
+        26_firmware_bundle_budget_planner) ACTIVE_REL="Sources/Problem26FirmwareBundleBudgetPlanner/Problem.swift" ;;
+        27_log_token_segmenter) ACTIVE_REL="Sources/Problem27LogTokenSegmenter/Problem.swift" ;;
         *) echo "Error: unknown Swift problem ID '$PROBLEM_ID'; no target mapping exists."; exit 1 ;;
     esac
     if [[ "${CMD[0]}" != "swift" || "${CMD[1]:-}" != "test" ]]; then
