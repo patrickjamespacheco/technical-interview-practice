@@ -485,6 +485,34 @@ to Part 1.
   catch. Every target instead includes an isolation test that mutates one
   instance and proves a second is unchanged. Swift 6 strict concurrency also
   rejects much unsafe global mutable state at compile time.
+- **The stateless variant of that isolation test.** An analyser or planner that
+  holds no mutable state has nothing to mutate, so the test asserts the two
+  things that can still go wrong, in this order:
+  1. **Two instances agree.** Build two, exercise one heavily, then assert the
+     second still returns the documented values. This is what catches a `static
+     var` memo, which is the actual bug the rule exists to prevent and a tempting
+     one in a table-filling problem, where caching a table across calls looks
+     like an optimisation.
+  2. **The caller's input is unmutated.** Assert the argument array, grid, or
+     tree still equals its original value after the call. Swift's value semantics
+     make this free; the assertion states the contract, and for a reference-typed
+     input such as a node graph it is not free at all.
+- **Composition between parts in an algorithm problem.** "Later parts call
+  earlier parts" is easy for a stateful problem and hard for a table-filling one,
+  because Part N usually needs Part N-1's *table* and the public API cannot
+  expose a table without handing over the answer. Use one of these three, in
+  order of preference, and name the seam in the stub's part notes:
+  1. **Make the richer method the primitive.** Implement the method that returns
+     the selection, the window, or the route, and let the value-only method be a
+     projection of it. There is then exactly one table in the file, which is what
+     the "no parallel implementations" rule asks for.
+  2. **Share one named `private` helper across parts**, and say in the part note
+     that the seam exists. The candidate is told where the shared machinery goes
+     and still has to build it.
+  3. **Where a call is genuinely impossible, assert the composition as an
+     invariant instead.** A test that asserts the fast method equals the slow one,
+     or that a specialised answer equals the general one at its boundary, is
+     stronger than a call: it can be red where a call would be green.
 - Label/nest suites in Part order. Part 1 must pass without Part 2 implemented.
   Later stub methods fail explicitly only when invoked. Prefer a throwing
   `notImplemented` case where the signature permits it, so the test reports a

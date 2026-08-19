@@ -4799,5 +4799,556 @@ window.JOURNEY_PROBLEMS = {
         ]
       }
     }
+  },
+  "swift-24": {
+    "id": "swift-24",
+    "title": "Sensor Drift Window Detector",
+    "description": "Locate the worst contiguous drift window in a signed telemetry stream, report its bounds, wrap the analysis around a circular duty cycle, and score drift magnitude in either direction.",
+    "language": "swift",
+    "industry": "iot",
+    "tags": [
+      "dynamic-programming",
+      "kadane",
+      "time-series",
+      "reconstruction",
+      "circular-array"
+    ],
+    "level": "mid-level",
+    "stubPath": "swift/practice_problems/problem_24_sensor_drift_window_detector.swift",
+    "testPath": "swift/Tests/Problem24SensorDriftWindowDetectorTests/Problem24SensorDriftWindowDetectorTests.swift",
+    "sourceScript": "journey-sources/swift-24.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": "let detector = DriftDetector()\nlet deltas = [-2, 3, -1, 4, -6, 2]\ntry detector.worstTotal(deltas: deltas)                 // -> 6\ntry detector.worstWindow(deltas: deltas)                // -> DriftWindow(startIndex: 1, endIndex: 3, total: 6)\ntry detector.worstTotal(deltas: [-8, -3, -5])           // -> -3\ntry detector.worstCircularTotal(deltas: [5, -3, 5])     // -> 10\ntry detector.worstCircularTotal(deltas: deltas)         // -> 6\ntry detector.largestDriftMagnitude(deltas: deltas)      // -> 6\ntry detector.largestDriftMagnitude(deltas: [-4, -7, 1]) // -> 11",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Worst contiguous drift total",
+        "contract": "Report the largest cumulative drift of any contiguous window. An empty series\nis a typed failure. A series where every interval drifts back toward\ncalibration still has a worst window: the least bad single interval. Zero is\nnot an answer unless some window actually totals zero."
+      },
+      {
+        "part": 2,
+        "title": "Report the window bounds",
+        "contract": "Report the worst window itself, bounds included, with endIndex inclusive.\nPart 1 and Part 2 must not be two separate scans: the window carries the\ntotal, so make the richer method the one that does the work.\nWhen two windows tie on total, report the one with the earliest start, and\namong those the shortest."
+      },
+      {
+        "part": 3,
+        "title": "Circular duty cycles",
+        "contract": "Some sensors wrap: the interval after the last one is the first one again.\nReport the worst cumulative drift of any contiguous window on that cycle,\nwhere a window may now wrap around the end. Do not write a second scan over a\ndoubled series. Factor the Part 2 machinery into one private helper that can\nscan for the smallest window as well as the largest, and answer this from two\ncalls to it. Watch what your answer says when every interval is negative."
+      },
+      {
+        "part": 4,
+        "title": "Largest drift magnitude in either direction",
+        "contract": "Calibration scoring wants the largest absolute cumulative drift of any\ncontiguous window, in whichever direction it ran. The same private helper from\nPart 3 answers this too; no third scan is needed.\n\n/ One contiguous stretch of sampling intervals, with the cumulative drift it\n/ accumulated. `endIndex` is inclusive so a single interval is a legal window.\npublic struct DriftWindow: Equatable, Sendable {\n    public let startIndex: Int\n    public let endIndex: Int\n    public let total: Int\n\n    public init(startIndex: Int, endIndex: Int, total: Int) {\n        self.startIndex = startIndex\n        self.endIndex = endIndex\n        self.total = total\n    }\n}\n\npublic enum DriftError: Error, Equatable, Sendable {\n    case emptySeries\n    case notImplemented\n}\n\npublic struct DriftDetector: Sendable {\n    public init() {}\n\nMARK: Part 1 - Worst contiguous drift total\n    public func worstTotal(deltas: [Int]) throws(DriftError) -> Int { throw .notImplemented }\n\nMARK: Part 2 - Report the window bounds\n    public func worstWindow(deltas: [Int]) throws(DriftError) -> DriftWindow { throw .notImplemented }\n\nMARK: Part 3 - Circular duty cycles\n    public func worstCircularTotal(deltas: [Int]) throws(DriftError) -> Int { throw .notImplemented }\n\nMARK: Part 4 - Largest drift magnitude in either direction\n    public func largestDriftMagnitude(deltas: [Int]) throws(DriftError) -> Int { throw .notImplemented }\n}"
+      }
+    ],
+    "testSuites": [
+      "Part 1 - Worst contiguous drift total",
+      "Part 2 - Report the window bounds",
+      "Part 3 - Circular duty cycles",
+      "Part 4 - Largest drift magnitude in either direction"
+    ],
+    "partSuites": [
+      [
+        "Part 1 - Worst contiguous drift total"
+      ],
+      [
+        "Part 2 - Report the window bounds"
+      ],
+      [
+        "Part 3 - Circular duty cycles"
+      ],
+      [
+        "Part 4 - Largest drift magnitude in either direction"
+      ]
+    ],
+    "commands": {
+      "answerPath": "swift/practice_problem_answers/my_answer_24_sensor_drift_window_detector.swift",
+      "copyCommand": "cp swift/practice_problems/problem_24_sensor_drift_window_detector.swift swift/practice_problem_answers/my_answer_24_sensor_drift_window_detector.swift",
+      "openCommand": "code swift/practice_problems/problem_24_sensor_drift_window_detector.swift",
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_24_sensor_drift_window_detector.swift -c swift test --filter Problem24SensorDriftWindowDetectorTests",
+      "partTestCommands": [
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_24_sensor_drift_window_detector.swift -c swift test --filter Problem24SensorDriftWindowDetectorTests.DriftPart1Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_24_sensor_drift_window_detector.swift -c swift test --filter Problem24SensorDriftWindowDetectorTests.DriftPart2Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_24_sensor_drift_window_detector.swift -c swift test --filter Problem24SensorDriftWindowDetectorTests.DriftPart3Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_24_sensor_drift_window_detector.swift -c swift test --filter Problem24SensorDriftWindowDetectorTests.DriftPart4Tests"
+      ]
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "What does one step of your scan stand for, if it is not already the answer?",
+          "concepts": [
+            "the best window ending at one interval",
+            "running total",
+            "single pass"
+          ],
+          "steps": [
+            "Name what your running value means before writing its update: the best window that ends exactly at the interval you are looking at.",
+            "At each interval decide only one thing: does the run so far help, or is this interval a better place to start over?",
+            "Keep the best value ever seen separately from the running value.",
+            "Seed both from the first interval rather than from zero."
+          ],
+          "pitfalls": [
+            "seeding the answer at zero, which quietly turns an all-negative series into a zero",
+            "restarting the run at zero instead of at the current interval",
+            "treating an empty series as a value instead of a typed failure"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "Where does the reported window start, and at what moment do you actually learn that?",
+          "concepts": [
+            "index bookkeeping",
+            "reconstruction from a running scan",
+            "the richer method as the primitive"
+          ],
+          "steps": [
+            "Track the start of the current run and move it only when the run restarts.",
+            "Snapshot the bounds at the instant the best improves, not after the loop from the final numbers.",
+            "Make the window the method that does the work and let Part 1 read its total, so the series is scanned once by one piece of code.",
+            "Settle the tie rule before coding: earliest start first, then the shortest window."
+          ],
+          "pitfalls": [
+            "recovering the start after the loop instead of snapshotting it",
+            "moving the start on every interval rather than only on a restart",
+            "replacing the recorded best on a tie, which loses the earliest start"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "A window that wraps and the stretch it leaves behind: what is the relationship between those two?",
+          "concepts": [
+            "a wrapping window as a complement",
+            "smallest window",
+            "series total"
+          ],
+          "steps": [
+            "See that every wrapping window is exactly what remains once one interior stretch is removed.",
+            "Generalise the Part 2 scan into one private helper that can hunt the smallest window as well as the largest.",
+            "Answer from two calls to it: the best interior window, and the series total less the smallest interior window.",
+            "Ask what that complement means when no interval is positive."
+          ],
+          "pitfalls": [
+            "doubling the series and scanning twice its length",
+            "returning the empty window when every interval is negative",
+            "writing a second near-identical scan instead of parameterising the first"
+          ]
+        },
+        {
+          "part": 4,
+          "prompt": "Which direction of drift matters when only the size of the deviation is being scored?",
+          "concepts": [
+            "magnitude in either direction",
+            "reuse of the same helper",
+            "sign handling"
+          ],
+          "steps": [
+            "Run the same private helper both ways over the untouched series.",
+            "Drop the sign of the smallest window before comparing it with the largest.",
+            "Confirm a one-interval series answers with that interval's magnitude."
+          ],
+          "pitfalls": [
+            "taking the magnitude of each interval first, which lets opposite runs merge into one window",
+            "comparing the two results before dropping the sign",
+            "adding a third scan when the two you already have answer it"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "A series where every interval is negative scores zero",
+            "cause": "The running value or the recorded best was seeded at zero, which silently admits the empty window as an answer",
+            "check": "Seed both from the first interval and re-run the all-negative fixture."
+          },
+          {
+            "symptom": "The total is right but the reported start is one interval too early",
+            "cause": "The start moves on every interval instead of only when the run restarts",
+            "check": "Walk a series that opens with a negative interval and name the start each time the run restarts."
+          },
+          {
+            "symptom": "The circular answer is the whole series total whenever no interval is positive",
+            "cause": "The complement of the smallest window is the empty window, which is not a window",
+            "check": "Compare the best interior window against the complement and reject the complement when the interior best is negative."
+          },
+          {
+            "symptom": "A tie reports a later or longer window than the fixture expects",
+            "cause": "The recorded best is replaced on an equal total rather than only on a strict improvement",
+            "check": "Run both tie fixtures and confirm the recorded best changes only when the running value strictly beats it."
+          }
+        ]
+      }
+    }
+  },
+  "swift-23": {
+    "id": "swift-23",
+    "title": "Availability-Zone Maintenance Planner",
+    "description": "Count legal maintenance schedules under gap rules, then maximise cleared debt across linear, ring, and hierarchical fleet topologies with the selected zones reported.",
+    "language": "swift",
+    "industry": "dev-tools",
+    "tags": [
+      "dynamic-programming",
+      "linear-recurrence",
+      "tree-traversal",
+      "scheduling",
+      "reconstruction"
+    ],
+    "level": "senior",
+    "stubPath": "swift/practice_problems/problem_23_availability_zone_maintenance_planner.swift",
+    "testPath": "swift/Tests/Problem23AvailabilityZoneMaintenancePlannerTests/Problem23AvailabilityZoneMaintenancePlannerTests.swift",
+    "sourceScript": "journey-sources/swift-23.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": "let planner = MaintenancePlanner()\ntry planner.scheduleCount(zoneCount: 5, allowedGaps: [1, 2])   // -> 8\nlet rack = [Zone(id: \"az-1\", debtCleared: 4),\n            Zone(id: \"az-2\", debtCleared: 9),\n            Zone(id: \"az-3\", debtCleared: 3),\n            Zone(id: \"az-4\", debtCleared: 7)]\ntry planner.planLinear(zones: rack).selectedZoneIDs             // -> [\"az-2\", \"az-4\"]\ntry planner.planLinear(zones: rack).totalDebtCleared            // -> 16\ntry planner.bestLinearValue(zones: rack)                        // -> 16\ntry planner.bestRingValue(zones: rack)                          // -> 16\nlet ring = [Zone(id: \"r-1\", debtCleared: 2),\n            Zone(id: \"r-2\", debtCleared: 3),\n            Zone(id: \"r-3\", debtCleared: 2)]\ntry planner.bestRingValue(zones: ring)                          // -> 3\nlet tree = ZoneNode(zone: Zone(id: \"root\", debtCleared: 3), children: [\n    ZoneNode(zone: Zone(id: \"left\", debtCleared: 2), children: []),\n    ZoneNode(zone: Zone(id: \"right\", debtCleared: 3), children: [\n        ZoneNode(zone: Zone(id: \"leaf\", debtCleared: 1), children: [])\n    ])\n])\ntry planner.bestHierarchicalValue(root: tree)                    // -> 5",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Count legal advance schedules",
+        "contract": "A maintenance cycle walks a drain cursor from the start of a rack of\nzoneCount zones to exactly past its end, advancing by one of allowedGaps each\ntime. Count the distinct advance schedules. A cycle of no zones has exactly\none schedule: the empty one. A repeated gap describes the same advance and is\ncounted once. A negative zone count, an empty gap set, and a gap that does not\nadvance the cursor are each a typed failure, and so is a cycle long enough\nthat the count would not fit in an Int: refuse rather than report a wrapped\nnumber."
+      },
+      {
+        "part": 2,
+        "title": "Plan a linear rack",
+        "contract": "Maximise the debt cleared on a rack where each zone neighbours the zone before\nand after it, and report which zones the plan drains, ascending by position.\nBoth methods below must share one table: make the plan the method that does\nthe work, and the value method a projection of it. Where draining and skipping\nclear the same debt, skip. A negative debt is a typed failure that names the\nzone."
+      },
+      {
+        "part": 3,
+        "title": "Plan a ring",
+        "contract": "On a replication ring the last zone neighbours the first. This is not a new\nrecurrence: ask yourself what every legal ring plan must leave out, and answer\nit with calls to Part 2. Rings of two or fewer zones need no special code if\nyou pick the right call."
+      },
+      {
+        "part": 4,
+        "title": "Plan a hierarchical fleet",
+        "contract": "In a hierarchical fleet a zone's neighbours are its parent and its children.\nThis is the one part that cannot call an earlier one, because the rack table\nis indexed by position and a tree has no positions. What does carry over is\nthe pair of states that table encoded positionally: for the rack you tracked\nthe best with this zone drained and the best without it. Ask both questions of\nevery subtree and fold them upward. An absent fleet clears nothing.\n\n/ One availability zone and the maintenance debt draining it would clear.\npublic struct Zone: Equatable, Sendable {\n    public let id: String\n    public let debtCleared: Int\n\n    public init(id: String, debtCleared: Int) {\n        self.id = id\n        self.debtCleared = debtCleared\n    }\n}\n\n/ A zone in a hierarchical fleet. Build trees with this initializer; note that\n/ Array(repeating:count:) would give every slot the same node, because this is\n/ a reference type and not a value type.\npublic final class ZoneNode: Sendable {\n    public let zone: Zone\n    public let children: [ZoneNode]\n\n    public init(zone: Zone, children: [ZoneNode]) {\n        self.zone = zone\n        self.children = children\n    }\n}\n\npublic struct MaintenancePlan: Equatable, Sendable {\n    public let totalDebtCleared: Int\n/ Ascending by rack position.\n    public let selectedZoneIDs: [String]\n\n    public init(totalDebtCleared: Int, selectedZoneIDs: [String]) {\n        self.totalDebtCleared = totalDebtCleared\n        self.selectedZoneIDs = selectedZoneIDs\n    }\n}\n\npublic enum PlannerError: Error, Equatable, Sendable {\n    case negativeZoneCount\n    case emptyGapSet\n    case nonPositiveGap(Int)\n    case negativeDebt(String)\n    case countOverflow\n    case notImplemented\n}\n\npublic struct MaintenancePlanner: Sendable {\n    public init() {}\n\nMARK: Part 1 - Count legal advance schedules\n    public func scheduleCount(zoneCount: Int, allowedGaps: [Int]) throws(PlannerError) -> Int {\n        throw .notImplemented\n    }\n\nMARK: Part 2 - Plan a linear rack\n    public func planLinear(zones: [Zone]) throws(PlannerError) -> MaintenancePlan {\n        throw .notImplemented\n    }\n\n    public func bestLinearValue(zones: [Zone]) throws(PlannerError) -> Int {\n        throw .notImplemented\n    }\n\nMARK: Part 3 - Plan a ring\n    public func bestRingValue(zones: [Zone]) throws(PlannerError) -> Int {\n        throw .notImplemented\n    }\n\nMARK: Part 4 - Plan a hierarchical fleet\n    public func bestHierarchicalValue(root: ZoneNode?) throws(PlannerError) -> Int {\n        throw .notImplemented\n    }\n}"
+      }
+    ],
+    "testSuites": [
+      "Part 1 - Count legal advance schedules",
+      "Part 2 - Plan a linear rack",
+      "Part 3 - Plan a ring",
+      "Part 4 - Plan a hierarchical fleet"
+    ],
+    "partSuites": [
+      [
+        "Part 1 - Count legal advance schedules"
+      ],
+      [
+        "Part 2 - Plan a linear rack"
+      ],
+      [
+        "Part 3 - Plan a ring"
+      ],
+      [
+        "Part 4 - Plan a hierarchical fleet"
+      ]
+    ],
+    "commands": {
+      "answerPath": "swift/practice_problem_answers/my_answer_23_availability_zone_maintenance_planner.swift",
+      "copyCommand": "cp swift/practice_problems/problem_23_availability_zone_maintenance_planner.swift swift/practice_problem_answers/my_answer_23_availability_zone_maintenance_planner.swift",
+      "openCommand": "code swift/practice_problems/problem_23_availability_zone_maintenance_planner.swift",
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_23_availability_zone_maintenance_planner.swift -c swift test --filter Problem23AvailabilityZoneMaintenancePlannerTests",
+      "partTestCommands": [
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_23_availability_zone_maintenance_planner.swift -c swift test --filter Problem23AvailabilityZoneMaintenancePlannerTests.MaintenancePart1Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_23_availability_zone_maintenance_planner.swift -c swift test --filter Problem23AvailabilityZoneMaintenancePlannerTests.MaintenancePart2Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_23_availability_zone_maintenance_planner.swift -c swift test --filter Problem23AvailabilityZoneMaintenancePlannerTests.MaintenancePart3Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_23_availability_zone_maintenance_planner.swift -c swift test --filter Problem23AvailabilityZoneMaintenancePlannerTests.MaintenancePart4Tests"
+      ]
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "If you know how many schedules end on every earlier position, what does that tell you about this one?",
+          "concepts": [
+            "counting table over one index",
+            "a step set rather than a fixed pair",
+            "the empty schedule"
+          ],
+          "steps": [
+            "Say out loud what one entry counts: schedules that leave the cursor resting exactly on that position.",
+            "Every schedule reaching a position took one last advance, so the entry is a sum over the gaps that could have been that advance.",
+            "Seed position zero with one, the empty schedule, and fill positions upward so each entry reads only entries already written.",
+            "Decide what a repeated gap means before you loop over the gaps, and bound the cycle length so the count cannot silently wrap."
+          ],
+          "pitfalls": [
+            "seeding position zero with zero, which makes every count zero",
+            "reading an entry at a negative position instead of skipping gaps that overshoot",
+            "counting a repeated gap twice"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "At one zone there are only two futures. What are they, and what does each one cost you?",
+          "concepts": [
+            "take or skip under a neighbour rule",
+            "the richer method as the primitive",
+            "backtracking a filled table"
+          ],
+          "steps": [
+            "Define one entry as the best debt clearable using only the zones up to and including that position.",
+            "Write the two futures at each position: drain this zone and forfeit its neighbour, or skip it and keep what the previous position achieved.",
+            "Set the first two entries by hand; the second is not simply the second zone's debt, and getting that wrong stays invisible until the first zone is the large one.",
+            "Recover the selection by walking the finished table backwards and asking at each position whether the entry improved on its predecessor."
+          ],
+          "pitfalls": [
+            "dropping the skip branch, which quietly forbids leaving two zones in a row undrained",
+            "getting the second base entry wrong",
+            "computing the value with one method and the selection with another, so the two can disagree"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "What does closing a rack into a ring actually forbid, and how few plans does that leave?",
+          "concepts": [
+            "a constraint expressed as two subproblems",
+            "composition instead of a new recurrence",
+            "small-ring edge cases"
+          ],
+          "steps": [
+            "Name the single new adjacency the ring introduces.",
+            "Conclude what every legal ring plan must therefore leave out, and note there are only two such shapes.",
+            "Answer each shape with the rack planner you already have, on a slice of the zones.",
+            "Check the tiny rings: with the right call they need no special-casing at all."
+          ],
+          "pitfalls": [
+            "running one rack pass and patching the first zone afterwards, which is right on most fixtures and wrong on a three-zone ring",
+            "writing a second table instead of reusing Part 2",
+            "forgetting that a ring of two zones is already a rack"
+          ]
+        },
+        {
+          "part": 4,
+          "prompt": "The rack table was indexed by position. A tree has none, so what part of it still survives?",
+          "concepts": [
+            "post-order fold",
+            "two states per subtree",
+            "the same adjacency rule on a new topology"
+          ],
+          "steps": [
+            "Notice that the rack table encoded two states positionally: best having drained this zone, and best having left it intact.",
+            "Ask both questions of every subtree and answer them from the children's answers, so each node is visited once.",
+            "Draining a zone forfeits every child; leaving it intact lets each child pick whichever of its two states is better.",
+            "The fleet answer is the better of the root's two states, and an absent fleet clears nothing."
+          ],
+          "pitfalls": [
+            "returning only one number per subtree, which forces a second traversal to recover the other state",
+            "adding the children's drained values to a drained parent",
+            "assuming a parent is always better off drained because its own debt is the largest"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "Every schedule count comes back as zero",
+            "cause": "The base position was seeded with zero, so nothing has anything to sum",
+            "check": "Count the schedules for a cycle of no zones by hand and confirm the code agrees."
+          },
+          {
+            "symptom": "The rack total is right but the reported zones are wrong or adjacent",
+            "cause": "The selection was rebuilt by a separate greedy walk rather than read back out of the filled table",
+            "check": "Backtrack the table and confirm the selected debts add up to the reported total on a rack of four."
+          },
+          {
+            "symptom": "A rack of two, three, and two clears four instead of three on a ring",
+            "cause": "One rack pass was run over the whole ring, so both ends were drained even though the ring makes them neighbours",
+            "check": "Run the three-zone ring and confirm the answer is the middle zone alone."
+          },
+          {
+            "symptom": "The hierarchical answer double counts a subtree",
+            "cause": "A drained parent added its children's drained values instead of their intact ones",
+            "check": "Fold the worked tree by hand, writing both states at every node, and compare with the code at the root."
+          }
+        ]
+      }
+    }
+  },
+  "swift-25": {
+    "id": "swift-25",
+    "title": "Warehouse Grid Route Planner",
+    "description": "Count monotone pick routes across a blocked warehouse grid, minimise traversal cost under configurable drive moves, emit the cheapest route, and size the largest clear staging square.",
+    "language": "swift",
+    "industry": "logistics",
+    "tags": [
+      "dynamic-programming",
+      "grid-traversal",
+      "path-counting",
+      "reconstruction",
+      "obstacles"
+    ],
+    "level": "senior",
+    "stubPath": "swift/practice_problems/problem_25_warehouse_grid_route_planner.swift",
+    "testPath": "swift/Tests/Problem25WarehouseGridRoutePlannerTests/Problem25WarehouseGridRoutePlannerTests.swift",
+    "sourceScript": "journey-sources/swift-25.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": "let planner = RoutePlanner()\nlet openFloor = Array(repeating: Array(repeating: Aisle.open(traversalCost: 0), count: 3), count: 3)\ntry planner.routeCount(grid: openFloor)                              // -> 6\nlet floor: [[Aisle]] = [\n    [.open(traversalCost: 1), .open(traversalCost: 3), .open(traversalCost: 1)],\n    [.open(traversalCost: 1), .blocked,                .open(traversalCost: 1)],\n    [.open(traversalCost: 4), .open(traversalCost: 2), .open(traversalCost: 1)],\n]\ntry planner.routeCount(grid: floor)                                  // -> 2\ntry planner.cheapestCost(grid: floor, moves: [.east, .south])        // -> 7\ntry planner.cheapestRoute(grid: floor, moves: [.east, .south]).count // -> 5\n-> [(0,0), (0,1), (0,2), (1,2), (2,2)]\ntry planner.largestClearSquareSide(grid: floor)                      // -> 1\ntry planner.clearSquareCount(grid: floor)                            // -> 8\ntry planner.largestClearSquareSide(grid: openFloor)                  // -> 3\ntry planner.clearSquareCount(grid: openFloor)                        // -> 14",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Count monotone routes",
+        "contract": "Count the east/south routes from the north-west corner to the south-east one.\nA closed aisle ends no route, and watch what that does along the first row and\nthe first column. A closed origin or destination leaves no route at all. An\nempty floor plan and a ragged one are each a typed failure.\nThis takes a floor plan rather than a pair of dimensions on purpose: run it\nagainst an all-open floor and you have the unobstructed count too."
+      },
+      {
+        "part": 2,
+        "title": "Cheapest traversal cost",
+        "contract": "Report the cheapest total traversal cost of crossing the floor with the given\nmove set, counting the origin and the destination. Making the move set a\nparameter is what keeps one method covering both chassis; do not hard-code\neast and south anywhere. A chassis with no moves, a negative traversal cost,\nand a destination no route can reach are each a typed failure."
+      },
+      {
+        "part": 3,
+        "title": "Emit the cheapest route",
+        "contract": "Report the cheapest route itself, as the cells it visits from origin to\ndestination. Parts 2 and 3 must share one private cost table: the cost is its\ncorner, and the route is that same table walked backwards. Where two\npredecessors tie, enter the cell by the earliest move in the order east,\nsouth, southEast."
+      },
+      {
+        "part": 4,
+        "title": "Largest clear staging square",
+        "contract": "Report the side of the largest square of contiguous open aisles anywhere on\nthe floor, and how many all-open squares of any size the floor contains.\nParts 1 to 3 folded over the cells a route could arrive from. This folds over\na cell's neighbours to grow a region. Same grid, same row-major order, a\ndifferent meaning for one table entry - name that meaning before you write the\ntransition, and note that both methods here are folds of the same table.\n\n/ One cell of the warehouse floor: either drivable at a known cost, or closed\n/ for restocking.\npublic enum Aisle: Equatable, Sendable {\n    case open(traversalCost: Int)\n    case blocked\n}\n\npublic struct GridPosition: Hashable, Sendable {\n    public let row: Int\n    public let column: Int\n\n    public init(row: Int, column: Int) {\n        self.row = row\n        self.column = column\n    }\n}\n\n/ The forward moves a chassis can make. Every move increases the row or the\n/ column, so no route can revisit a cell.\npublic enum DriveMove: Hashable, Sendable, CaseIterable {\n    case east\n    case south\n    case southEast\n}\n\npublic enum RouteError: Error, Equatable, Sendable {\n    case emptyGrid\n    case raggedGrid\n    case negativeTraversalCost\n    case emptyMoveSet\n    case unreachableDestination\n    case notImplemented\n}\n\npublic struct RoutePlanner: Sendable {\n    public init() {}\n\nMARK: Part 1 - Count monotone routes\n    public func routeCount(grid: [[Aisle]]) throws(RouteError) -> Int {\n        throw .notImplemented\n    }\n\nMARK: Part 2 - Cheapest traversal cost\n    public func cheapestCost(grid: [[Aisle]], moves: Set<DriveMove>) throws(RouteError) -> Int {\n        throw .notImplemented\n    }\n\nMARK: Part 3 - Emit the cheapest route\n    public func cheapestRoute(grid: [[Aisle]], moves: Set<DriveMove>) throws(RouteError) -> [GridPosition] {\n        throw .notImplemented\n    }\n\nMARK: Part 4 - Largest clear staging square\n    public func largestClearSquareSide(grid: [[Aisle]]) throws(RouteError) -> Int {\n        throw .notImplemented\n    }\n\n    public func clearSquareCount(grid: [[Aisle]]) throws(RouteError) -> Int {\n        throw .notImplemented\n    }\n}"
+      }
+    ],
+    "testSuites": [
+      "Part 1 - Count monotone routes",
+      "Part 2 - Cheapest traversal cost",
+      "Part 3 - Emit the cheapest route",
+      "Part 4 - Largest clear staging square"
+    ],
+    "partSuites": [
+      [
+        "Part 1 - Count monotone routes"
+      ],
+      [
+        "Part 2 - Cheapest traversal cost"
+      ],
+      [
+        "Part 3 - Emit the cheapest route"
+      ],
+      [
+        "Part 4 - Largest clear staging square"
+      ]
+    ],
+    "commands": {
+      "answerPath": "swift/practice_problem_answers/my_answer_25_warehouse_grid_route_planner.swift",
+      "copyCommand": "cp swift/practice_problems/problem_25_warehouse_grid_route_planner.swift swift/practice_problem_answers/my_answer_25_warehouse_grid_route_planner.swift",
+      "openCommand": "code swift/practice_problems/problem_25_warehouse_grid_route_planner.swift",
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_25_warehouse_grid_route_planner.swift -c swift test --filter Problem25WarehouseGridRoutePlannerTests",
+      "partTestCommands": [
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_25_warehouse_grid_route_planner.swift -c swift test --filter Problem25WarehouseGridRoutePlannerTests.RoutePart1Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_25_warehouse_grid_route_planner.swift -c swift test --filter Problem25WarehouseGridRoutePlannerTests.RoutePart2Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_25_warehouse_grid_route_planner.swift -c swift test --filter Problem25WarehouseGridRoutePlannerTests.RoutePart3Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_25_warehouse_grid_route_planner.swift -c swift test --filter Problem25WarehouseGridRoutePlannerTests.RoutePart4Tests"
+      ]
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Every route that ends on a cell arrived from somewhere. Where, and how many ways?",
+          "concepts": [
+            "counting over a grid",
+            "arrival cells",
+            "obstacles as zeroes"
+          ],
+          "steps": [
+            "Define one entry as the number of routes that end on that cell.",
+            "A route reaching a cell made one last move, so the entry sums the entries of the cells it could have come from.",
+            "Fill the grid row by row, left to right, so every cell a route could have arrived from is already written.",
+            "Seed the origin with one when it is open, and give a closed aisle no routes at all rather than skipping it."
+          ],
+          "pitfalls": [
+            "seeding the whole first row and column with one without checking for a closed aisle",
+            "letting a closed aisle keep the value of the cell before it, so it stops blocking anything",
+            "forgetting that a closed origin or destination means no route exists"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "What has to be true of a table entry before you are allowed to read it?",
+          "concepts": [
+            "a minimum fold instead of a sum",
+            "unreachability as a distinct state",
+            "the move set as a parameter"
+          ],
+          "steps": [
+            "Keep the same table shape and the same row-major order; only the fold changes from a sum to a minimum.",
+            "Let the move set decide which cells a picker could have arrived from, so one method serves both chassis.",
+            "Represent unreachable as its own value rather than as a large number, so it cannot win a minimum by accident.",
+            "A cell's entry is its own traversal cost plus the cheapest reachable arrival cell, and no entry at all when none is reachable."
+          ],
+          "pitfalls": [
+            "hard-coding east and south instead of reading the move set",
+            "using a sentinel large number for unreachable and then adding a cost to it",
+            "reporting a number for a destination no route reaches instead of failing"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "The table already knows the answer. What question do you ask it at each step to walk back out?",
+          "concepts": [
+            "backtracking a filled table",
+            "reconstruction versus greed",
+            "a stated tie rule"
+          ],
+          "steps": [
+            "Start at the destination and ask which arrival cell explains this entry exactly.",
+            "The predecessor whose entry plus this cell's own cost equals this cell's entry is a step on the cheapest route.",
+            "Share the table with Part 2 rather than rebuilding it, so the route and the cost can never disagree.",
+            "Fix the tie rule before coding, then collect the cells and reverse them at the end."
+          ],
+          "pitfalls": [
+            "walking forwards from the origin choosing the cheaper neighbour, which is a different and wrong answer",
+            "building a second table for the route",
+            "reporting the cells in reverse or leaving out the origin"
+          ]
+        },
+        {
+          "part": 4,
+          "prompt": "Same grid, same iteration order, different question. What does one entry mean now?",
+          "concepts": [
+            "a region-growing fold",
+            "three neighbours instead of a route",
+            "one table, two answers"
+          ],
+          "steps": [
+            "Name the new meaning first: the side of the largest all-open square whose south-east corner is that cell.",
+            "A square of that size at this cell needs three squares of one size smaller at the three cells north, west, and north-west, so the entry grows from the smallest of them.",
+            "Seed the first row and the first column at one on open aisles, since no larger square can fit there.",
+            "Read both answers off the finished table: the largest side is its maximum and the number of squares is its sum."
+          ],
+          "pitfalls": [
+            "reusing the route recurrence and folding over two neighbours instead of three",
+            "taking the largest of the three neighbours instead of the smallest",
+            "recomputing the table for the count instead of summing the one you already filled"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "A closed aisle in the first row does not stop routes east of it",
+            "cause": "The first row was seeded to one everywhere before the closed aisles were considered",
+            "check": "Count the routes on a three by three floor with the middle of the first row closed and confirm the answer is three."
+          },
+          {
+            "symptom": "The cheapest cost is oddly small on a floor with a walled-off region",
+            "cause": "Unreachable was represented as a very large number and then had a traversal cost added to it, which lets it win a minimum",
+            "check": "Give unreachable its own value and re-run the floor whose destination no route reaches."
+          },
+          {
+            "symptom": "The route's traversal costs do not add up to the reported cheapest cost",
+            "cause": "The route was walked forwards toward the cheaper neighbour instead of read back out of the table",
+            "check": "Sum the traversal costs of the returned cells and compare with the cost method on the same floor and move set."
+          },
+          {
+            "symptom": "The staging square is reported as the whole floor when one aisle is closed",
+            "cause": "The square fold takes the largest of the three neighbours, so one closed aisle no longer limits anything",
+            "check": "Close the south-east corner of an otherwise open three by three floor and confirm the side drops to two."
+          }
+        ]
+      }
+    }
   }
 };
