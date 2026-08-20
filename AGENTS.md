@@ -609,4 +609,4 @@ Rules when editing it:
 - Both language panes must be idiomatic in their own language, not a transliteration of the other.
 - The Python/Swift choice is page-wide and persists in `localStorage` under `practice-patterns.code-language`, mirroring how `index.html` persists its language filter.
 - A "Practice it" block links to a catalogue tag only when that tag actually returns problems. Where nothing drills the family, the page says so in one line rather than linking to an empty filter. Do not retag existing problems to manufacture a link.
-- No LeetCode names, numbers, or titles anywhere on the page, including code comments and link text.
+- No third-party problem-site names, numbers, or titles anywhere on the page, including code comments and link text.
