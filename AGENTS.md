@@ -513,6 +513,16 @@ to Part 1.
      invariant instead.** A test that asserts the fast method equals the slow one,
      or that a specialised answer equals the general one at its boundary, is
      stronger than a call: it can be red where a call would be green.
+  4. **Where the later part changes the objective rather than the constraint,
+     no invariant against an earlier part exists.** Two parts that optimise
+     different quantities cannot be asserted equal on any input, and writing
+     that assertion into a spec is a design error rather than a hard test to
+     satisfy. Substitute an exhaustive search over the later part's own
+     objective, written independently in the test file so it cannot share the
+     recurrence's bugs, and assert the two agree on every fixture small enough
+     to enumerate. Problem 31 Part 4 is the worked instance: its run-collapse
+     reward has nothing to do with Part 2's neighbour products, so the suite
+     checks it against a brute-force removal search instead.
 - **A complexity requirement no test can enforce.** Some parts exist to teach a
   faster algorithm that produces byte-identical output to the slow one. A linear
   scan where a binary search belongs passes every functional test, and a timing
