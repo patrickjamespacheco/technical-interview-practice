@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pattern Families - Interview Practice</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :root {
+      --bg: #f1f5f9; --surface: #fff; --border: #e2e8f0; --border-hover: #cbd5e1;
+      --text: #0f172a; --secondary: #475569; --muted: #64748b; --accent: #2563eb;
+      --accent-hover: #1d4ed8; --soft: #eff6ff; --warning: #92400e; --warning-bg: #fffbeb;
+      --radius: 10px; --shadow: 0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.04);
+    }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); line-height: 1.55; overflow-wrap: break-word; }
+    button, a { font: inherit; }
+    a { color: var(--accent); }
+    :focus-visible { outline: 3px solid #93c5fd; outline-offset: 3px; }
+    .skip-link { position: fixed; left: 1rem; top: -4rem; z-index: 20; padding: .5rem .8rem; background: var(--text); color: white; border-radius: 6px; }
+    .skip-link:focus { top: 1rem; }
+
+    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 1.15rem max(1rem, calc((100vw - 1180px) / 2)); }
+    .topline { display: flex; justify-content: space-between; gap: 1rem; align-items: center; flex-wrap: wrap; }
+    .back { font-size: .82rem; font-weight: 600; text-decoration: none; color: var(--secondary); }
+    header h1 { margin: .55rem 0 .15rem; font-size: clamp(1.35rem, 3vw, 1.75rem); line-height: 1.2; }
+    header p { color: var(--secondary); margin: 0; font-size: .9rem; max-width: 62ch; }
+
+    .layout { width: min(1180px, calc(100% - 2rem)); margin: 1.25rem auto 3rem; display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+    .rail { position: sticky; top: 1rem; min-width: 0; max-width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: .8rem; box-shadow: var(--shadow); max-height: calc(100vh - 2rem); overflow-y: auto; }
+    .rail h2 { margin: .2rem .45rem .7rem; font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+    .rail ol { list-style: none; padding: 0; margin: 0; display: grid; gap: .15rem; }
+    .rail a { display: grid; grid-template-columns: 1.9rem minmax(0, 1fr); gap: .45rem; align-items: baseline; padding: .45rem .5rem; border-radius: 7px; text-decoration: none; color: var(--secondary); border: 1px solid transparent; }
+    .rail a:hover { background: #f8fafc; color: var(--text); }
+    .rail a[aria-current="true"] { background: var(--soft); color: #1e40af; border-color: #bfdbfe; }
+    .rail-roman { font-family: ui-monospace, "Cascadia Code", Menlo, monospace; font-size: .72rem; font-weight: 700; color: var(--muted); }
+    .rail a[aria-current="true"] .rail-roman { color: var(--accent); }
+    .rail-label { font-size: .84rem; font-weight: 650; min-width: 0; }
+
+    main { min-width: 0; display: grid; gap: 1.25rem; }
+    .pattern { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: clamp(1rem, 3vw, 1.9rem); min-width: 0; scroll-margin-top: 1rem; }
+    .pattern h2 { margin: 0 0 1.1rem; font-size: clamp(1.25rem, 3vw, 1.6rem); line-height: 1.25; display: flex; align-items: baseline; gap: .6rem; }
+    .roman { font-family: ui-monospace, "Cascadia Code", Menlo, monospace; font-size: .8rem; font-weight: 700; color: var(--accent); background: var(--soft); border: 1px solid #bfdbfe; border-radius: 6px; padding: .1rem .45rem; flex-shrink: 0; }
+    .field { margin-top: 1.35rem; min-width: 0; }
+    .field:first-of-type { margin-top: 0; }
+    .field > h3 { margin: 0 0 .45rem; font-size: .74rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+    .field h4 { margin: 1.25rem 0 .4rem; font-size: .95rem; }
+    .field p { margin: 0 0 .6rem; color: var(--secondary); }
+    .field p:last-child { margin-bottom: 0; }
+    .invariant { border-left: 3px solid var(--accent); background: var(--soft); border-radius: 0 8px 8px 0; padding: .8rem 1rem; }
+    .invariant > h3 { color: #1e40af; }
+    .invariant p { color: #1e3a5f; }
+    code { font-family: ui-monospace, "Cascadia Code", Menlo, monospace; font-size: .88em; background: #f1f5f9; border-radius: 4px; padding: .05rem .25rem; }
+    .invariant code { background: #dbeafe; }
+
+    .code-figure { margin: .85rem 0 0; min-width: 0; }
+    .code-caption { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; margin-bottom: .4rem; }
+    .code-label { font-size: .78rem; font-weight: 650; color: var(--secondary); }
+    .lang-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; background: var(--bg); }
+    .lang-btn { border: 0; background: transparent; color: var(--secondary); font-size: .76rem; font-weight: 650; padding: .28rem .8rem; cursor: pointer; }
+    .lang-btn:hover { color: var(--accent); }
+    .lang-btn[aria-pressed="true"] { background: var(--accent); color: #fff; }
+    .code-region { border: 1px solid #1e293b; border-radius: 8px; background: #0f172a; overflow-x: auto; overscroll-behavior-x: contain; min-width: 0; }
+    .code-region pre { margin: 0; padding: 1rem 1.15rem; min-width: max-content; color: #e2e8f0; font: .8rem/1.65 ui-monospace, "SFMono-Regular", Consolas, Menlo, monospace; white-space: pre; tab-size: 4; }
+    .code-region code { background: none; padding: 0; font-size: inherit; color: inherit; }
+    .code-pane[hidden] { display: none; }
+
+    ul.signals, ul.misfires { margin: 0; padding-left: 1.15rem; display: grid; gap: .35rem; color: var(--secondary); }
+    ul.signals li::marker { color: var(--accent); }
+    ul.misfires { list-style: none; padding-left: 0; }
+    ul.misfires li { border-left: 3px solid #fcd34d; background: var(--warning-bg); border-radius: 0 6px 6px 0; padding: .5rem .75rem; }
+    .variants { margin: 0; display: grid; gap: .3rem; }
+    .variants > div { display: grid; grid-template-columns: minmax(0, 15rem) minmax(0, 1fr); gap: .1rem .9rem; padding: .35rem 0; border-top: 1px solid var(--border); }
+    .variants > div:first-child { border-top: 0; }
+    .variants dt { font-weight: 650; font-size: .87rem; min-width: 0; }
+    .variants dd { margin: 0; color: var(--secondary); font-size: .87rem; min-width: 0; }
+    .practice-list { margin: 0; padding: 0; list-style: none; display: grid; gap: .4rem; }
+    .practice-list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem; }
+    .practice-link { font-family: ui-monospace, "Cascadia Code", Menlo, monospace; font-size: .8rem; font-weight: 650; background: var(--soft); border: 1px solid #bfdbfe; border-radius: 999px; padding: .18rem .6rem; text-decoration: none; }
+    .practice-link:hover { background: #dbeafe; }
+    .practice-note { color: var(--secondary); font-size: .85rem; min-width: 0; }
+    .honest { margin: 0; color: var(--muted); font-size: .87rem; font-style: italic; }
+
+    footer { width: min(1180px, calc(100% - 2rem)); margin: 0 auto 3rem; color: var(--muted); font-size: .8rem; }
+
+    @media (max-width: 880px) {
+      .layout { grid-template-columns: minmax(0, 1fr); }
+      .rail { position: static; max-height: none; }
+      .rail ol { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+      .variants > div { grid-template-columns: minmax(0, 1fr); }
+    }
+    @media (max-width: 560px) {
+      .layout { width: calc(100% - 1.5rem); }
+      .rail ol { grid-template-columns: minmax(0, 1fr); }
+      .code-caption { align-items: flex-start; }
+    }
+    @media print {
+      .rail, .skip-link, .lang-toggle { display: none !important; }
+      body { background: #fff; }
+      .code-pane[hidden] { display: block !important; }
+    }
+  </style>
+</head>
+<body>
+<a class="skip-link" href="#patterns">Skip to the pattern families</a>
+
+<header>
+  <div class="topline">
+    <a class="back" href="index.html">&larr; Problem index</a>
+    <a class="back" href="journey.html">Practice journey &rarr;</a>
+  </div>
+  <h1>Nine pattern families</h1>
+  <p>Read a problem statement, pick the tool. Each family gives you the idea, the invariant it maintains, a skeleton in Python or Swift, the phrases in a prompt that point at it, and the near-miss it gets confused with.</p>
+</header>
+
+<div class="layout">
+  <nav class="rail" aria-label="Pattern families">
+    <h2>Families</h2>
+    <ol>
+        <li><a href="#two-pointers"><span class="rail-roman">I</span><span class="rail-label">Two Pointers</span></a></li>
+        <li><a href="#sliding-window"><span class="rail-roman">II</span><span class="rail-label">Sliding Window</span></a></li>
+        <li><a href="#tree-traversal"><span class="rail-roman">III</span><span class="rail-label">Tree Traversal (DFS and BFS)</span></a></li>
+        <li><a href="#graph-traversal"><span class="rail-roman">IV</span><span class="rail-label">Graph Traversal (DFS and BFS)</span></a></li>
+        <li><a href="#dynamic-programming"><span class="rail-roman">V</span><span class="rail-label">Dynamic Programming</span></a></li>
+        <li><a href="#heap"><span class="rail-roman">VI</span><span class="rail-label">Heap / Priority Queue</span></a></li>
+        <li><a href="#backtracking"><span class="rail-roman">VII</span><span class="rail-label">Backtracking</span></a></li>
+        <li><a href="#greedy"><span class="rail-roman">VIII</span><span class="rail-label">Greedy</span></a></li>
+        <li><a href="#binary-search"><span class="rail-roman">IX</span><span class="rail-label">Binary Search</span></a></li>
+    </ol>
+  </nav>
+
+  <main id="patterns">
+<section class="pattern" id="two-pointers" aria-labelledby="two-pointers-heading">
+  <h2 id="two-pointers-heading"><span class="roman">I</span>Two Pointers</h2>
+  <div class="field"><h3>The idea</h3><p>Two indices walk the same sequence, and the pair of positions is itself the search space. Because each move rules out a whole band of candidate pairs at once, the O(n&sup2;) double loop collapses into a single O(n) sweep.</p><p>It buys that speed with order: a sorted array, or a structural order such as position in a linked list.</p></div>
+  <div class="field invariant"><h3>The invariant</h3><p>Every pair that could still be the answer lies between <code>lo</code> and <code>hi</code>. Advancing <code>lo</code> or retreating <code>hi</code> discards only pairs already proven impossible, so the answer can never be stepped over.</p></div>
+  <div class="field"><h3>Solution structure</h3>
+      <figure class="code-figure">
+        <figcaption class="code-caption">
+          <span class="code-label">Opposite ends</span>
+          <span class="lang-toggle" role="group" aria-label="Code language for every block on this page">
+            <button type="button" class="lang-btn" data-lang="python" aria-pressed="false">Python</button>
+            <button type="button" class="lang-btn" data-lang="swift" aria-pressed="false">Swift</button>
+          </span>
+        </figcaption>
+        <div class="code-region" tabindex="0" role="region" aria-label="Opposite ends skeleton"><pre class="code-pane" data-lang="python" id="two-pointers-code-0-python"><code>def two_sum_sorted(nums, target):
+    lo, hi = 0, len(nums) - 1
+    while lo &lt; hi:
+        total = nums[lo] + nums[hi]
+        if total == target:
+            return (lo, hi)
+        if total &lt; target:
+            lo += 1
+        else:
+            hi -= 1
+    return None</code></pre><pre class="code-pane" data-lang="swift" id="two-pointers-code-0-swift"><code>func twoSum(inSorted nums: [Int], target: Int) -&gt; (Int, Int)? {
+    var lo = 0, hi = nums.count - 1
+    while lo &lt; hi {
+        let total = nums[lo] + nums[hi]
+        if total == target { return (lo, hi) }
+        if total &lt; target { lo += 1 } else { hi -= 1 }
+    }
+    return nil
+}</code></pre></div>
+      </figure>
+  </div>
+  <div class="field"><h3>Reach for it when</h3><ul class="signals"><li>"sorted array, and you need a pair or a triple summing to a target"</li><li>"do it in place, O(1) extra space" on an array or string</li><li>"remove duplicates / partition / move zeroes, in place"</li><li>"is this a palindrome", comparing from both ends inward</li><li>"detect a cycle in a linked list using constant space"</li><li>"find the middle, or the nth node from the end, in one pass"</li></ul></div>
+  <div class="field"><h3>Do not reach for it when</h3><ul class="misfires"><li>Input is unsorted and sorting would destroy the order the answer depends on. Use a hash map in one pass instead.</li><li>You are maintaining an aggregate over a contiguous run rather than comparing two endpoints. That is a sliding window, and both of its pointers move forward only.</li><li>Fast/slow only detects cycles where each node has one successor. A general directed graph needs DFS with three-state colouring.</li></ul></div>
+  <div class="field"><h3>Complexity</h3><p>O(n) for the sweep, O(n log n) overall if you have to sort first. O(1) extra space, which is usually the point.</p></div>
+  <div class="field"><h3>Variants</h3><dl class="variants"><div><dt>Opposite ends</dt><dd>converge from both sides of a sorted array</dd></div><div><dt>Same direction</dt><dd>a read pointer and a slower write pointer for in-place filtering</dd></div><div><dt>Fast and slow</dt><dd>cycle detection and midpoint finding in a linked structure</dd></div><div><dt>Two sequences</dt><dd>one pointer per sorted list for merge or intersection</dd></div><div><dt>k-sum</dt><dd>fix k - 2 indices with loops and two-pointer the remaining pair</dd></div></dl></div>
+  <div class="field"><h3>Practice it</h3><p class="honest">No catalogue problem drills this pattern yet.</p></div>
+</section>
+
+<section class="pattern" id="sliding-window" aria-labelledby="sliding-window-heading">
+  <h2 id="sliding-window-heading"><span class="roman">II</span>Sliding Window</h2>
+  <div class="field"><h3>The idea</h3><p>A contiguous range <code>[left, right]</code> carries an aggregate that is updated incrementally: extending right adds one element, shrinking left removes one.</p><p>Recomputing that aggregate for every subarray is O(n&sup2;); updating it is O(n) amortised, because each index enters the window once and leaves it once.</p></div>
+  <div class="field invariant"><h3>The invariant</h3><p>After the inner <code>while</code> loop, the window between <code>left</code> and <code>right</code> always satisfies the constraint. That is why it is safe to record an answer at the bottom of every outer iteration and nowhere else.</p></div>
+  <div class="field"><h3>Solution structure</h3>
+      <figure class="code-figure">
+        <figcaption class="code-caption">
+          <span class="code-label">Variable size, longest under a constraint</span>
+          <span class="lang-toggle" role="group" aria-label="Code language for every block on this page">
+            <button type="button" class="lang-btn" data-lang="python" aria-pressed="false">Python</button>
+            <button type="button" class="lang-btn" data-lang="swift" aria-pressed="false">Swift</button>
+          </span>
+        </figcaption>
+        <div class="code-region" tabindex="0" role="region" aria-label="Variable size, longest under a constraint skeleton"><pre class="code-pane" data-lang="python" id="sliding-window-code-0-python"><code>def longest_window(nums, limit):
+    left = 0
+    running = 0
+    best = 0
+    for right, value in enumerate(nums):
+        running += value
+        while running &gt; limit:
+            running -= nums[left]
+            left += 1
+        best = max(best, right - left + 1)
+    return best</code></pre><pre class="code-pane" data-lang="swift" id="sliding-window-code-0-swift"><code>func longestWindow(_ nums: [Int], limit: Int) -&gt; Int {
+    var left = 0, running = 0, best = 0
+    for (right, value) in nums.enumerated() {
+        running += value
+        while running &gt; limit {
+            running -= nums[left]
+            left += 1
+        }
+        best = max(best, right - left + 1)
+    }
+    return best
+}</code></pre></div>
+      </figure>
+  </div>
+  <div class="field"><h3>Reach for it when</h3><ul class="signals"><li>"the longest or shortest contiguous run satisfying a constraint"</li><li>"at most k distinct characters", "at most k replacements"</li><li>"a subarray whose sum is at most / exactly a target", with non-negative values</li><li>"the maximum over every window of fixed size k"</li><li>"how many requests has this user made in the last 60 seconds"</li></ul></div>
+  <div class="field"><h3>Do not reach for it when</h3><ul class="misfires"><li>Values can be negative, so shrinking the window no longer reduces the aggregate monotonically and the invariant dies. Use prefix sums plus a hash map.</li><li>The problem wants a subsequence rather than a contiguous run. That is dynamic programming.</li><li>Pointers converging from opposite ends is two pointers, not a window: a window's <code>left</code> never passes anything <code>right</code> has not already consumed.</li></ul></div>
+  <div class="field"><h3>Complexity</h3><p>O(n) time, each index pushed and popped exactly once. Space is O(1) for a numeric aggregate, O(k) for a frequency counter or a monotonic deque.</p></div>
+  <div class="field"><h3>Variants</h3><dl class="variants"><div><dt>Fixed size k</dt><dd>slide by adding one and dropping one, no inner loop</dd></div><div><dt>Longest under a constraint</dt><dd>shrink only while the constraint is violated</dd></div><div><dt>Shortest over a constraint</dt><dd>shrink greedily while it still holds, recording each time</dd></div><div><dt>Counter window</dt><dd>a dict or multiset for distinct-element constraints</dd></div><div><dt>Monotonic deque</dt><dd>window maximum or minimum in O(n) instead of O(n log n)</dd></div><div><dt>Time window</dt><dd>evict by timestamp rather than by index</dd></div></dl></div>
+  <div class="field"><h3>Practice it</h3><ul class="practice-list"><li><a class="practice-link" href="index.html?tag=sliding-window">#sliding-window</a> <span class="practice-note">Rate limiters in Python and Swift, both windowing by timestamp</span></li></ul></div>
+</section>
+
+<section class="pattern" id="tree-traversal" aria-labelledby="tree-traversal-heading">
+  <h2 id="tree-traversal-heading"><span class="roman">III</span>Tree Traversal (DFS and BFS)</h2>
+  <div class="field"><h3>The idea</h3><p>Every node is visited exactly once. The only real decision is when a node does its own work relative to its children, and that decision is one line's position in the function.</p><p>Recursion supplies the stack, so a traversal is four lines and the ordering is free.</p></div>
+  <div class="field invariant"><h3>The invariant</h3><p>DFS: when a child's recursive call returns, that entire subtree is finished and will never be revisited, so a node may treat its children's results as final. BFS: the queue always holds nodes in non-decreasing depth, so every node at depth d is dequeued before any node at depth d + 1.</p></div>
+  <div class="field"><h3>Solution structure</h3>
+    <h4>DFS: the three orderings</h4>
+    <p><strong>Preorder</strong> (node, left, right) does the node's work before descending. Reach for it when information flows downward: serialising a tree, carrying a path prefix or a running sum into the children, copying a structure.</p>
+    <p><strong>Inorder</strong> (left, node, right) exists for one reason: on a binary search tree it yields the keys in sorted order. That single fact is what makes "kth smallest" and "validate this BST" short.</p>
+    <p><strong>Postorder</strong> (left, right, node) does the node's work last, so the children's answers are already in hand. Use it whenever a node's answer depends on its children's: height, subtree sums, deletion, bottom-up rebalancing. If you catch yourself wanting to return a value up the tree, you are writing a postorder.</p>
+      <figure class="code-figure">
+        <figcaption class="code-caption">
+          <span class="code-label">Preorder and inorder</span>
+          <span class="lang-toggle" role="group" aria-label="Code language for every block on this page">
+            <button type="button" class="lang-btn" data-lang="python" aria-pressed="false">Python</button>
+            <button type="button" class="lang-btn" data-lang="swift" aria-pressed="false">Swift</button>
+          </span>
+        </figcaption>
+        <div class="code-region" tabindex="0" role="region" aria-label="Preorder and inorder skeleton"><pre class="code-pane" data-lang="python" id="tree-traversal-code-0-python"><code>def preorder(node, out):
+    if node is None:
+        return
+    out.append(node.val)
+    preorder(node.left, out)
+    preorder(node.right, out)
+
+def inorder(node, out):
+    if node is None:
+        return
+    inorder(node.left, out)
+    out.append(node.val)
+    inorder(node.right, out)</code></pre><pre class="code-pane" data-lang="swift" id="tree-traversal-code-0-swift"><code>func preorder(_ node: TreeNode?, into out: inout [Int]) {
+    guard let node else { return }
+    out.append(node.value)
+    preorder(node.left, into: &amp;out)
+    preorder(node.right, into: &amp;out)
+}
+
+func inorder(_ node: TreeNode?, into out: inout [Int]) {
+    guard let node else { return }
+    inorder(node.left, into: &amp;out)
+    out.append(node.value)
+    inorder(node.right, into: &amp;out)
+}</code></pre></div>
+      </figure>
+      <figure class="code-figure">
+        <figcaption class="code-caption">
+          <span class="code-label">Postorder aggregate</span>
+          <span class="lang-toggle" role="group" aria-label="Code language for every block on this page">
+            <button type="button" class="lang-btn" data-lang="python" aria-pressed="false">Python</button>
+            <button type="button" class="lang-btn" data-lang="swift" aria-pressed="false">Swift</button>
+          </span>
+        </figcaption>
+        <div class="code-region" tabindex="0" role="region" aria-label="Postorder aggregate skeleton"><pre class="code-pane" data-lang="python" id="tree-traversal-code-1-python"><code>def height(node):
+    if node is None:
+        return 0
+    left = height(node.left)
+    right = height(node.right)
+    return 1 + max(left, right)</code></pre><pre class="code-pane" data-lang="swift" id="tree-traversal-code-1-swift"><code>func height(_ node: TreeNode?) -&gt; Int {
+    guard let node else { return 0 }
+    return 1 + max(height(node.left), height(node.right))
+}</code></pre></div>
+      </figure>
+    <h4>BFS: level order</h4>
+    <p>Snapshotting the queue length at the top of each outer iteration is what separates one level from the next. Without that snapshot you get a flat traversal, not levels.</p>
+      <figure class="code-figure">
+        <figcaption class="code-caption">
+          <span class="code-label">Level order</span>
+          <span class="lang-toggle" role="group" aria-label="Code language for every block on this page">
+            <button type="button" class="lang-btn" data-lang="python" aria-pressed="false">Python</button>
+            <button type="button" class="lang-btn" data-lang="swift" aria-pressed="false">Swift</button>
+          </span>
+        </figcaption>
+        <div class="code-region" tabindex="0" role="region" aria-label="Level order skeleton"><pre class="code-pane" data-lang="python" id="tree-traversal-code-2-python"><code>from collections import deque
+
+def level_order(root):
+    if root is None:
+        return []
+    levels, queue = [], deque([root])
+    while queue:
+        level = []
+        for _ in range(len(queue)):
+            node = queue.popleft()
+            level.append(node.val)
+            if node.left:
+                queue.append(node.left)
+            if node.right:
+                queue.append(node.right)
+        levels.append(level)
+    return levels</code></pre><pre class="code-pane" data-lang="swift" id="tree-traversal-code-2-swift"><code>func levelOrder(_ root: TreeNode?) -&gt; [[Int]] {
+    guard let root else { return [] }
+    var levels: [[Int]] = []
+    var queue = [root]
+    while !queue.isEmpty {
+        var next: [TreeNode] = []
+        levels.append(queue.map(\.value))
+        for node in queue {
+            if let left = node.left { next.append(left) }
+            if let right = node.right { next.append(right) }
+        }
+        queue = next
+    }
+    return levels
+}</code></pre></div>
+      </figure>
+  </div>
+  <div class="field"><h3>Reach for it when</h3><ul class="signals"><li>"the depth, the height, or the diameter of a tree"</li><li>"the sum or the count within every subtree"</li><li>"return the values level by level", or "the rightmost node of each level"</li><li>"validate a binary search tree" or "the kth smallest key" (inorder)</li><li>"the lowest common ancestor of two nodes" (postorder)</li><li>"serialise and deserialise this tree" (preorder)</li></ul></div>
+  <div class="field"><h3>Do not reach for it when</h3><ul class="misfires"><li>You need the shallowest leaf, or the minimum depth. BFS answers it on the first leaf dequeued; DFS may spend the whole traversal down one deep branch first.</li><li>The tree is deep or degenerate (effectively a linked list) and recursion will hit the stack limit. Convert to an explicit stack.</li><li>The structure has shared children or back edges, so it is a graph, not a tree. Without a visited set the traversal repeats work or never terminates.</li></ul></div>
+  <div class="field"><h3>Complexity</h3><p>O(n) time, every node once. Space is O(h) for DFS where h is the height, degrading to O(n) on a skewed tree, and O(w) for BFS where w is the widest level, up to n/2 on a full tree.</p></div>
+  <div class="field"><h3>Variants</h3><dl class="variants"><div><dt>Preorder</dt><dd>top-down, information flows from parent to child</dd></div><div><dt>Inorder</dt><dd>sorted order on a BST, nothing else</dd></div><div><dt>Postorder</dt><dd>bottom-up, a node consumes its children's results</dd></div><div><dt>Level order</dt><dd>BFS with a per-level queue snapshot</dd></div><div><dt>Iterative DFS</dt><dd>explicit stack when depth threatens the recursion limit</dd></div><div><dt>BST descent</dt><dd>compare and discard one branch, O(h) rather than O(n)</dd></div></dl></div>
+  <div class="field"><h3>Practice it</h3><ul class="practice-list"><li><a class="practice-link" href="index.html?tag=tree-traversal">#tree-traversal</a> <span class="practice-note">One catalogue problem: bottom-up subtree aggregation on a maintenance tree</span></li></ul></div>
+</section>
+
+<section class="pattern" id="graph-traversal" aria-labelledby="graph-traversal-heading">
+  <h2 id="graph-traversal-heading"><span class="roman">IV</span>Graph Traversal (DFS and BFS)</h2>
+  <div class="field"><h3>The idea</h3><p>The same two engines as trees, plus a visited set, because a graph can reach one node by many routes and can loop back on itself.</p><p>That set is not an optimisation, it is what makes the traversal terminate and keeps it O(V + E) instead of exponential.</p></div>
+  <div class="field invariant"><h3>The invariant</h3><p>Every node is inserted into <code>visited</code> exactly once, and always before its edges are explored, so each node is expanded at most once even in the presence of cycles. BFS adds a second guarantee: the queue stays in non-decreasing distance order, so the first time a node is reached, it is reached by a shortest path.</p></div>
+  <div class="field"><h3>Solution structure</h3>
+    <h4>DFS: reachability and the visited discipline</h4>
+    <p>Mark on push, not on pop. Marking when you dequeue lets the same node sit in the frontier several times, which is the single most common graph bug.</p>
+    <p>Cycle detection in a <em>directed</em> graph needs three states, not two: unvisited, on the current path, and finished. Re-reaching a finished node is a diamond, not a cycle. In an <em>undirected</em> graph the test is simpler: a visited neighbour that is not the node you came from.</p>
+      <figure class="code-figure">
+        <figcaption class="code-caption">
+          <span class="code-label">Iterative DFS with a visited set</span>
+          <span class="lang-toggle" role="group" aria-label="Code language for every block on this page">
+            <button type="button" class="lang-btn" data-lang="python" aria-pressed="false">Python</button>
+            <button type="button" class="lang-btn" data-lang="swift" aria-pressed="false">Swift</button>
+          </span>
+        </figcaption>
+        <div class="code-region" tabindex="0" role="region" aria-label="Iterative DFS with a visited set skeleton"><pre class="code-pane" data-lang="python" id="graph-traversal-code-0-python"><code>def reachable(graph, start):
+    visited = {start}
+    stack = [start]
+    while stack:
+        node = stack.pop()
+        for nxt in graph.get(node, ()):
+            if nxt not in visited:
+                visited.add(nxt)
+                stack.append(nxt)
+    return visited</code></pre><pre class="code-pane" data-lang="swift" id="graph-traversal-code-0-swift"><code>func reachable(from start: String, in graph: [String: [String]]) -&gt; Set&lt;String&gt; {
+    var visited: Set&lt;String&gt; = [start]
+    var stack = [start]
+    while let node = stack.popLast() {
+        for next in graph[node, default: []] where !visited.contains(next) {
+            visited.insert(next)
+            stack.append(next)
+        }
+    }
+    return visited
+}</code></pre></div>
+      </figure>
+    <h4>BFS: shortest path, unweighted only</h4>
+    <p>BFS gives shortest paths <strong>only on unweighted graphs</strong>, or where every edge has the same weight. With varying weights it returns the path with the fewest hops, which is a different and usually wrong answer; use Dijkstra with a heap, or Bellman-Ford when weights can be negative.</p>
+    <p>Record the distance at discovery, not at dequeue, and keep a parent map alongside it if you need the route rather than its length.</p>
+      <figure class="code-figure">
+        <figcaption class="code-caption">
+          <span class="code-label">Shortest hops from a source</span>
+          <span class="lang-toggle" role="group" aria-label="Code language for every block on this page">
+            <button type="button" class="lang-btn" data-lang="python" aria-pressed="false">Python</button>
+            <button type="button" class="lang-btn" data-lang="swift" aria-pressed="false">Swift</button>
+          </span>
+        </figcaption>
+        <div class="code-region" tabindex="0" role="region" aria-label="Shortest hops from a source skeleton"><pre class="code-pane" data-lang="python" id="graph-traversal-code-1-python"><code>from collections import deque
+
+def shortest_hops(graph, start):
+    dist = {start: 0}
+    queue = deque([start])
+    while queue:
+        node = queue.popleft()
+        for nxt in graph.get(node, ()):
+            if nxt not in dist:
+                dist[nxt] = dist[node] + 1
+                queue.append(nxt)
+    return dist</code></pre><pre class="code-pane" data-lang="swift" id="graph-traversal-code-1-swift"><code>func shortestHops(from start: String, in graph: [String: [String]]) -&gt; [String: Int] {
+    var distance = [start: 0]
+    var queue = [start]
+    var head = 0
+    while head &lt; queue.count {
+        let node = queue[head]; head += 1
+        for next in graph[node, default: []] where distance[next] == nil {
+            distance[next] = distance[node]! + 1
+            queue.append(next)
+        }
+    }
+    return distance
+}</code></pre></div>
+      </figure>
+  </div>
+  <div class="field"><h3>Reach for it when</h3><ul class="signals"><li>"nodes and edges", "dependencies", "prerequisites", "who reports to whom"</li><li>"the minimum number of steps, moves, or transformations"</li><li>"count the connected components", "count the islands or regions in a grid"</li><li>"can A reach B", "which services are affected if this one fails"</li><li>"detect a circular dependency"</li><li>"a valid order in which to run these tasks"</li></ul></div>
+  <div class="field"><h3>Do not reach for it when</h3><ul class="misfires"><li>Edges carry weights and you want the cheapest route. BFS will return a confident wrong answer; use Dijkstra (a heap, see VI).</li><li>A grid problem that maximises a value along a monotone path rather than counting steps. That is dynamic programming, not traversal.</li><li>The structure is acyclic with a single parent per node. It is a tree, and the visited set is dead weight.</li></ul></div>
+  <div class="field"><h3>Complexity</h3><p>O(V + E) with an adjacency list, plus O(V) space for visited and the frontier. A grid is an implicit graph with V = rows x cols and E about 4V, so it is O(rows x cols).</p></div>
+  <div class="field"><h3>Variants</h3><dl class="variants"><div><dt>Reachability and flood fill</dt><dd>DFS or BFS, either works, visited set does the work</dd></div><div><dt>Three-colour cycle detection</dt><dd>directed cycles need an on-path state</dd></div><div><dt>Topological sort</dt><dd>reversed DFS postorder, or Kahn's in-degree queue</dd></div><div><dt>Shortest hops</dt><dd>BFS on an unweighted graph</dd></div><div><dt>Multi-source BFS</dt><dd>seed the queue with every source at distance 0</dd></div><div><dt>Grid traversal</dt><dd>the implicit graph, four or eight neighbours, bounds check as the edge test</dd></div></dl></div>
+  <div class="field"><h3>Practice it</h3><ul class="practice-list"><li><a class="practice-link" href="index.html?tag=topological-sort">#topological-sort</a> <span class="practice-note">Build pipeline scheduling over a dependency graph</span></li></ul><p class="honest">Plain reachability and shortest-hop BFS are not drilled directly in the catalogue yet.</p></div>
+</section>
+
+<section class="pattern" id="dynamic-programming" aria-labelledby="dynamic-programming-heading">
+  <h2 id="dynamic-programming-heading"><span class="roman">V</span>Dynamic Programming</h2>
+  <div class="field"><h3>The idea</h3><p>The problem breaks into subproblems that overlap, and each distinct subproblem is solved once and reused. That reuse is the whole trick: an exponential recursion tree collapses to the number of distinct states.</p><p>Tabulation and memoisation are the same recurrence written bottom-up and top-down; pick whichever makes the base cases obvious.</p></div>
+  <div class="field invariant"><h3>The invariant</h3><p><code>dp[i]</code> means exactly one thing, and it is already correct for every index below <code>i</code> at the moment you compute it. If you cannot finish the sentence "dp[i] is the ..." out loud, you do not have a recurrence yet, you have a guess.</p></div>
+  <div class="field"><h3>Solution structure</h3>
+      <figure class="code-figure">
+        <figcaption class="code-caption">
+          <span class="code-label">Tabulation, bottom-up</span>
+          <span class="lang-toggle" role="group" aria-label="Code language for every block on this page">
+            <button type="button" class="lang-btn" data-lang="python" aria-pressed="false">Python</button>
+            <button type="button" class="lang-btn" data-lang="swift" aria-pressed="false">Swift</button>
+          </span>
+        </figcaption>
+        <div class="code-region" tabindex="0" role="region" aria-label="Tabulation, bottom-up skeleton"><pre class="code-pane" data-lang="python" id="dynamic-programming-code-0-python"><code>def max_non_adjacent(values):
+    if not values:
+        return 0
+    dp = [0] * (len(values) + 1)
+    dp[1] = values[0]
+    for i in range(2, len(values) + 1):
+        dp[i] = max(dp[i - 1], dp[i - 2] + values[i - 1])
+    return dp[len(values)]</code></pre><pre class="code-pane" data-lang="swift" id="dynamic-programming-code-0-swift"><code>func maxNonAdjacent(_ values: [Int]) -&gt; Int {
+    guard !values.isEmpty else { return 0 }
+    var dp = Array(repeating: 0, count: values.count + 1)
+    dp[1] = values[0]
+    for i in stride(from: 2, through: values.count, by: 1) {
+        dp[i] = max(dp[i - 1], dp[i - 2] + values[i - 1])
+    }
+    return dp[values.count]
+}</code></pre></div>
+      </figure>
+      <figure class="code-figure">
+        <figcaption class="code-caption">
+          <span class="code-label">Memoisation, top-down</span>
+          <span class="lang-toggle" role="group" aria-label="Code language for every block on this page">
+            <button type="button" class="lang-btn" data-lang="python" aria-pressed="false">Python</button>
+            <button type="button" class="lang-btn" data-lang="swift" aria-pressed="false">Swift</button>
+          </span>
+        </figcaption>
+        <div class="code-region" tabindex="0" role="region" aria-label="Memoisation, top-down skeleton"><pre class="code-pane" data-lang="python" id="dynamic-programming-code-1-python"><code>from functools import lru_cache
+
+def max_non_adjacent_memo(values):
+    @lru_cache(maxsize=None)
+    def best(i):
+        if i &gt;= len(values):
+            return 0
+        return max(best(i + 1), values[i] + best(i + 2))
+    return best(0)</code></pre><pre class="code-pane" data-lang="swift" id="dynamic-programming-code-1-swift"><code>func maxNonAdjacentMemo(_ values: [Int]) -&gt; Int {
+    var memo: [Int: Int] = [:]
+    func best(_ i: Int) -&gt; Int {
+        if i &gt;= values.count { return 0 }
+        if let cached = memo[i] { return cached }
+        let result = max(best(i + 1), values[i] + best(i + 2))
+        memo[i] = result
+        return result
+    }
+    return best(0)
+}</code></pre></div>
+      </figure>
+  </div>
+  <div class="field"><h3>Reach for it when</h3><ul class="signals"><li>"the maximum, the minimum, or the number of ways" over a sequence of choices</li><li>"can this string be split into words from a vocabulary"</li><li>"take or skip each item, subject to a capacity or a budget"</li><li>"the longest increasing / common / palindromic something"</li><li>"how many distinct paths through this grid with obstacles"</li><li>the interviewer answers your greedy rule with a counterexample</li></ul></div>
+  <div class="field"><h3>Do not reach for it when</h3><ul class="misfires"><li>A local rule provably gives the global optimum. Then greedy is correct and DP is a slower right answer; state the exchange argument and take the O(n log n).</li><li>You need the actual solutions enumerated, not counted or optimised. That is backtracking. DP gives you the value; recovering the choices needs a parent table and a reconstruction pass.</li><li>The subproblems do not overlap. Then it is plain divide and conquer and the memo table never gets a hit.</li></ul></div>
+  <div class="field"><h3>Complexity</h3><p>(number of states) x (work per transition). A 1-D array with O(1) transitions is O(n) time and O(n) space, rolled down to O(1) when only the last two rows matter. Knapsack is O(n x capacity); a grid is O(rows x cols).</p></div>
+  <div class="field"><h3>Variants</h3><dl class="variants"><div><dt>Linear recurrence</dt><dd>take or skip along an array, dp[i] from dp[i-1] and dp[i-2]</dd></div><div><dt>Running best (Kadane)</dt><dd>best ending here versus best overall, one pass</dd></div><div><dt>Grid paths</dt><dd>counts or costs over a grid with obstacles</dd></div><div><dt>0/1 knapsack and subset sum</dt><dd>capacity as the second dimension, iterate capacity downward</dd></div><div><dt>Unbounded knapsack</dt><dd>same table, capacity iterated upward so an item can repeat</dd></div><div><dt>String segmentation</dt><dd>dp over prefixes against a vocabulary set</dd></div><div><dt>Reconstruction</dt><dd>a parallel choice table, then walk it backwards to name the picks</dd></div></dl></div>
+  <div class="field"><h3>Practice it</h3><ul class="practice-list"><li><a class="practice-link" href="index.html?tag=dynamic-programming">#dynamic-programming</a> <span class="practice-note">Five Swift problems: linear recurrence, Kadane, grid paths, knapsack family, and segmentation</span></li></ul></div>
+</section>
+
+<section class="pattern" id="heap" aria-labelledby="heap-heading">
+  <h2 id="heap-heading"><span class="roman">VI</span>Heap / Priority Queue</h2>
+  <div class="field"><h3>The idea</h3><p>A heap hands you the extreme element in O(1) and keeps that true across inserts and removals in O(log n).</p><p>Reach for it when you repeatedly need the smallest or largest of a set that keeps changing, and a full sort would be work you throw away.</p></div>
+  <div class="field invariant"><h3>The invariant</h3><p>Every node compares no greater than both of its children, so the root is the minimum of the whole structure. In the bounded k-largest pattern the heap holds exactly the k largest elements seen so far, which makes its root the threshold a new candidate has to beat.</p></div>
+  <div class="field"><h3>Solution structure</h3>
+      <figure class="code-figure">
+        <figcaption class="code-caption">
+          <span class="code-label">k largest with a bounded min-heap</span>
+          <span class="lang-toggle" role="group" aria-label="Code language for every block on this page">
+            <button type="button" class="lang-btn" data-lang="python" aria-pressed="false">Python</button>
+            <button type="button" class="lang-btn" data-lang="swift" aria-pressed="false">Swift</button>
+          </span>
+        </figcaption>
+        <div class="code-region" tabindex="0" role="region" aria-label="k largest with a bounded min-heap skeleton"><pre class="code-pane" data-lang="python" id="heap-code-0-python"><code>import heapq
+
+def k_largest(nums, k):
+    heap = []
+    for n in nums:
+        heapq.heappush(heap, n)
+        if len(heap) &gt; k:
+            heapq.heappop(heap)
+    return sorted(heap, reverse=True)</code></pre><pre class="code-pane" data-lang="swift" id="heap-code-0-swift"><code>// The standard library has no heap. Say that out loud, then either hand-roll
+// sift-up/sift-down or use Heap from swift-collections. MinHeap here exposes
+// insert(_:), popMin() -&gt; Element?, and count.
+func kLargest(_ nums: [Int], _ k: Int) -&gt; [Int] {
+    var heap = MinHeap&lt;Int&gt;()
+    for n in nums {
+        heap.insert(n)
+        if heap.count &gt; k { _ = heap.popMin() }
+    }
+    return heap.sorted(by: &gt;)
+}</code></pre></div>
+      </figure>
+  </div>
+  <div class="field"><h3>Reach for it when</h3><ul class="signals"><li>"the k largest, k smallest, or k most frequent", and k is much smaller than n</li><li>"merge k sorted lists or streams"</li><li>"always process the highest-priority item next"</li><li>"the running median of a stream"</li><li>"the next event by time", "the job with the earliest deadline"</li><li>"the cheapest edge or node to expand next" (Dijkstra, Prim)</li></ul></div>
+  <div class="field"><h3>Do not reach for it when</h3><ul class="misfires"><li>You need the k largest and then everything else in order anyway. Just sort: same asymptotics, much smaller constant.</li><li>k is close to n. The O(n log k) advantage evaporates; sort.</li><li>The maximum over a fixed-size sliding window. A monotonic deque does it in O(n) where a heap costs O(n log n).</li></ul></div>
+  <div class="field"><h3>Complexity</h3><p>Push and pop are O(log n); building from an existing array is O(n) via heapify. The bounded k-largest scan is O(n log k) time and O(k) space.</p></div>
+  <div class="field"><h3>Variants</h3><dl class="variants"><div><dt>Bounded k-largest</dt><dd>a min-heap of size k, and its mirror for k smallest</dd></div><div><dt>Keyed entries</dt><dd>push (priority, payload) tuples so the comparison is explicit</dd></div><div><dt>Two heaps</dt><dd>a max-heap and a min-heap balanced around a running median</dd></div><div><dt>k-way merge</dt><dd>seed with one element per list, push the successor on each pop</dd></div><div><dt>Lazy deletion</dt><dd>leave stale entries in and skip them on pop</dd></div><div><dt>Cheapest frontier</dt><dd>Dijkstra and Prim are this pattern over a graph</dd></div></dl></div>
+  <div class="field"><h3>Practice it</h3><ul class="practice-list"><li><a class="practice-link" href="index.html?tag=priority-queue">#priority-queue</a> <span class="practice-note">Responder dispatch and build pipeline scheduling</span></li></ul></div>
+</section>
+
+<section class="pattern" id="backtracking" aria-labelledby="backtracking-heading">
+  <h2 id="backtracking-heading"><span class="roman">VII</span>Backtracking</h2>
+  <div class="field"><h3>The idea</h3><p>Depth-first search over a tree of partial solutions. Make a choice, recurse, undo the choice, so a single mutable path buffer serves the entire search.</p><p>Pruning an invalid partial removes the whole subtree beneath it, and that pruning is what lets an exponential search finish in practice.</p></div>
+  <div class="field invariant"><h3>The invariant</h3><p><code>path</code> holds exactly the choices on the current root-to-node branch, nothing more. Every recursive call leaves <code>path</code> exactly as it found it, which is why the append and the matching pop bracket the recursive call as a pair.</p></div>
+  <div class="field"><h3>Solution structure</h3>
+      <figure class="code-figure">
+        <figcaption class="code-caption">
+          <span class="code-label">Choose, explore, un-choose</span>
+          <span class="lang-toggle" role="group" aria-label="Code language for every block on this page">
+            <button type="button" class="lang-btn" data-lang="python" aria-pressed="false">Python</button>
+            <button type="button" class="lang-btn" data-lang="swift" aria-pressed="false">Swift</button>
+          </span>
+        </figcaption>
+        <div class="code-region" tabindex="0" role="region" aria-label="Choose, explore, un-choose skeleton"><pre class="code-pane" data-lang="python" id="backtracking-code-0-python"><code>def subsets_summing(candidates, target):
+    results, path = [], []
+    def explore(start, remaining):
+        if remaining == 0:
+            results.append(list(path))
+            return
+        for i in range(start, len(candidates)):
+            if candidates[i] &gt; remaining:
+                continue
+            path.append(candidates[i])
+            explore(i + 1, remaining - candidates[i])
+            path.pop()
+    explore(0, target)
+    return results</code></pre><pre class="code-pane" data-lang="swift" id="backtracking-code-0-swift"><code>func subsetsSumming(_ candidates: [Int], to target: Int) -&gt; [[Int]] {
+    var results: [[Int]] = []
+    var path: [Int] = []
+    func explore(_ start: Int, _ remaining: Int) {
+        if remaining == 0 { results.append(path); return }
+        for i in start..&lt;candidates.count where candidates[i] &lt;= remaining {
+            path.append(candidates[i])
+            explore(i + 1, remaining - candidates[i])
+            path.removeLast()
+        }
+    }
+    explore(0, target)
+    return results
+}</code></pre></div>
+      </figure>
+  </div>
+  <div class="field"><h3>Reach for it when</h3><ul class="signals"><li>"return all" or "generate every": subsets, permutations, valid placements</li><li>"find the combinations that satisfy ..."</li><li>"place n items so that no two conflict"</li><li>"is there any assignment that works" (return on the first hit)</li><li>"solve this board or puzzle"</li><li>the input is small (n up to roughly 20) and the answer is a list of solutions</li></ul></div>
+  <div class="field"><h3>Do not reach for it when</h3><ul class="misfires"><li>Only the count or the best value is wanted, never the solutions. That is DP, and backtracking will time out on the same input.</li><li>The same state is being re-explored down different branches. Memoise it, at which point it has become DP over a state.</li><li>Each step's choice is forced by a local rule. That is greedy, and there is nothing to back out of.</li></ul></div>
+  <div class="field"><h3>Complexity</h3><p>O(branching ^ depth) in the worst case, plus O(depth) to copy out each completed solution. Space is O(depth) for the recursion and the path, output aside. Pruning is what moves the real runtime; the bound barely moves.</p></div>
+  <div class="field"><h3>Variants</h3><dl class="variants"><div><dt>Subsets</dt><dd>include or exclude at each index</dd></div><div><dt>Combinations</dt><dd>a start index so permutations of the same set are never generated twice</dd></div><div><dt>Permutations</dt><dd>a used set, or swap-in-place and swap back</dd></div><div><dt>Constraint placement</dt><dd>conflict sets checked before descending (the n-queens shape)</dd></div><div><dt>Grid search</dt><dd>mark the cell in place, recurse, restore it</dd></div><div><dt>Duplicate handling</dt><dd>sort the candidates, then skip equal siblings at the same depth</dd></div><div><dt>First solution only</dt><dd>return a bool up the stack and stop at the first success</dd></div></dl></div>
+  <div class="field"><h3>Practice it</h3><ul class="practice-list"><li><a class="practice-link" href="index.html?tag=backtracking">#backtracking</a> <span class="practice-note">Log token segmentation, where backtracking reconstructs the split from the DP table</span></li></ul></div>
+</section>
+
+<section class="pattern" id="greedy" aria-labelledby="greedy-heading">
+  <h2 id="greedy-heading"><span class="roman">VIII</span>Greedy</h2>
+  <div class="field"><h3>The idea</h3><p>Take the locally best choice at each step and never revisit it. It is the fastest thing that can possibly work.</p><p>It works only when an exchange argument holds: any optimal solution can be rewritten to begin with your choice without getting worse. No exchange argument, no greedy.</p></div>
+  <div class="field invariant"><h3>The invariant</h3><p>After every step, the partial solution is still extendable to an optimal one. The sort key carries that entire claim, which is why choosing the key <em>is</em> the design: sort interval scheduling by finish time and the invariant holds, sort it by start time or by duration and it is false from the first step.</p></div>
+  <div class="field"><h3>Solution structure</h3>
+      <figure class="code-figure">
+        <figcaption class="code-caption">
+          <span class="code-label">Sort by the right key, then sweep</span>
+          <span class="lang-toggle" role="group" aria-label="Code language for every block on this page">
+            <button type="button" class="lang-btn" data-lang="python" aria-pressed="false">Python</button>
+            <button type="button" class="lang-btn" data-lang="swift" aria-pressed="false">Swift</button>
+          </span>
+        </figcaption>
+        <div class="code-region" tabindex="0" role="region" aria-label="Sort by the right key, then sweep skeleton"><pre class="code-pane" data-lang="python" id="greedy-code-0-python"><code>def max_non_overlapping(intervals):
+    chosen, last_end = 0, float("-inf")
+    for start, end in sorted(intervals, key=lambda iv: iv[1]):
+        if start &gt;= last_end:
+            chosen += 1
+            last_end = end
+    return chosen</code></pre><pre class="code-pane" data-lang="swift" id="greedy-code-0-swift"><code>func maxNonOverlapping(_ intervals: [(start: Int, end: Int)]) -&gt; Int {
+    var chosen = 0
+    var lastEnd = Int.min
+    for interval in intervals.sorted(by: { $0.end &lt; $1.end }) where interval.start &gt;= lastEnd {
+        chosen += 1
+        lastEnd = interval.end
+    }
+    return chosen
+}</code></pre></div>
+      </figure>
+  </div>
+  <div class="field"><h3>Reach for it when</h3><ul class="signals"><li>"the maximum number of non-overlapping intervals or meetings"</li><li>"the minimum number of X needed to cover Y"</li><li>"jobs may run in any order, minimise total lateness or waiting time"</li><li>"repeatedly combine the two cheapest"</li><li>"the input is already sorted", or sorting by one obvious key makes the answer fall out</li><li>"the smallest lexicographic result"</li></ul></div>
+  <div class="field"><h3>Do not reach for it when</h3><ul class="misfires"><li>You cannot state the exchange argument in one sentence. Assume greedy is wrong and write the DP.</li><li>0/1 knapsack by value-per-weight ratio. Correct for fractional items, wrong for indivisible ones; that is DP.</li><li>Coin change by largest coin first. Correct for some denomination sets and wrong for others, which is the worst kind of wrong; that is DP.</li></ul></div>
+  <div class="field"><h3>Complexity</h3><p>Usually O(n log n), dominated by the sort, and O(n) when the input arrives sorted or the key buckets. O(1) extra space beyond the sort.</p></div>
+  <div class="field"><h3>Variants</h3><dl class="variants"><div><dt>Earliest finish time</dt><dd>maximum non-overlapping intervals</dd></div><div><dt>Sort by start, sweep with a heap</dt><dd>how many rooms or workers are needed at once</dd></div><div><dt>Exchange-argument sequencing</dt><dd>shortest job first, earliest deadline first</dd></div><div><dt>Repeated cheapest merge</dt><dd>pull the two smallest from a heap and push the sum</dd></div><div><dt>Furthest reach</dt><dd>one pass tracking the best reachable point (jump and covering problems)</dd></div><div><dt>Fractional knapsack</dt><dd>by ratio, and only when items can be split</dd></div></dl></div>
+  <div class="field"><h3>Practice it</h3><p class="honest">No catalogue problem drills this pattern yet.</p></div>
+</section>
+
+<section class="pattern" id="binary-search" aria-labelledby="binary-search-heading">
+  <h2 id="binary-search-heading"><span class="roman">IX</span>Binary Search</h2>
+  <div class="field"><h3>The idea</h3><p>Halve the candidate range on every comparison. It applies to any predicate that is monotonic across the range - false, false, ..., false, true, true.</p><p>The range does not have to be array indices. Binary searching the answer values themselves, with a feasibility check as the predicate, is the version that wins interviews.</p></div>
+  <div class="field invariant"><h3>The invariant</h3><p>The answer is always inside <code>[lo, hi)</code>. Each iteration discards only a half proven not to contain it, and the loop ends when the range holds exactly one candidate. Half-open bounds plus <code>lo = mid + 1</code> on the discarded side are what prevent both the off-by-one and the infinite loop.</p></div>
+  <div class="field"><h3>Solution structure</h3>
+      <figure class="code-figure">
+        <figcaption class="code-caption">
+          <span class="code-label">Leftmost and rightmost boundary</span>
+          <span class="lang-toggle" role="group" aria-label="Code language for every block on this page">
+            <button type="button" class="lang-btn" data-lang="python" aria-pressed="false">Python</button>
+            <button type="button" class="lang-btn" data-lang="swift" aria-pressed="false">Swift</button>
+          </span>
+        </figcaption>
+        <div class="code-region" tabindex="0" role="region" aria-label="Leftmost and rightmost boundary skeleton"><pre class="code-pane" data-lang="python" id="binary-search-code-0-python"><code>def lower_bound(nums, target):
+    lo, hi = 0, len(nums)
+    while lo &lt; hi:
+        mid = (lo + hi) // 2
+        if nums[mid] &lt; target:
+            lo = mid + 1
+        else:
+            hi = mid
+    return lo
+
+def upper_bound(nums, target):
+    lo, hi = 0, len(nums)
+    while lo &lt; hi:
+        mid = (lo + hi) // 2
+        if nums[mid] &lt;= target:
+            lo = mid + 1
+        else:
+            hi = mid
+    return lo</code></pre><pre class="code-pane" data-lang="swift" id="binary-search-code-0-swift"><code>func lowerBound(_ nums: [Int], _ target: Int) -&gt; Int {
+    var lo = 0, hi = nums.count
+    while lo &lt; hi {
+        let mid = lo + (hi - lo) / 2
+        if nums[mid] &lt; target { lo = mid + 1 } else { hi = mid }
+    }
+    return lo
+}
+
+func upperBound(_ nums: [Int], _ target: Int) -&gt; Int {
+    var lo = 0, hi = nums.count
+    while lo &lt; hi {
+        let mid = lo + (hi - lo) / 2
+        if nums[mid] &lt;= target { lo = mid + 1 } else { hi = mid }
+    }
+    return lo
+}</code></pre></div>
+      </figure>
+      <figure class="code-figure">
+        <figcaption class="code-caption">
+          <span class="code-label">On the answer space</span>
+          <span class="lang-toggle" role="group" aria-label="Code language for every block on this page">
+            <button type="button" class="lang-btn" data-lang="python" aria-pressed="false">Python</button>
+            <button type="button" class="lang-btn" data-lang="swift" aria-pressed="false">Swift</button>
+          </span>
+        </figcaption>
+        <div class="code-region" tabindex="0" role="region" aria-label="On the answer space skeleton"><pre class="code-pane" data-lang="python" id="binary-search-code-1-python"><code>def min_feasible(lo, hi, feasible):
+    while lo &lt; hi:
+        mid = lo + (hi - lo) // 2
+        if feasible(mid):
+            hi = mid
+        else:
+            lo = mid + 1
+    return lo</code></pre><pre class="code-pane" data-lang="swift" id="binary-search-code-1-swift"><code>func minFeasible(in range: ClosedRange&lt;Int&gt;, isFeasible: (Int) -&gt; Bool) -&gt; Int {
+    var lo = range.lowerBound, hi = range.upperBound
+    while lo &lt; hi {
+        let mid = lo + (hi - lo) / 2
+        if isFeasible(mid) { hi = mid } else { lo = mid + 1 }
+    }
+    return lo
+}</code></pre></div>
+      </figure>
+  </div>
+  <div class="field"><h3>Reach for it when</h3><ul class="signals"><li>"a sorted array, find x, or where x would be inserted"</li><li>"the first or the last element that satisfies ..."</li><li>"the smallest capacity, speed, or budget such that everything still fits"</li><li>"the answer is monotonic - if x works, everything above x works"</li><li>"n is up to a billion", so the answer cannot be enumerated</li><li>"a rotated sorted array"</li></ul></div>
+  <div class="field"><h3>Do not reach for it when</h3><ul class="misfires"><li>The predicate is not actually monotonic. Binary search returns a plausible wrong answer and never errors, which makes this the most expensive misfire on the page.</li><li>An unsorted array and a single lookup. Use a hash set, or scan: sorting in order to binary search once costs more than the scan.</li><li>You are searching an array when the array is not the search space. If the input is unsorted but the <em>answer</em> is monotonic, search the answer range and keep the feasibility check linear.</li></ul></div>
+  <div class="field"><h3>Complexity</h3><p>O(log n) comparisons over an array, O(1) space. On the answer space it is O(log(range) x cost of the feasibility check), and the check dominates: a linear check gives O(n log(range)).</p></div>
+  <div class="field"><h3>Variants</h3><dl class="variants"><div><dt>Exact match</dt><dd>the textbook version, and the one you least often need</dd></div><div><dt>Leftmost boundary</dt><dd>lower bound, the first index not less than the target</dd></div><div><dt>Rightmost boundary</dt><dd>upper bound, the first index strictly greater</dd></div><div><dt>First index satisfying a predicate</dt><dd>the boundary form generalised past equality</dd></div><div><dt>On the answer space</dt><dd>binary search the value range with a feasibility check</dd></div><div><dt>Rotated array</dt><dd>decide which half is sorted, then discard the half that cannot hold the target</dd></div><div><dt>Floating point</dt><dd>fixed iteration count instead of an equality test</dd></div></dl></div>
+  <div class="field"><h3>Practice it</h3><p class="honest">No catalogue problem drills this pattern yet.</p></div>
+</section>
+  </main>
+</div>
+
+<footer>
+  <p>Skeletons are structurally complete but deliberately minimal: real predicates, bounds, and base cases, placeholder domain logic. Every one on this page was executed against a concrete input before it shipped.</p>
+</footer>
+
+<script>
+
+  // The chosen skeleton language is page-wide and remembered across reloads, the
+  // same way index.html remembers its language filter.
+  const CODE_PREF_KEY = "practice-patterns.code-language";
+  const LANGUAGES = ["python", "swift"];
+  const DEFAULT_CODE_LANGUAGE = "python";
+
+  function readCodePref() {
+    try { return window.localStorage.getItem(CODE_PREF_KEY); } catch { return null; }
+  }
+  function writeCodePref(language) {
+    try { window.localStorage.setItem(CODE_PREF_KEY, language); } catch { /* storage unavailable - the choice just won't persist */ }
+  }
+
+  function applyLanguage(language) {
+    document.querySelectorAll(".code-pane").forEach(pane => {
+      pane.hidden = pane.dataset.lang !== language;
+    });
+    document.querySelectorAll(".lang-btn").forEach(btn => {
+      btn.setAttribute("aria-pressed", String(btn.dataset.lang === language));
+    });
+  }
+
+  document.addEventListener("click", event => {
+    const btn = event.target.closest(".lang-btn");
+    if (!btn) return;
+    const language = btn.dataset.lang;
+    applyLanguage(language);
+    writeCodePref(language);
+  });
+
+  const stored = readCodePref();
+  applyLanguage(LANGUAGES.includes(stored) ? stored : DEFAULT_CODE_LANGUAGE);
+
+  // Rail highlighting: the topmost section intersecting the viewport wins.
+  const railLinks = new Map(
+    [...document.querySelectorAll(".rail a")].map(a => [a.getAttribute("href").slice(1), a])
+  );
+  const visible = new Set();
+  const observer = new IntersectionObserver(entries => {
+    for (const entry of entries) {
+      if (entry.isIntersecting) visible.add(entry.target.id); else visible.delete(entry.target.id);
+    }
+    const order = [...railLinks.keys()];
+    const current = order.find(id => visible.has(id));
+    railLinks.forEach((link, id) => {
+      if (id === current) link.setAttribute("aria-current", "true");
+      else link.removeAttribute("aria-current");
+    });
+  }, { rootMargin: "-10% 0px -70% 0px", threshold: 0 });
+  document.querySelectorAll(".pattern").forEach(section => observer.observe(section));
+</script>
+</body>
+</html>

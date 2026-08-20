@@ -38,6 +38,8 @@
     }
     header h1 { font-size: 1.4rem; font-weight: 700; }
     header p { color: var(--text-secondary); font-size: 0.875rem; margin-top: 0.2rem; }
+    header .header-nav a { color: var(--accent); font-weight: 600; text-decoration: none; }
+    header .header-nav a:hover { text-decoration: underline; }
 
     /* ── Filters ── */
     .filters {
@@ -353,6 +355,7 @@
 <header>
   <h1>Interview Practice Problems</h1>
   <p>Filter by language, industry, or level, search by topic, or click a tag to narrow results.</p>
+  <p class="header-nav"><a href="patterns.html">Pattern families reference &rarr;</a></p>
 </header>
 
 <div class="filters">
@@ -1098,6 +1101,19 @@ document.getElementById("problem-grid").addEventListener("click", e => {
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 state.language = initialLanguage();
+
+// `?tag=<tag>` opens the catalogue pre-filtered on one tag, which is how
+// patterns.html links a pattern family to the problems that drill it. It reuses
+// the same `state.tag` the tag chips set, so there is one filtering path. The
+// remembered language filter is stood down for the session (the stored
+// preference is untouched) so an incoming tag link never lands on an empty grid
+// just because the tag belongs to another language.
+const tagParam = new URLSearchParams(window.location.search).get("tag");
+if (tagParam && PROBLEMS.some(p => p.tags.includes(tagParam))) {
+  state.tag = tagParam;
+  state.language = null;
+}
+
 render();
 </script>
 </body>
