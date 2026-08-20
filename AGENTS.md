@@ -590,3 +590,23 @@ Aim for 2–5 tags per problem.
 The choice is remembered in `localStorage` under the key `practice-index.language`, where the literal `all` means no language filter.
 A stored language that is no longer in the catalogue, and a catalogue with no Swift problems, both fall back to showing everything.
 Whenever a language filter is active, the results bar shows a note naming it plus a "Show all languages" button, so a filtered catalogue never reads as an empty one.
+
+### The `?tag=` deep link
+`index.html` reads a `tag` query parameter on load and pre-filters the catalogue on it.
+It sets the same `state.tag` the tag chips set, so there is exactly one filtering path and the chip's clear button works on an incoming link.
+An unknown tag is ignored rather than producing an empty grid.
+A tag link also stands the remembered language filter down for that page load, without overwriting the stored preference, so a link to a tag that lives in another language never lands on zero results.
+
+## The pattern families reference
+
+`patterns.html` at the repo root is a standalone reference page covering the nine algorithmic pattern families: two pointers, sliding window, tree traversal, graph traversal, dynamic programming, heap/priority queue, backtracking, greedy, and binary search.
+It is deliberately outside the journey machinery: `journey.html` never links to it, `build_journey_data.py` never reads or writes it, and it has no entry in `PROBLEMS`.
+`index.html` reaches it through one header link, and it reaches back into the catalogue through `index.html?tag=<tag>` links.
+
+Rules when editing it:
+
+- Every code skeleton must be executed before it ships. Flesh the skeleton out with a concrete predicate in a scratch file, run it against a small input, then paste the verified text in. A skeleton with an off-by-one is worse than no skeleton because it will be copied.
+- Both language panes must be idiomatic in their own language, not a transliteration of the other.
+- The Python/Swift choice is page-wide and persists in `localStorage` under `practice-patterns.code-language`, mirroring how `index.html` persists its language filter.
+- A "Practice it" block links to a catalogue tag only when that tag actually returns problems. Where nothing drills the family, the page says so in one line rather than linking to an empty filter. Do not retag existing problems to manufacture a link.
+- No LeetCode names, numbers, or titles anywhere on the page, including code comments and link text.
