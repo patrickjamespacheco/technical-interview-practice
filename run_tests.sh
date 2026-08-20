@@ -138,6 +138,12 @@ if [[ "$ANSWER_ABS" == *.swift ]]; then
     elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem27LogTokenSegmenter/Problem.swift" ]]; then
         PROBLEM_ID="27_log_token_segmenter"
         SAME_FILE=1
+    elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem28BuildRegressionChainAnalyzer/Problem.swift" ]]; then
+        PROBLEM_ID="28_build_regression_chain_analyzer"
+        SAME_FILE=1
+    elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem29RuleGroupingAnalyzer/Problem.swift" ]]; then
+        PROBLEM_ID="29_rule_grouping_analyzer"
+        SAME_FILE=1
     elif [[ "$ANSWER_BASENAME" =~ (^|_)([0-9][0-9]_[a-z0-9_]+)\.swift$ ]]; then
         PROBLEM_ID="${BASH_REMATCH[2]}"
     else
@@ -162,6 +168,8 @@ if [[ "$ANSWER_ABS" == *.swift ]]; then
         25_warehouse_grid_route_planner) ACTIVE_REL="Sources/Problem25WarehouseGridRoutePlanner/Problem.swift" ;;
         26_firmware_bundle_budget_planner) ACTIVE_REL="Sources/Problem26FirmwareBundleBudgetPlanner/Problem.swift" ;;
         27_log_token_segmenter) ACTIVE_REL="Sources/Problem27LogTokenSegmenter/Problem.swift" ;;
+        28_build_regression_chain_analyzer) ACTIVE_REL="Sources/Problem28BuildRegressionChainAnalyzer/Problem.swift" ;;
+        29_rule_grouping_analyzer) ACTIVE_REL="Sources/Problem29RuleGroupingAnalyzer/Problem.swift" ;;
         *) echo "Error: unknown Swift problem ID '$PROBLEM_ID'; no target mapping exists."; exit 1 ;;
     esac
     if [[ "${CMD[0]}" != "swift" || "${CMD[1]:-}" != "test" ]]; then

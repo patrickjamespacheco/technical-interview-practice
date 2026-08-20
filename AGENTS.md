@@ -513,6 +513,24 @@ to Part 1.
      invariant instead.** A test that asserts the fast method equals the slow one,
      or that a specialised answer equals the general one at its boundary, is
      stronger than a call: it can be red where a call would be green.
+- **A complexity requirement no test can enforce.** Some parts exist to teach a
+  faster algorithm that produces byte-identical output to the slow one. A linear
+  scan where a binary search belongs passes every functional test, and a timing
+  test would be both flaky and against the no-sleeps rule. Do not pretend the
+  suite covers it. Instead do all three: state the requirement in the stub's part
+  note, repeat it in the guide's `pitfalls`, and name the trap in the execution
+  sheet's `verification.complexity`. Where the fast algorithm builds a
+  distinctive intermediate structure, make that structure a public method and
+  assert it exactly, so a test pins the shape of the computation even though it
+  cannot pin the runtime. Problem 28 Part 3 is the worked instance.
+- **Counting problems must guard their input range before the arithmetic.** Swift
+  traps on `Int` overflow in debug and release alike, so an unguarded overflow
+  ends the whole test process rather than returning a wrong number, taking every
+  other problem's suite down with it. Declare the supported maximum as an
+  immutable `static let`, check against it before the first multiply, and make
+  out-of-range a typed failure. A counting ceiling and an enumeration ceiling are
+  different numbers for different reasons: the first is what fits in an `Int`,
+  the second is what fits in memory.
 - Label/nest suites in Part order. Part 1 must pass without Part 2 implemented.
   Later stub methods fail explicitly only when invoked. Prefer a throwing
   `notImplemented` case where the signature permits it, so the test reports a

@@ -5730,5 +5730,369 @@ window.JOURNEY_PROBLEMS = {
         ]
       }
     }
+  },
+  "swift-28": {
+    "id": "swift-28",
+    "title": "Build Regression Chain Analyzer",
+    "description": "Find the longest run of strictly improving benchmark builds, name the builds in it, reach the log-linear formulation, then extend to nested resource envelopes and peak-shaped release trains.",
+    "language": "swift",
+    "industry": "dev-tools",
+    "tags": [
+      "dynamic-programming",
+      "longest-increasing-subsequence",
+      "binary-search",
+      "reconstruction",
+      "sorting"
+    ],
+    "level": "senior",
+    "stubPath": "swift/practice_problems/problem_28_build_regression_chain_analyzer.swift",
+    "testPath": "swift/Tests/Problem28BuildRegressionChainAnalyzerTests/Problem28BuildRegressionChainAnalyzerTests.swift",
+    "sourceScript": "journey-sources/swift-28.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": "let analyzer = ChainAnalyzer()\nlet builds = [\n    BuildResult(id: \"b1\", score: 10),\n    BuildResult(id: \"b2\", score: 9),\n    BuildResult(id: \"b3\", score: 12),\n    BuildResult(id: \"b4\", score: 11),\n    BuildResult(id: \"b5\", score: 14),\n]\nanalyzer.longestImprovingChainLength(builds)      // -> 3\nanalyzer.longestImprovingChain(builds)            // -> [\"b1\", \"b3\", \"b5\"]\nanalyzer.longestImprovingChainLengthFast(builds)  // -> 3\nanalyzer.improvingChainTails(builds)              // -> [9, 11, 14]\nanalyzer.deepestEnvelopeNesting([\n    ResourceEnvelope(cpuMillicores: 500, memoryMebibytes: 512),\n    ResourceEnvelope(cpuMillicores: 250, memoryMebibytes: 256),\n    ResourceEnvelope(cpuMillicores: 500, memoryMebibytes: 256),\n])                                                // -> 2\ntry analyzer.minimumRemovalsForPeakShape(builds)  // -> 2",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Longest improving chain length",
+        "contract": "Report how many builds are in the longest strictly improving chain. Equal\nscores are not an improvement, and an empty history has no chain at all.\nBefore writing the transition, say out loud what one table entry means: an\nentry that stands for \"the best chain anywhere in the first so-many builds\"\nand an entry that stands for \"the best chain ending exactly at this build\"\nare different tables, and only one of them lets Part 2 exist. Write Part 2\nfirst if that helps - this method is meant to be one line on top of it."
+      },
+      {
+        "part": 2,
+        "title": "Name the builds in the chain",
+        "contract": "Report the identifiers of that chain, in build order. Which builds is what\ndecides the shape of the table: a running maximum gives the right number and\nleaves nothing to walk back through. Record, for each build, the earlier\nbuild the chain came through, then find where the best chain ends and walk\nit back. Two ties have to be settled for the answer to be deterministic:\namong equally good earlier builds take the earliest, and among equally long\nchains take the one that ends earliest."
+      },
+      {
+        "part": 3,
+        "title": "Log-linear chain length",
+        "contract": "Report the same number as Part 1 without the quadratic table, and report the\narray the fast scan leaves behind. Keep one sorted array where entry L is the\nsmallest score that can end an improving chain of length L + 1; each build\neither extends it or replaces the first entry that is not smaller than its\nscore. The length of that array is the answer.\nTwo things about it. Because the array is sorted you may find that entry by\nhalving the range, and a linear scan for it - firstIndex(where:) or anything\nlike it - does not satisfy this part even though it returns the same index\nand passes every test here. And the array is not itself a chain from the\nhistory: returning it from Part 2 is the confident wrong answer this part\nexists to make visible."
+      },
+      {
+        "part": 4,
+        "title": "Nested envelopes and peak-shaped trains",
+        "contract": "Report the deepest run of envelopes that each fit strictly inside the next,\nand the fewest builds to drop so the remaining scores rise to one peak and\nthen fall. Both are Part 3's scan again, so put that scan in one private\nhelper - call it tailsScan - and have it report the length of the longest\nimproving chain ending at each position alongside the array itself.\nSorting the envelopes reduces one dimension to position, which leaves an\nimproving-chain question on the other. Choose the secondary ordering with\ncare: envelopes sharing a CPU limit must never chain, and the sort is where\nthat gets decided, not the scan. For the peak, run the scan in both\ndirections and combine the two lengths at each build; a build can only be the\npeak when both sides have something on them. A history with no peak at all\nis a typed failure, as is an empty history.\n\n/ One benchmark run: a build identifier and the score that build recorded.\npublic struct BuildResult: Equatable, Sendable {\n    public let id: String\n    public let score: Int\n\n    public init(id: String, score: Int) {\n        self.id = id\n        self.score = score\n    }\n}\n\n/ The container limits a build ran under. One envelope fits strictly inside\n/ another only when both of its limits are strictly smaller.\npublic struct ResourceEnvelope: Equatable, Sendable {\n    public let cpuMillicores: Int\n    public let memoryMebibytes: Int\n\n    public init(cpuMillicores: Int, memoryMebibytes: Int) {\n        self.cpuMillicores = cpuMillicores\n        self.memoryMebibytes = memoryMebibytes\n    }\n}\n\npublic enum ChainError: Error, Equatable, Sendable {\n    case emptyHistory\n    case noValidPeak\n    case notImplemented\n}\n\npublic struct ChainAnalyzer: Sendable {\n    public init() {}\n\nMARK: Part 1 - Longest improving chain length\n    public func longestImprovingChainLength(_ builds: [BuildResult]) -> Int {\n        0\n    }\n\nMARK: Part 2 - Name the builds in the chain\n    public func longestImprovingChain(_ builds: [BuildResult]) -> [String] {\n        []\n    }\n\nMARK: Part 3 - Log-linear chain length\n    public func longestImprovingChainLengthFast(_ builds: [BuildResult]) -> Int {\n        0\n    }\n\n/ The final tails array. It is not a chain from the input; see the Part 3\n/ note.\n    public func improvingChainTails(_ builds: [BuildResult]) -> [Int] {\n        []\n    }\n\nMARK: Part 4 - Nested envelopes and peak-shaped trains\n    public func deepestEnvelopeNesting(_ envelopes: [ResourceEnvelope]) -> Int {\n        0\n    }\n\n    public func minimumRemovalsForPeakShape(_ builds: [BuildResult]) throws(ChainError) -> Int {\n        throw .notImplemented\n    }\n}"
+      }
+    ],
+    "testSuites": [
+      "Part 1 - Longest improving chain length",
+      "Part 2 - Name the builds in the chain",
+      "Part 3 - Log-linear chain length",
+      "Part 4 - Nested envelopes and peak-shaped trains"
+    ],
+    "partSuites": [
+      [
+        "Part 1 - Longest improving chain length"
+      ],
+      [
+        "Part 2 - Name the builds in the chain"
+      ],
+      [
+        "Part 3 - Log-linear chain length"
+      ],
+      [
+        "Part 4 - Nested envelopes and peak-shaped trains"
+      ]
+    ],
+    "commands": {
+      "answerPath": "swift/practice_problem_answers/my_answer_28_build_regression_chain_analyzer.swift",
+      "copyCommand": "cp swift/practice_problems/problem_28_build_regression_chain_analyzer.swift swift/practice_problem_answers/my_answer_28_build_regression_chain_analyzer.swift",
+      "openCommand": "code swift/practice_problems/problem_28_build_regression_chain_analyzer.swift",
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_28_build_regression_chain_analyzer.swift -c swift test --filter Problem28BuildRegressionChainAnalyzerTests",
+      "partTestCommands": [
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_28_build_regression_chain_analyzer.swift -c swift test --filter Problem28BuildRegressionChainAnalyzerTests.ChainPart1Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_28_build_regression_chain_analyzer.swift -c swift test --filter Problem28BuildRegressionChainAnalyzerTests.ChainPart2Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_28_build_regression_chain_analyzer.swift -c swift test --filter Problem28BuildRegressionChainAnalyzerTests.ChainPart3Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_28_build_regression_chain_analyzer.swift -c swift test --filter Problem28BuildRegressionChainAnalyzerTests.ChainPart4Tests"
+      ]
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "Two tables are possible here and only one of them survives into the next part. Say what one entry means before you write the loop, and prefer the meaning that pins the chain down rather than the one that only reports a maximum.",
+          "concepts": [
+            "an entry anchored to a position, not to a prefix",
+            "an inner scan over every earlier build",
+            "the answer as the largest entry rather than the last"
+          ],
+          "steps": [
+            "Define one entry as the length of the best improving chain that ends exactly at that build, and start every entry at one, because a single build is already a chain.",
+            "For each build in turn, look back at every earlier build whose score is strictly smaller and take the best of those, then add the build itself.",
+            "The chains end all over the history, so the answer is the largest entry anywhere, not the entry at the end.",
+            "Write the naming method from the next part first if you can, and let this one be its length; there is no reason for two tables to exist."
+          ],
+          "pitfalls": [
+            "starting every entry at zero, which reports a chain one build shorter than it is",
+            "letting equal scores chain, which quietly counts a flat run as an improving one",
+            "reading the last entry instead of the largest, which is right only when the best chain happens to end at the last build"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "The table already knows which earlier build each chain came through. What is the smallest thing you can record while filling it so you never have to search for that build afterwards?",
+          "concepts": [
+            "a predecessor recorded during the fill",
+            "walking a predecessor record backwards",
+            "two tie rules chosen so the answer is deterministic"
+          ],
+          "steps": [
+            "Alongside the length table keep, for each build, the earlier build that produced its best chain, and write it at the same moment you improve the length.",
+            "Improve strictly, so among equally good earlier builds the earliest one is the one that survives.",
+            "Find where the best chain ends by scanning for the largest length and keeping the first position that reaches it.",
+            "Walk the predecessor record back from there, collecting identifiers, then reverse them so they come out in build order."
+          ],
+          "pitfalls": [
+            "searching afterwards for an earlier build with a smaller score and a length one less, which finds a plausible answer that is not always a chain",
+            "improving on ties, so the recorded predecessor is not the one the stated rule promises",
+            "returning the identifiers in the order the backward walk produced them"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "The same number, without the table. Keep one sorted array where position L holds the smallest score that can end a chain of length L plus one, and ask yourself why that array can never stop being sorted.",
+          "concepts": [
+            "an array of best endings rather than a table of lengths",
+            "a sorted invariant that licenses halving the search",
+            "an array that is not itself a chain"
+          ],
+          "steps": [
+            "Process the builds in order and, for each score, find the first position in the array holding a value that is not smaller than it.",
+            "If there is no such position the score extends the longest chain seen so far, so append it; otherwise it becomes a cheaper ending for that length, so overwrite that position.",
+            "The length of the array when the scan finishes is the answer, and no separate maximum needs tracking.",
+            "Find the position by halving the range rather than walking it, and note that the strictness of the chain lives in the comparison you halve on.",
+            "Return the array itself from the second method so the shape of the scan is visible, and be clear it is a record of best endings, not a chain from the history."
+          ],
+          "pitfalls": [
+            "scanning the array from the front to find the position, which returns the same index and throws away the whole reason this part exists",
+            "returning the array as the chain, which is the confident wrong answer this pattern is famous for",
+            "appending rather than overwriting when the position exists, which lets the array grow past the true answer"
+          ]
+        },
+        {
+          "part": 4,
+          "prompt": "Neither of these needs a new recurrence. One needs a sort that reduces two dimensions to one, and the other needs the same scan run twice in opposite directions. Where does each of them actually decide the hard case?",
+          "concepts": [
+            "a sort that turns one dimension into position",
+            "a secondary ordering that forbids a chain",
+            "one scan run forwards and backwards, combined per position"
+          ],
+          "steps": [
+            "Put the earlier scan in one shared private helper that reports both the array it built and, for each position, the length of the best chain ending there.",
+            "Sort the envelopes by their first limit ascending so that dimension becomes position, then run the scan on the second limit.",
+            "Choose the secondary ordering so two envelopes sharing a first limit can never chain, and convince yourself of it on a case where every first limit is the same.",
+            "For the peak, run the scan forwards for the rise ending at each build, then over the reversed scores for the fall starting at each build.",
+            "A build can be the peak only when both sides have at least one other build on them; add the two lengths, subtract the shared peak, and take the best over the valid positions."
+          ],
+          "pitfalls": [
+            "ordering the second limit ascending, which reports nesting between envelopes that share a first limit and is invisible until a fixture has duplicates",
+            "allowing a build with nothing on one side to be the peak, which turns a purely rising history into a valid shape",
+            "forgetting the peak is counted in both directions, so every answer is one too generous"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "Every history reports a chain one build shorter than it should be",
+            "cause": "The per-build entries were started at zero rather than at one, so the build itself is never counted",
+            "check": "Ask a history of one build and confirm the answer is one, not zero."
+          },
+          {
+            "symptom": "A flat history of identical scores reports a long chain",
+            "cause": "The comparison admits equal scores, so a run that never improves is treated as improving",
+            "check": "Ask a history whose scores are all the same and confirm the answer is one."
+          },
+          {
+            "symptom": "The named builds are not in input order, or their scores do not rise",
+            "cause": "The chain was rebuilt by searching after the fact instead of walking a predecessor recorded during the fill",
+            "check": "Take the named builds, look up their positions, and confirm both the positions and the scores increase."
+          },
+          {
+            "symptom": "The fast method and the quadratic method disagree on a shuffled history",
+            "cause": "The scan appends where it should overwrite, or the position search uses the wrong comparison for a strictly improving chain",
+            "check": "Run both on a couple of hundred pseudo-random scores and confirm they agree; the fast one drifting upward means an append that should have been an overwrite."
+          },
+          {
+            "symptom": "Envelopes that share a CPU limit are reported as nesting inside each other",
+            "cause": "The secondary sort key is ascending, so equal first limits are handed to the scan looking like an improving run",
+            "check": "Ask three envelopes with the same CPU limit and different memory limits and confirm the answer is one."
+          },
+          {
+            "symptom": "A purely rising history reports a peak shape rather than failing",
+            "cause": "A build with nothing after it is being accepted as the peak, because only one of the two sides is being checked",
+            "check": "Ask a strictly rising history and confirm it is a typed failure, then ask a strictly falling one."
+          }
+        ]
+      }
+    }
+  },
+  "swift-29": {
+    "id": "swift-29",
+    "title": "Rule Grouping Analyzer",
+    "description": "Count the distinct shapes a nested rule tree can take, enumerate them, and compute every result a policy expression can produce when its operator grouping is unspecified.",
+    "language": "swift",
+    "industry": "dev-tools",
+    "tags": [
+      "dynamic-programming",
+      "catalan",
+      "memoisation",
+      "recursive-enumeration",
+      "expression-evaluation"
+    ],
+    "level": "senior",
+    "stubPath": "swift/practice_problems/problem_29_rule_grouping_analyzer.swift",
+    "testPath": "swift/Tests/Problem29RuleGroupingAnalyzerTests/Problem29RuleGroupingAnalyzerTests.swift",
+    "sourceScript": "journey-sources/swift-29.js",
+    "lessonAvailable": false,
+    "lessonScript": null,
+    "example": "let analyzer = RuleGroupingAnalyzer()\ntry analyzer.shapeCount(nodeCount: 0)  // -> 1\ntry analyzer.shapeCount(nodeCount: 3)  // -> 5\ntry analyzer.shapeCount(nodeCount: 5)  // -> 42\ntry analyzer.shapes(nodeCount: 2)\n-> [.node(left: .empty, right: .node(left: .empty, right: .empty)),\n    .node(left: .node(left: .empty, right: .empty), right: .empty)]\ntry analyzer.possibleResults([\n    .value(2), .multiply, .value(3), .subtract, .value(4), .multiply, .value(5),\n])\n-> [-34, -14, -10, 10]\n(five groupings, four distinct values, sorted and deduplicated)",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Count distinct rule-tree shapes",
+        "contract": "Report how many distinct shapes a rule tree with nodeCount branching nodes\ncan take. One node sits at the top and is consumed by the split; the rest\ndivide between the two sides in every possible way, and each way contributes\nthe two sides multiplied together. Say what the count for no nodes at all\nshould be before you write anything, because reading it as zero collapses\nevery later entry to zero and the mistake is invisible until you print the\nsequence.\nA negative size is a typed failure. So is a size whose count would not fit in\nan Int: these numbers grow fast, and an Int overflow in Swift is a trap that\nkills the process rather than a wrong answer, so the guard has to fire before\nthe multiply. Declare the supported maximum as a static constant and check\nagainst it. Thirty-three is a safe ceiling."
+      },
+      {
+        "part": 2,
+        "title": "Enumerate the shapes",
+        "contract": "Report every distinct shape at that size, building structures where Part 1\nbuilt numbers. It is the same split, so both parts should agree about what a\nshape is - and a test here asserts exactly that, which is worth more than\neither method calling the other.\nFix the order and document it, because an unspecified order makes this\nunusable as a fixture generator: ascending size of the left side, and within\na left size, the order the two sides already came out in. Building the sizes\nascending means both sides of any split are ready before the split needs\nthem. Listing is bounded by memory rather than by Int, so this part has its\nown much smaller maximum; twelve is a reasonable one."
+      },
+      {
+        "part": 3,
+        "title": "Every result an ungrouped expression can produce",
+        "contract": "Report every value the expression can evaluate to, over every grouping,\nsorted ascending with duplicates removed - two groupings agreeing on a value\nis precisely the case a caller wants collapsed.\nPart 2 split a size into a left size and a right size. This splits a token\nrange at an operator. It is the same split; only what sits at the split point\nchanged, and the memo key changes with it from one number to a pair of\nindices. Memoise on the range, or a modest expression will re-solve the same\nsub-expression thousands of times.\nA well-formed expression alternates value, operator, value, beginning and\nending with a value; anything else is a typed failure, as is an empty one. A\ngrouping whose arithmetic overflows is a typed failure too, for the same\nreason as Part 1: an unchecked multiply here takes the process down.\n\n/ The shape of a rule tree, with the rule data stripped away. Two trees have\n/ the same shape when they branch in the same places.\npublic indirect enum RuleShape: Hashable, Sendable {\n    case empty\n    case node(left: RuleShape, right: RuleShape)\n}\n\n/ One token of a policy expression. A well-formed expression alternates a\n/ value, an operator, a value, and so on, beginning and ending with a value.\npublic enum ExpressionToken: Equatable, Sendable {\n    case value(Int)\n    case add\n    case subtract\n    case multiply\n}\n\npublic enum GroupingError: Error, Equatable, Sendable {\n    case negativeNodeCount\n    case countOverflow\n    case emptyExpression\n    case malformedExpression\n    case notImplemented\n}\n\npublic struct RuleGroupingAnalyzer: Sendable {\n/ The largest node count whose shape count still fits in an Int.\n    public static let maximumCountableNodeCount = 33\n\n/ The largest node count worth enumerating.\n    public static let maximumEnumerableNodeCount = 12\n\n    public init() {}\n\nMARK: Part 1 - Count distinct rule-tree shapes\n    public func shapeCount(nodeCount: Int) throws(GroupingError) -> Int {\n        throw .notImplemented\n    }\n\nMARK: Part 2 - Enumerate the shapes\n    public func shapes(nodeCount: Int) throws(GroupingError) -> [RuleShape] {\n        throw .notImplemented\n    }\n\nMARK: Part 3 - Every result an ungrouped expression can produce\n    public func possibleResults(_ tokens: [ExpressionToken]) throws(GroupingError) -> [Int] {\n        throw .notImplemented\n    }\n}"
+      }
+    ],
+    "testSuites": [
+      "Part 1 - Count distinct rule-tree shapes",
+      "Part 2 - Enumerate the shapes",
+      "Part 3 - Every result an ungrouped expression can produce"
+    ],
+    "partSuites": [
+      [
+        "Part 1 - Count distinct rule-tree shapes"
+      ],
+      [
+        "Part 2 - Enumerate the shapes"
+      ],
+      [
+        "Part 3 - Every result an ungrouped expression can produce"
+      ]
+    ],
+    "commands": {
+      "answerPath": "swift/practice_problem_answers/my_answer_29_rule_grouping_analyzer.swift",
+      "copyCommand": "cp swift/practice_problems/problem_29_rule_grouping_analyzer.swift swift/practice_problem_answers/my_answer_29_rule_grouping_analyzer.swift",
+      "openCommand": "code swift/practice_problems/problem_29_rule_grouping_analyzer.swift",
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_29_rule_grouping_analyzer.swift -c swift test --filter Problem29RuleGroupingAnalyzerTests",
+      "partTestCommands": [
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_29_rule_grouping_analyzer.swift -c swift test --filter Problem29RuleGroupingAnalyzerTests.GroupingPart1Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_29_rule_grouping_analyzer.swift -c swift test --filter Problem29RuleGroupingAnalyzerTests.GroupingPart2Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_29_rule_grouping_analyzer.swift -c swift test --filter Problem29RuleGroupingAnalyzerTests.GroupingPart3Tests"
+      ]
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "One thing at the top is consumed by the split and the rest divides between two sides. Say what the count for a tree of no nodes should be before you write anything, because the wrong answer there is invisible until you print the sequence.",
+          "concepts": [
+            "a count indexed by size alone",
+            "a split that consumes one distinguished node",
+            "an empty structure counted as one, not zero"
+          ],
+          "steps": [
+            "Define one entry as the number of distinct shapes at that size, and set the entry for no nodes at all to one, because there is exactly one way to build nothing.",
+            "For each size in turn, let every possible size of the left side determine the right side, since one node has already been spent at the top.",
+            "Each such division contributes the two sides multiplied together, and the entry is the sum of those contributions.",
+            "Fill the sizes ascending so both sides of every division are already known when the division needs them.",
+            "Guard the size before the arithmetic runs, not after: these numbers grow fast enough that an unchecked multiply ends the process rather than returning something wrong."
+          ],
+          "pitfalls": [
+            "counting the empty structure as zero, which drives every later entry to zero",
+            "forgetting the node at the top is spent, so the two sides are asked to account for one node too many",
+            "checking the range after computing rather than before, which is a check that never runs"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "The same division as before, producing structures where it produced numbers. What has to be true of the order you emit them in for this to be usable as a fixture generator?",
+          "concepts": [
+            "building structures rather than counting them",
+            "a stated deterministic order",
+            "a size ceiling about memory rather than arithmetic"
+          ],
+          "steps": [
+            "Keep the shapes for every size below the one asked for, and build ascending so both sides of any division are ready before it needs them.",
+            "For each division, pair every shape of the left size with every shape of the right size and join them under a node.",
+            "Fix the order and write it down: ascending left size, and within a left size the two sides in the order they were already produced.",
+            "The empty size produces exactly one shape, and it is the empty one, which is the same base case the counting part needed.",
+            "Give this part its own much smaller ceiling; what limits listing is memory rather than what fits in an integer."
+          ],
+          "pitfalls": [
+            "leaving the order to whatever the loops happen to do, which makes the output unusable for fixtures and untestable",
+            "recursing without keeping the smaller sizes, so the same size is rebuilt once per division that reaches it",
+            "reusing the counting ceiling here, which asks for more shapes than could ever be held"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "The earlier part split a size into a left size and a right size. This splits a range of tokens at an operator. It is the same split, so what has to change about the thing you memoise on?",
+          "concepts": [
+            "a split at an operator rather than at a size",
+            "a memo keyed on a range rather than a number",
+            "combining two sets of values rather than two counts"
+          ],
+          "steps": [
+            "Ask for every value a range of tokens can produce, and let a range holding a single value token be the base case that stops the recursion.",
+            "For every operator inside the range, solve the tokens on its left and the tokens on its right, then apply that operator to every pairing of the two answers.",
+            "Memoise on the range, because a modest expression reaches the same sub-range from very many groupings and re-solving it each time is what makes a small input slow.",
+            "Collapse the results into a set and return them sorted, since two groupings agreeing on a value is exactly the case the caller wants collapsed.",
+            "Validate before recursing: an expression alternates value and operator, begins and ends with a value, and has an odd length.",
+            "Check the arithmetic in every combination rather than writing it plainly, for the same reason the counting part needed its guard."
+          ],
+          "pitfalls": [
+            "recursing without a memo, which is exponential and looks fine on three operators",
+            "splitting at every position rather than at operator positions only, which asks the recursion to evaluate a fragment that begins with an operator",
+            "returning the values in whatever order the set iterated, which makes the answer non-reproducible between runs"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "Every size reports zero shapes",
+            "cause": "The entry for a tree of no nodes was left at zero, so every product in every later division is zero",
+            "check": "Ask for the count at size zero and confirm it is one, then print the first eight counts and confirm they rise."
+          },
+          {
+            "symptom": "The counts are close but drift upward as the size grows",
+            "cause": "The node at the top is not being subtracted, so the two sides are dividing one node too many between them",
+            "check": "Confirm the count at size two is two and the count at size three is five; a size three that reports more means the split is spending nothing at the top."
+          },
+          {
+            "symptom": "The process dies without a message on a large size",
+            "cause": "The arithmetic overflowed, which ends the process rather than returning a wrong number, because the range check ran after the multiply or not at all",
+            "check": "Ask for one past the documented maximum and confirm a typed failure comes back rather than the process ending."
+          },
+          {
+            "symptom": "The listed shapes and the counted shapes disagree at some size",
+            "cause": "The two parts do not agree about what a shape is, usually because the listing pairs the sides in a way that produces the same shape twice",
+            "check": "Compare the number of listed shapes against the count at every size up to seven, and confirm no shape appears twice in the listing."
+          },
+          {
+            "symptom": "Evaluating an expression with a handful of operators takes noticeable time",
+            "cause": "The recursion has no memo, so each token range is solved once per grouping that reaches it rather than once",
+            "check": "Evaluate an expression with nine operators and confirm it returns immediately."
+          },
+          {
+            "symptom": "The values come back in a different order on different runs",
+            "cause": "The results are being returned in set iteration order rather than sorted",
+            "check": "Evaluate the same expression twice and confirm the two answers are identical and ascending."
+          }
+        ]
+      }
+    }
   }
 };

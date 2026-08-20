@@ -21,7 +21,9 @@ let package = Package(
         .library(name: "Problem24SensorDriftWindowDetector", targets: ["Problem24SensorDriftWindowDetector"]),
         .library(name: "Problem25WarehouseGridRoutePlanner", targets: ["Problem25WarehouseGridRoutePlanner"]),
         .library(name: "Problem26FirmwareBundleBudgetPlanner", targets: ["Problem26FirmwareBundleBudgetPlanner"]),
-        .library(name: "Problem27LogTokenSegmenter", targets: ["Problem27LogTokenSegmenter"])
+        .library(name: "Problem27LogTokenSegmenter", targets: ["Problem27LogTokenSegmenter"]),
+        .library(name: "Problem28BuildRegressionChainAnalyzer", targets: ["Problem28BuildRegressionChainAnalyzer"]),
+        .library(name: "Problem29RuleGroupingAnalyzer", targets: ["Problem29RuleGroupingAnalyzer"])
     ],
     targets: [
         .target(name: "Problem03PermissionManager"),
@@ -57,6 +59,10 @@ let package = Package(
         .target(name: "Problem26FirmwareBundleBudgetPlanner"),
         .testTarget(name: "Problem26FirmwareBundleBudgetPlannerTests", dependencies: ["Problem26FirmwareBundleBudgetPlanner"]),
         .target(name: "Problem27LogTokenSegmenter"),
-        .testTarget(name: "Problem27LogTokenSegmenterTests", dependencies: ["Problem27LogTokenSegmenter"])
+        .testTarget(name: "Problem27LogTokenSegmenterTests", dependencies: ["Problem27LogTokenSegmenter"]),
+        .target(name: "Problem28BuildRegressionChainAnalyzer"),
+        .testTarget(name: "Problem28BuildRegressionChainAnalyzerTests", dependencies: ["Problem28BuildRegressionChainAnalyzer"]),
+        .target(name: "Problem29RuleGroupingAnalyzer"),
+        .testTarget(name: "Problem29RuleGroupingAnalyzerTests", dependencies: ["Problem29RuleGroupingAnalyzer"])
     ]
 )
