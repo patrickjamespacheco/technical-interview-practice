@@ -4639,5 +4639,627 @@
       },
       "code": "/// The shape of a rule tree, with the rule data stripped away. Two trees have\n/// the same shape when they branch in the same places.\n///\n/// Deriving Hashable is the reason this is an indirect enum rather than a class:\n/// tests can compare shapes and put them in a set with no equality code at all.\npublic indirect enum RuleShape: Hashable, Sendable {\n    case empty\n    case node(left: RuleShape, right: RuleShape)\n}\n\n/// One token of a policy expression. A well-formed expression alternates a\n/// value, an operator, a value, and so on, beginning and ending with a value.\npublic enum ExpressionToken: Equatable, Sendable {\n    case value(Int)\n    case add\n    case subtract\n    case multiply\n}\n\npublic enum GroupingError: Error, Equatable, Sendable {\n    case negativeNodeCount\n    case countOverflow\n    case emptyExpression\n    case malformedExpression\n    case notImplemented\n}\n\npublic struct RuleGroupingAnalyzer: Sendable {\n    /// The largest node count whose shape count still fits in an Int. Counting\n    /// past this would overflow, and an Int overflow in Swift is a trap that\n    /// takes the process down rather than a wrong answer, so the guard has to\n    /// fire before the multiply rather than after it.\n    public static let maximumCountableNodeCount = 33\n\n    /// The largest node count worth enumerating. The shapes are counted by the\n    /// same numbers Part 1 produces, so this ceiling is about what fits in\n    /// memory, not about what fits in an Int.\n    public static let maximumEnumerableNodeCount = 12\n\n    public init() {}\n\n    // MARK: Part 1 - Count distinct rule-tree shapes\n\n    /// How many distinct shapes a rule tree with `nodeCount` internal nodes can\n    /// take.\n    ///\n    /// One node is distinguished - the root - and it is consumed by the split,\n    /// which is where the minus one comes from: the remaining nodes divide\n    /// between the two sides in every possible way, and each way contributes the\n    /// product of the two sides' counts. A tree of no nodes has exactly one\n    /// shape, the empty one, and reading that base case as zero collapses every\n    /// later entry to nothing.\n    public func shapeCount(nodeCount: Int) throws(GroupingError) -> Int {\n        guard nodeCount >= 0 else { throw .negativeNodeCount }\n        guard nodeCount <= Self.maximumCountableNodeCount else { throw .countOverflow }\n\n        var counts = Array(repeating: 0, count: nodeCount + 1)\n        counts[0] = 1\n        guard nodeCount >= 1 else { return counts[nodeCount] }\n        for size in 1...nodeCount {\n            counts[size] = (0..<size).reduce(0) { running, leftSize in\n                running + counts[leftSize] * counts[size - 1 - leftSize]\n            }\n        }\n        return counts[nodeCount]\n    }\n\n    // MARK: Part 2 - Enumerate the shapes\n\n    /// Every distinct shape a rule tree with `nodeCount` internal nodes can take.\n    ///\n    /// The same split as Part 1, building structures where Part 1 built numbers.\n    /// The order is fixed on purpose so callers and tests can rely on it:\n    /// ascending left size, and within a left size the two sides in the order\n    /// this method already produced them.\n    public func shapes(nodeCount: Int) throws(GroupingError) -> [RuleShape] {\n        guard nodeCount >= 0 else { throw .negativeNodeCount }\n        guard nodeCount <= Self.maximumEnumerableNodeCount else { throw .countOverflow }\n\n        // Filling ascending means both sides of every split are already built by\n        // the time the split needs them, so nothing here has to recurse.\n        var built: [[RuleShape]] = [[.empty]]\n        guard nodeCount >= 1 else { return built[0] }\n        for size in 1...nodeCount {\n            var atSize: [RuleShape] = []\n            for leftSize in 0..<size {\n                for left in built[leftSize] {\n                    for right in built[size - 1 - leftSize] {\n                        atSize.append(.node(left: left, right: right))\n                    }\n                }\n            }\n            built.append(atSize)\n        }\n        return built[nodeCount]\n    }\n\n    // MARK: Part 3 - Every result an ungrouped expression can produce\n\n    /// Every value the expression can evaluate to, over every way of grouping it.\n    ///\n    /// Part 2 split a size into a left size and a right size. This splits a token\n    /// range at an operator. It is the same split; only what sits at the split\n    /// point changed, and the memo key changes with it from one number to a pair\n    /// of indices.\n    ///\n    /// The results come back sorted with duplicates removed, because two\n    /// different groupings landing on the same value is exactly the case the\n    /// caller wants collapsed: what matters is whether the set has more than one\n    /// element.\n    public func possibleResults(_ tokens: [ExpressionToken]) throws(GroupingError) -> [Int] {\n        guard !tokens.isEmpty else { throw .emptyExpression }\n        try validateAlternation(tokens)\n\n        var memo: [Range<Int>: [Int]] = [:]\n        let results = try resultSet(tokens, 0..<tokens.count, &memo)\n        return results.sorted()\n    }\n\n    // MARK: Shared machinery\n\n    /// A well-formed expression has a value at every even position, an operator\n    /// at every odd one, and therefore an odd length.\n    private func validateAlternation(_ tokens: [ExpressionToken]) throws(GroupingError) {\n        guard tokens.count % 2 == 1 else { throw .malformedExpression }\n        for (position, token) in tokens.enumerated() {\n            let isValue: Bool\n            switch token {\n            case .value: isValue = true\n            case .add, .subtract, .multiply: isValue = false\n            }\n            guard isValue == (position % 2 == 0) else { throw .malformedExpression }\n        }\n    }\n\n    /// Every distinct value the tokens in `range` can produce, memoised on the\n    /// range so each sub-expression is solved once however many groupings reach\n    /// it.\n    private func resultSet(\n        _ tokens: [ExpressionToken],\n        _ range: Range<Int>,\n        _ memo: inout [Range<Int>: [Int]]\n    ) throws(GroupingError) -> Set<Int> {\n        if let cached = memo[range] { return Set(cached) }\n\n        // A range of one token is a bare value: there is nothing left to group.\n        if range.count == 1, case .value(let number) = tokens[range.lowerBound] {\n            memo[range] = [number]\n            return [number]\n        }\n\n        var results: Set<Int> = []\n        for split in stride(from: range.lowerBound + 1, to: range.upperBound, by: 2) {\n            let left = try resultSet(tokens, range.lowerBound..<split, &memo)\n            let right = try resultSet(tokens, (split + 1)..<range.upperBound, &memo)\n            for leftValue in left {\n                for rightValue in right {\n                    results.insert(try combine(leftValue, tokens[split], rightValue))\n                }\n            }\n        }\n\n        memo[range] = Array(results)\n        return results\n    }\n\n    /// One operator applied to one pair of values.\n    ///\n    /// Every arithmetic step is checked rather than written plainly. An Int\n    /// overflow traps in Swift, and a grouping that overflows is a caller's\n    /// expression the service cannot evaluate, which is a typed failure and not\n    /// a reason to bring the process down.\n    private func combine(_ left: Int, _ token: ExpressionToken, _ right: Int) throws(GroupingError) -> Int {\n        let outcome: (partialValue: Int, overflow: Bool)\n        switch token {\n        case .add: outcome = left.addingReportingOverflow(right)\n        case .subtract: outcome = left.subtractingReportingOverflow(right)\n        case .multiply: outcome = left.multipliedReportingOverflow(by: right)\n        case .value: throw .malformedExpression\n        }\n        guard !outcome.overflow else { throw .countOverflow }\n        return outcome.partialValue\n    }\n}\n"
     }
+  },
+  "swift-30": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "Two revisions, order preserved, gaps allowed on both sides. Say what one table entry stands for before you write a single transition, because everything else in this problem follows from that sentence.",
+        "concepts": [
+          "one entry per pair of prefixes, one from each revision",
+          "a three-way choice on the last clause of each side",
+          "an empty prefix sharing nothing with anything"
+        ],
+        "steps": [
+          "Define one entry as the answer for the first so-many clauses of the left revision paired with the first so-many of the right.",
+          "That definition fixes the base case: an empty prefix on either side shares nothing, so the zero row and the zero column are both empty.",
+          "For each pair of positions ask whether the two last clauses are the same. If they are, the pair is worth one more than the pair with both dropped.",
+          "If they are not the same, one of the two has to be given up, and the entry is the better of giving up the left one or giving up the right one.",
+          "Fill ascending in both directions so the entry above, the entry to the left, and the entry diagonally above-left are all written before you read them."
+        ],
+        "pitfalls": [
+          "reading the clause at the loop index rather than the one before it, which is the single most common indexing slip in a table of prefixes",
+          "taking the first clause that matches and moving on, which looks right until the longest agreement lies further along",
+          "collapsing to two rolling rows here, which costs nothing now and makes the next part impossible"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "The table holds a number; the caller wants the clauses. Where in the table does the answer's first clause live, and what do you have to keep in order to find it?",
+        "concepts": [
+          "walking back from the corner to recover a choice",
+          "a documented tie-break as a testability requirement",
+          "the merged document as the same walk with nothing discarded"
+        ],
+        "steps": [
+          "Start at the corner and step backwards, asking at each entry which of the choices produced it.",
+          "Where the two last clauses agree, that clause belongs to the answer; step diagonally and record it.",
+          "Where they do not, step towards whichever neighbour holds the better value, and write down which way you go when they are equal.",
+          "You built the answer backwards, so reverse it once at the end rather than pushing onto the front of a growing list.",
+          "For the merged document take the same walk, but emit the clause you step over instead of throwing it away, and let both ends drain when one side runs out first.",
+          "Check the merge's length against the earlier part rather than by eye: it is the two lengths added with the agreement counted once."
+        ],
+        "pitfalls": [
+          "leaving the tie-break to whichever comparison the code happens to use, which makes any assertion about a specific answer unreliable",
+          "forgetting to drain the remaining clauses when one side of the walk reaches its end first, which silently truncates the merge",
+          "rebuilding the answer by prepending to a list inside the loop, which is quadratic for no reason"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "Same table shape, opposite objective: fewest edits rather than most agreement. Exactly one thing about the base case has to change, and getting it wrong reports distances that are far too small.",
+        "concepts": [
+          "a minimisation over three edit moves",
+          "base rows that count rather than being empty",
+          "an identity that proves this part against the first one"
+        ],
+        "steps": [
+          "Define the entry as the fewest edits that turn one prefix into the other, then work out what the zero row and the zero column have to be under that definition.",
+          "Turning a prefix into nothing means deleting all of it, so those edges count upward rather than staying at nothing. This is the difference from the earlier table.",
+          "Where the two last clauses agree the entry costs nothing more than the pair with both dropped; where they do not, it is one more than the best of the three moves available.",
+          "Walk back for the script with a stated precedence, and write that precedence down, because several scripts of the same size exist for most inputs.",
+          "Report the number as what the script costs rather than computing it twice, so the two can never disagree.",
+          "For the variant where replacement is forbidden, do not build another table: every clause outside the agreement has to move, and the earlier part already knows how large the agreement is."
+        ],
+        "pitfalls": [
+          "pasting the empty base rows from the earlier table, which is the highest-frequency bug in this pair of objectives",
+          "adding one on the branch where the two clauses agree",
+          "getting the delete and insert directions the wrong way round, which is invisible on symmetric inputs and wrong the moment a script is reported"
+        ]
+      },
+      {
+        "part": 4,
+        "prompt": "The moves now cost different amounts depending on which clause they touch. What has to be pulled out of the previous part so that this one is the same walk rather than a second one?",
+        "concepts": [
+          "the cost of a move as a value the table is given",
+          "the earlier part as this one with every cost equal",
+          "a default for anything the caller did not price"
+        ],
+        "steps": [
+          "Pull the three move costs out into one thing the table takes as an argument, and give it a case where everything costs one.",
+          "Rewrite the earlier part as a call into that shared machinery with the everything-costs-one case, so there is one table in the file rather than two.",
+          "Let anything the caller did not price cost what an ordinary clause costs, and put that default inside the cost model rather than sprinkling it through the table.",
+          "Decide what replacing one clause with another costs and say so out loud; the suite assumes the more sensitive of the two sets the price.",
+          "Validate the weights before touching the table: a negative weight and the same clause priced twice are both refusals, and both name the clause.",
+          "Watch what happens when one clause is priced far above the rest: a different alignment of the same two revisions becomes cheaper, which is the whole reason this part exists."
+        ],
+        "pitfalls": [
+          "building a second table here instead of parameterising the first, which is caught by the test asserting the two agree when everything costs one",
+          "pricing a replacement as a deletion plus an insertion, which stops the everything-costs-one case reproducing the earlier answer",
+          "assuming a matching pair of clauses is always free to keep without checking it against the alternatives once the costs differ"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "The measured agreement is one where it should be three",
+          "cause": "The first clause that matched was taken and the rest of the table was never consulted",
+          "check": "Run two revisions whose first clauses match but whose longest agreement lies elsewhere, and confirm the larger answer comes back."
+        },
+        {
+          "symptom": "Every answer is off by one clause, or the wrong clause appears in the result",
+          "cause": "The clause at the loop index is being read rather than the one before it, in a table whose rows and columns are one longer than the revisions",
+          "check": "Measure two identical revisions and confirm the answer is their length exactly, then measure one revision against itself with the last clause removed."
+        },
+        {
+          "symptom": "The edit distances are far too small, and turning a revision into nothing costs nothing",
+          "cause": "The zero row and the zero column were left empty, which is the earlier table's base case rather than this one's",
+          "check": "Ask for the distance between a revision and an empty one, in both directions, and confirm each is the number of clauses."
+        },
+        {
+          "symptom": "The distance is right but the script does not turn one revision into the other",
+          "cause": "The walk emits an operation whose predecessor is not the entry it actually came from, usually because delete and insert are swapped",
+          "check": "Run the script against the left revision step by step and compare the output with the right revision on an input where the two lengths differ."
+        },
+        {
+          "symptom": "The same two revisions produce different answers on different runs or in different builds",
+          "cause": "The walk breaks ties by whichever comparison happened to be written, rather than by a stated rule",
+          "check": "Use two revisions holding the same clauses in swapped order and confirm the answer is the same one every time."
+        },
+        {
+          "symptom": "Pricing every clause the same does not reproduce the unweighted answer",
+          "cause": "The weighted part built its own table, or priced a replacement as a deletion plus an insertion",
+          "check": "Price every clause at one on several revision pairs and compare the totals against the unweighted part."
+        }
+      ]
+    },
+    "execution": {
+      "timeBudget": {
+        "navigation": 4,
+        "solution": 9,
+        "coding": 26,
+        "verification": 6
+      },
+      "navigation": {
+        "say": "All four of these are one table over a pair of prefixes, and the only thing that changes between them is what the entry means and what a move costs. I want to say that first, because it decides how I lay the code out before I write any of it.",
+        "questions": [
+          "Are clause identifiers compared exactly, or is there a notion of a clause being edited but still the same clause?",
+          "When two scripts are equally short, does the caller care which one comes back, or only that it is the same one every time?",
+          "Can a review weight be zero, meaning a clause a reviewer will not look at, or is one the floor?"
+        ],
+        "assumptions": [
+          "Clause identifiers compare exactly; two clauses are the same clause or they are not.",
+          "Ties are broken by a rule I state and document, because a caller asserting one specific answer needs it to be reproducible rather than optimal in some further sense.",
+          "A weight of zero is allowed and means a clause nobody re-reads; a negative weight is a refusal.",
+          "A clause the caller did not price reviews like an ordinary one, so it costs one."
+        ],
+        "edgeCases": [
+          "either revision empty, which is the base case every part stands on",
+          "two revisions holding the same clauses in a different order, where several answers cost the same",
+          "a revision with a clause repeated, so the walk cannot assume identifiers are unique",
+          "a clause priced far above the rest, which is what makes the weighted answer differ in shape rather than only in size"
+        ],
+        "restate": "Given two ordered lists of clause identifiers, report what they still agree on, the smallest document containing both, the cheapest script of edits from one to the other, and that same script priced by per-clause review weight."
+      },
+      "solution": {
+        "pitch": "One table over pairs of prefixes, filled ascending, four times over. The first objective maximises agreement; the third minimises edits and differs in exactly one place, its base rows. The second and fourth are not new tables at all: one walks the first table backwards to recover the clauses, and the other hands the third table a cost function instead of a constant.",
+        "dataStructures": [
+          "A two-dimensional array of integers whose rows and columns are one longer than the revisions, so the empty prefix has a row and a column of its own rather than a special case.",
+          "The whole table kept rather than two rolling rows, because the walk back out of it is what produces the clauses and the script.",
+          "A dictionary from clause identifier to weight, built once at the top of the weighted call so the table itself never re-scans the weight list.",
+          "The script accumulated backwards and reversed once, rather than prepended to inside the loop."
+        ],
+        "types": [
+          "An edit is an enum with associated values, so a delete carrying two identifiers or a replacement carrying one cannot be constructed at all.",
+          "The script and its cost travel together in one value, because they always come out of the same walk of the same table and returning them separately invites them to disagree.",
+          "The cost model is its own small type with three named operations and a case where everything costs one, which is what makes the unweighted part a call rather than a copy.",
+          "The error enum separates a negative weight from a clause priced twice, and both carry the clause identifier, because those are two different things for a caller to fix."
+        ],
+        "composition": "Every link here is a call rather than a description. The length is the agreement's count. The distance is the script's cost. The unweighted script is the weighted one with no weights supplied. And the delete-only distance is the two lengths minus twice the agreement, which is this problem proving its third part against its first: the suite asserts that identity on a spread of inputs, and it can be red where a call would be green.",
+        "tradeoff": "Two rolling rows would cut the space from quadratic to linear, and I am deliberately not doing it, because the walk back out of the table is what produces the clauses and the script, and a collapsed table cannot be walked. If the revisions were large enough for that to matter the answer is a divide-and-conquer alignment that recovers the path in linear space at the same time cost, which is worth naming and not worth writing in this hour.",
+        "trap": "The base rows. The two objectives share a table shape and differ in exactly one place, so pasting the first one's empty edges into the second reports distances that are far too small and look plausible. The second trap is tie-breaking: for most inputs several answers are equally good, and an unstated rule makes every specific assertion about the output unreliable."
+      },
+      "coding": {
+        "order": [
+          "Write the agreement table first, with the entry's meaning stated in a comment above it.",
+          "Check it on two identical revisions and on one empty revision before writing anything that reads it.",
+          "Write the walk back out of it next, and state the tie-break as you write the comparison rather than afterwards.",
+          "Write the merge as the same walk with the stepped-over clause emitted, then drain whichever side is left over.",
+          "Write the alignment table for the edit objective, and write its base rows before its loop, because that is where the difference lives.",
+          "Pull the cost out into a model before writing the walk that produces the script, so the weighted part is a parameter rather than a rewrite.",
+          "Finish with the validation of the weights, which is small and belongs at the top of the one call that needs it."
+        ],
+        "commentary": [
+          "One entry means the answer for this many clauses of the left revision and this many of the right. Everything else follows from that, so it goes in a comment before the loop.",
+          "The zero row and the zero column are the empty prefix, which is why the table is one bigger than the input in both directions.",
+          "I am reading the clause before the index, not at it, because row three is about the first three clauses and that is the third one.",
+          "On a tie I step up, dropping from the left. I am stating that now because a caller asserting one specific answer needs it to be the same every time.",
+          "This second table's edges are not empty. Turning a prefix into nothing means deleting all of it, and that one line is the difference between the two objectives.",
+          "The precedence for the walk is keep, then replace, then delete, then insert. Any other order is equally correct and produces a different script, which is exactly why I am fixing one.",
+          "I am not building a table for the delete-only variant. Every clause outside the agreement has to move, and I already know how large the agreement is.",
+          "The cost model comes out first, with a case where everything costs one. That makes the unweighted part a call into this machinery rather than a second copy of it."
+        ],
+        "checkIn": "Before the third part, say: this is the same table with a minimum instead of a maximum, and the only real change is the base rows. Shall I write it that way, or would you rather see me derive the second table from scratch to show I know why the edges differ?"
+      },
+      "verification": {
+        "walkthroughs": [
+          "Walk the four-by-four table for the worked revisions by hand: recitals matches at once, payment-terms has no partner, liability and notices both match, and the corner reads three.",
+          "Walk back from that corner: notices matches and is emitted, then the walk steps past arbitration and payment-terms, then liability and recitals match, giving the agreement in three clauses once reversed.",
+          "Check the merge by arithmetic rather than by eye: four plus four minus three is five, and reading the merged list confirms both revisions still appear in order inside it.",
+          "Walk the delete-only identity on the same pair: four plus four minus twice three is two, which is what the delete-only method must report, and it is derived without touching the second table at all.",
+          "Price payment-terms at nine and walk the alternatives: replacing it costs nine while deleting it and inserting elsewhere costs ten, and the total lands on ten either way, which is why the second fixture with the swapped clauses is the one that proves the weights change the shape."
+        ],
+        "tests": "Run swift test --filter Problem30DocumentRevisionDiffEngineTests and read the four suites in part order. The greedy fixture in the first suite catches taking the first match; the empty-in-both-directions test in the third suite catches the pasted base rows; the test that runs the script against the left revision and compares it with the right is the strongest single assertion in the problem; and the everything-costs-one test in the fourth suite catches a second table.",
+        "complexity": "Every part is the product of the two lengths in time and in space, and the walk back out of the table is linear in the two lengths added. The weighted part adds a dictionary lookup per entry, which does not change the order. The delete-only variant is the one exception: it is the agreement table's cost and nothing more, because it is arithmetic on a number that part already computed.",
+        "moreTime": "Recovering the alignment in linear space by recursively bisecting the longer revision and meeting a forward and a backward pass in the middle, which keeps the same time cost. Adding a transposition move for two clauses that swapped places, which needs a guard two rows and two columns back. Aligning three revisions at once, which is the same shape in three dimensions and is where the cost stops being acceptable."
+      },
+      "code": "/// One clause of an agreement, together with what reviewing a change to it\n/// costs. The weight is a reviewer-minutes proxy: replacing a payment-terms\n/// clause costs a lawyer far more attention than replacing a boilerplate\n/// notice, and Part 4 exists because that difference changes which alignment\n/// is actually the cheapest one.\npublic struct Clause: Hashable, Sendable {\n    public let id: String\n    public let reviewWeight: Int\n\n    public init(id: String, reviewWeight: Int) {\n        self.id = id\n        self.reviewWeight = reviewWeight\n    }\n}\n\n/// One step of a diff. An enum with associated values rather than a struct with\n/// a kind field, so an operation that carries the wrong number of clause IDs\n/// cannot be constructed at all.\npublic enum EditOperation: Equatable, Sendable {\n    case keep(String)\n    case delete(String)\n    case insert(String)\n    case replace(from: String, to: String)\n}\n\n/// A diff plus what it costs to review. The cost travels with the operations\n/// because the two are always computed from the same walk of the same table,\n/// and returning them separately invites them to disagree.\npublic struct EditScript: Equatable, Sendable {\n    public let operations: [EditOperation]\n    public let totalCost: Int\n\n    public init(operations: [EditOperation], totalCost: Int) {\n        self.operations = operations\n        self.totalCost = totalCost\n    }\n}\n\npublic enum DiffError: Error, Equatable, Sendable {\n    case negativeReviewWeight(String)\n    case duplicateClauseWeight(String)\n    case notImplemented\n}\n\npublic struct RevisionDiffEngine: Sendable {\n    public init() {}\n\n    // MARK: Part 1 - Measure the shared spine\n\n    /// How many clauses survive, in order, from one revision into the other.\n    ///\n    /// This is the length of the alignment table's corner entry. It is written\n    /// as a projection of `sharedSpine` rather than as its own table, because\n    /// two tables computing the same quantity is exactly how the two answers\n    /// drift apart.\n    public func sharedSpineLength(_ left: [String], _ right: [String]) -> Int {\n        sharedSpine(left, right).count\n    }\n\n    // MARK: Part 2 - Emit the spine and the merged revision\n\n    /// The clauses common to both revisions, in the order both agree on.\n    ///\n    /// The table entry at row i and column j is the length of the shared spine\n    /// of the first i clauses on the left and the first j on the right, so the\n    /// zero row and the zero column are both empty: an empty revision shares\n    /// nothing with anything. The walk back from the corner is where the spine\n    /// itself comes from, and it is the reason the whole table is kept rather\n    /// than the two rolling rows the length alone would need.\n    ///\n    /// On a tie the walk steps **up**, dropping a clause from the left. The\n    /// rule is documented rather than incidental because a caller that asserts\n    /// one particular spine needs the answer to be the same one every time.\n    public func sharedSpine(_ left: [String], _ right: [String]) -> [String] {\n        let table = spineTable(left, right)\n        var spine: [String] = []\n        var i = left.count\n        var j = right.count\n\n        while i > 0 && j > 0 {\n            if left[i - 1] == right[j - 1] {\n                spine.append(left[i - 1])\n                i -= 1\n                j -= 1\n            } else if table[i - 1][j] >= table[i][j - 1] {\n                i -= 1\n            } else {\n                j -= 1\n            }\n        }\n\n        return Array(spine.reversed())\n    }\n\n    /// The shortest document that contains both revisions as subsequences.\n    ///\n    /// The same walk as `sharedSpine`, except that the clause stepped over is\n    /// emitted rather than discarded. Its length is necessarily the two lengths\n    /// added together with the shared spine counted once instead of twice, and\n    /// the test suite asserts exactly that against Part 1.\n    public func mergedRevision(_ left: [String], _ right: [String]) -> [String] {\n        let table = spineTable(left, right)\n        var merged: [String] = []\n        var i = left.count\n        var j = right.count\n\n        while i > 0 && j > 0 {\n            if left[i - 1] == right[j - 1] {\n                merged.append(left[i - 1])\n                i -= 1\n                j -= 1\n            } else if table[i - 1][j] >= table[i][j - 1] {\n                merged.append(left[i - 1])\n                i -= 1\n            } else {\n                merged.append(right[j - 1])\n                j -= 1\n            }\n        }\n        while i > 0 {\n            merged.append(left[i - 1])\n            i -= 1\n        }\n        while j > 0 {\n            merged.append(right[j - 1])\n            j -= 1\n        }\n\n        return Array(merged.reversed())\n    }\n\n    // MARK: Part 3 - Minimal edit script\n\n    /// The fewest single-clause edits that turn the left revision into the right.\n    ///\n    /// A projection of `editScript`, for the same reason `sharedSpineLength` is\n    /// a projection of `sharedSpine`: there is one alignment table in this file\n    /// and every number in this part comes out of it.\n    public func editDistance(_ left: [String], _ right: [String]) -> Int {\n        editScript(left, right).totalCost\n    }\n\n    /// The fewest edits when replacement is forbidden and only insertion and\n    /// deletion are available.\n    ///\n    /// Nothing new is computed. Every clause outside the shared spine has to be\n    /// deleted from the left or inserted into the right, so the answer is the\n    /// two lengths added together with the spine removed from each of them.\n    /// This is Part 3 proving itself against Part 1, and the suite asserts the\n    /// identity directly on a spread of fixtures.\n    public func deleteOnlyDistance(_ left: [String], _ right: [String]) -> Int {\n        left.count + right.count - 2 * sharedSpineLength(left, right)\n    }\n\n    /// The cheapest script of keeps, deletes, inserts and replacements that\n    /// turns the left revision into the right, under unit review cost.\n    ///\n    /// The unit cost model is the weighted model of Part 4 with no weights\n    /// supplied, so this method is a call into the shared machinery rather than\n    /// a second implementation of it.\n    public func editScript(_ left: [String], _ right: [String]) -> EditScript {\n        alignedScript(left, right, cost: .unit)\n    }\n\n    // MARK: Part 4 - Price the script with review weights\n\n    /// The cheapest script under per-clause review weights.\n    ///\n    /// Same table, same walk, different cost function. A clause with no listed\n    /// weight reviews like any other, so it costs one; the default lives in the\n    /// cost model rather than being spread through the table.\n    public func weightedEditScript(\n        _ left: [String],\n        _ right: [String],\n        weights: [Clause]\n    ) throws(DiffError) -> EditScript {\n        var byID: [String: Int] = [:]\n        for clause in weights {\n            guard clause.reviewWeight >= 0 else { throw .negativeReviewWeight(clause.id) }\n            guard byID[clause.id] == nil else { throw .duplicateClauseWeight(clause.id) }\n            byID[clause.id] = clause.reviewWeight\n        }\n        return alignedScript(left, right, cost: ReviewCostModel(weights: byID))\n    }\n\n    // MARK: Shared machinery\n\n    /// What one edit costs the reviewer.\n    ///\n    /// A replacement is priced by the more sensitive of the two clauses\n    /// involved, because the review time is set by whichever side needs the\n    /// closer reading. With no weights listed every edit costs one, which is\n    /// why Part 3 is this model rather than a separate table.\n    private struct ReviewCostModel: Sendable {\n        let weights: [String: Int]\n\n        static let unit = ReviewCostModel(weights: [:])\n\n        func removal(_ id: String) -> Int { weights[id] ?? 1 }\n        func addition(_ id: String) -> Int { weights[id] ?? 1 }\n        func substitution(from: String, to: String) -> Int {\n            max(removal(from), addition(to))\n        }\n    }\n\n    /// The shared-spine table. Entry i, j is the length of the shared spine of\n    /// the first i clauses on the left and the first j on the right.\n    ///\n    /// Filled ascending in both dimensions, which is what makes the three\n    /// entries every transition reads - above, to the left, and diagonally\n    /// above-left - already present when the transition needs them.\n    private func spineTable(_ left: [String], _ right: [String]) -> [[Int]] {\n        var table = Array(\n            repeating: Array(repeating: 0, count: right.count + 1),\n            count: left.count + 1\n        )\n        guard !left.isEmpty && !right.isEmpty else { return table }\n\n        for i in 1...left.count {\n            for j in 1...right.count {\n                if left[i - 1] == right[j - 1] {\n                    table[i][j] = table[i - 1][j - 1] + 1\n                } else {\n                    table[i][j] = max(table[i - 1][j], table[i][j - 1])\n                }\n            }\n        }\n        return table\n    }\n\n    /// The alignment table for a given cost model. Entry i, j is the cheapest\n    /// review cost that turns the first i clauses on the left into the first j\n    /// on the right.\n    ///\n    /// The zero row and the zero column are **not** zero here, and that single\n    /// difference from the spine table is what separates the two objectives:\n    /// turning a prefix into nothing means deleting all of it, and turning\n    /// nothing into a prefix means inserting all of it.\n    private func alignmentTable(\n        _ left: [String],\n        _ right: [String],\n        cost: ReviewCostModel\n    ) -> [[Int]] {\n        var table = Array(\n            repeating: Array(repeating: 0, count: right.count + 1),\n            count: left.count + 1\n        )\n        if !left.isEmpty {\n            for i in 1...left.count {\n                table[i][0] = table[i - 1][0] + cost.removal(left[i - 1])\n            }\n        }\n        if !right.isEmpty {\n            for j in 1...right.count {\n                table[0][j] = table[0][j - 1] + cost.addition(right[j - 1])\n            }\n        }\n        guard !left.isEmpty && !right.isEmpty else { return table }\n\n        for i in 1...left.count {\n            for j in 1...right.count {\n                let deleting = table[i - 1][j] + cost.removal(left[i - 1])\n                let inserting = table[i][j - 1] + cost.addition(right[j - 1])\n                let diagonal: Int\n                if left[i - 1] == right[j - 1] {\n                    diagonal = table[i - 1][j - 1]\n                } else {\n                    diagonal = table[i - 1][j - 1]\n                        + cost.substitution(from: left[i - 1], to: right[j - 1])\n                }\n                table[i][j] = min(diagonal, min(deleting, inserting))\n            }\n        }\n        return table\n    }\n\n    /// The cheapest script under a cost model, walked back out of the table.\n    ///\n    /// The walk has to break ties, and the rule is fixed and documented: keep\n    /// first where the clauses match, then replace, then delete, then insert.\n    /// Any other rule is equally correct arithmetically and produces a\n    /// different script, which is precisely why the caller is told which one\n    /// this is.\n    private func alignedScript(\n        _ left: [String],\n        _ right: [String],\n        cost: ReviewCostModel\n    ) -> EditScript {\n        let table = alignmentTable(left, right, cost: cost)\n        var operations: [EditOperation] = []\n        var i = left.count\n        var j = right.count\n\n        while i > 0 || j > 0 {\n            if i > 0 && j > 0 && left[i - 1] == right[j - 1]\n                && table[i][j] == table[i - 1][j - 1] {\n                operations.append(.keep(left[i - 1]))\n                i -= 1\n                j -= 1\n            } else if i > 0 && j > 0\n                && table[i][j] == table[i - 1][j - 1]\n                    + cost.substitution(from: left[i - 1], to: right[j - 1]) {\n                operations.append(.replace(from: left[i - 1], to: right[j - 1]))\n                i -= 1\n                j -= 1\n            } else if i > 0 && table[i][j] == table[i - 1][j] + cost.removal(left[i - 1]) {\n                operations.append(.delete(left[i - 1]))\n                i -= 1\n            } else {\n                operations.append(.insert(right[j - 1]))\n                j -= 1\n            }\n        }\n\n        return EditScript(\n            operations: Array(operations.reversed()),\n            totalCost: table[left.count][right.count]\n        )\n    }\n}\n"
+    }
+  },
+  "swift-31": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "Write the slow one first and mean it. What does this part have to be for the next part to be provable rather than merely plausible?",
+        "concepts": [
+          "an exhaustive baseline as a correctness oracle",
+          "replaying one concrete order as a reusable helper",
+          "a ceiling on input size as a typed refusal"
+        ],
+        "steps": [
+          "Write the replay of one concrete order first: walk the order, and for each retirement look up the widths still present on either side, with a sentinel of one standing in at each end of the chain.",
+          "Then try every order and keep the best. The point is not speed; it is having something the fast version can be compared against on every small input.",
+          "Keep the replay helper separate, because the part that reports an order needs exactly the same replay and the suite uses it too.",
+          "The work grows as the factorial of the length, so refuse anything longer than a stated ceiling rather than attempting it. Eight is reasonable.",
+          "Validate before any arithmetic: a width of zero or less, a width beyond a stated maximum, and a repeated identifier are all refusals.",
+          "The width ceiling is not decoration. Three widths multiply in one term, and an unguarded overflow ends the process rather than returning a wrong number."
+        ],
+        "pitfalls": [
+          "forgetting the sentinel at the ends, which quietly makes the first and last buffers worth nothing",
+          "looking up a neighbour in the original chain rather than in what is still present, which is the entire difficulty of the problem skipped",
+          "checking the size limit after building the permutations rather than before"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "A left-to-right sweep is provably short here. Ask which buffer in a stretch of the chain is retired LAST rather than first, and say what that buys you before writing anything.",
+        "concepts": [
+          "an entry standing for a stretch of the chain rather than a position",
+          "the last removal as the choice that makes two sides independent",
+          "filling by increasing stretch length rather than by row"
+        ],
+        "steps": [
+          "Pad the widths with a sentinel of one at each end, so the two ends of the chain need no special case at all.",
+          "Define an entry as the best saving from retiring everything strictly between two bounds, which makes the two bounds the neighbours that survive throughout.",
+          "Choose which buffer inside the stretch goes last. Once it is fixed, its neighbours at that moment are the stretch's own bounds, and the two sides no longer interact.",
+          "Asking which goes first does not decompose, because the two halves still touch each other afterwards. This is the whole insight and it is worth saying out loud.",
+          "Fill by increasing stretch length. An entry depends only on strictly shorter stretches, and that is the only order that guarantees they are written.",
+          "Do not look for a rolling-row trick. An entry reads its own row and its own column at any distance, so there is nothing to roll."
+        ],
+        "pitfalls": [
+          "a plain row-major sweep, which reads entries that have not been written and returns a smaller number that looks perfectly plausible",
+          "choosing the first removal instead of the last, then discovering the two halves are coupled and the recurrence will not close",
+          "looping the chosen buffer over the bounds themselves rather than strictly between them"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "The table knows the answer's size. What one extra thing does it have to record for you to say which order produced it, and why is re-deriving it greedily not the same thing?",
+        "concepts": [
+          "a parallel record of the choice each entry made",
+          "a recursive walk that emits the closing buffer last",
+          "replaying a reported order as the check"
+        ],
+        "steps": [
+          "Alongside each entry's best saving, record which buffer closed that stretch. It costs a second grid of the same size and nothing else.",
+          "Walk the record from the whole chain inward: emit the order for the stretch left of the closing buffer, then the order for the stretch right of it, then the closing buffer itself.",
+          "That ordering is what closing last means, and any interleaving of the two sides is equally valid, so pick one and say which.",
+          "Map the padded positions back to identifiers only at the very end, so the walk never has to think about the sentinels.",
+          "Name the helper that builds the table and record, and have both parts call it, so there is one decomposition in the file rather than two.",
+          "Check yourself by replaying what you return through the helper from the first part; it has to reproduce the earlier number exactly."
+        ],
+        "pitfalls": [
+          "re-deriving the order greedily from the savings instead of following the recorded choices, which produces a plausible order that does not achieve the saving",
+          "emitting the closing buffer before its two sides, which reverses the meaning of the record",
+          "forgetting the padding offset when mapping positions back to identifiers, which shifts every name by one"
+        ]
+      },
+      {
+        "part": 4,
+        "prompt": "The reward now depends on how many same-type buffers were already folded in from the left. Is a stretch of the chain still enough to describe a sub-problem, and if not, what has to join it?",
+        "concepts": [
+          "a third dimension carrying history into the sub-problem",
+          "two moves per buffer rather than one choice per stretch",
+          "state growing rather than code being special-cased"
+        ],
+        "steps": [
+          "Notice first that the earlier table cannot express this: two identical stretches are worth different amounts depending on what is attached to their left, so the stretch alone is no longer enough state.",
+          "Add that count as a third dimension and memoise on all three, which is the honest answer rather than a workaround.",
+          "Give each buffer two moves. Either close the run here, which is worth the square of its length scaled by the width the run is reconciled at, and then solve what remains to the right.",
+          "Or defer it: clear everything strictly between here and a later buffer of the same stage type, then carry this one forward so the run grows before it closes.",
+          "The deferral is what makes this quartic, and it is also the only move that beats the obvious one, so a fixture that rewards it is the fixture worth trusting.",
+          "Do not reuse the earlier table here. Saying why out loud is worth more than any code you could share."
+        ],
+        "pitfalls": [
+          "trying to bolt the run onto the earlier two-dimensional table, which cannot carry the count and produces answers that are right only when no stage type repeats",
+          "assuming adjacent buffers of one type should always be folded together immediately, which is not safe once the reward depends on which buffer the run is reconciled at",
+          "keying the memo on the position after the deferral loop has moved it, so distinct sub-problems collide"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "The fast planner returns a number well below the exhaustive baseline on every chain of three or more",
+          "cause": "The table is being filled row by row, so entries are read before they are written and every longer stretch is built on zeros",
+          "check": "Compare the two planners on the worked chain; a row-major fill reports sixty-three where the answer is one hundred and sixty-seven."
+        },
+        {
+          "symptom": "The first and last buffers appear to be worth almost nothing",
+          "cause": "The sentinel width of one is missing at one or both ends, so a boundary neighbour is being read as zero or skipped",
+          "check": "Ask for the saving on a chain of exactly one buffer and confirm it is that buffer's own width."
+        },
+        {
+          "symptom": "The recurrence will not close: both halves of a split still seem to depend on each other",
+          "cause": "The buffer being chosen inside a stretch is the one retired first rather than the one retired last",
+          "check": "Take a chain of three and work out by hand what each side sees under each reading; only the last-removal reading leaves the two sides independent."
+        },
+        {
+          "symptom": "The reported order is a valid permutation but replaying it falls short of the reported saving",
+          "cause": "The order is being re-derived from the savings greedily rather than read from the record of which buffer closed each stretch",
+          "check": "Replay the returned order through the same neighbour-product rule and compare the total against the planner's own number."
+        },
+        {
+          "symptom": "The run-collapse answer is right whenever stage types are all distinct and wrong as soon as one repeats",
+          "cause": "The count of buffers already folded in from the left is not part of the state, so the sub-problem is being asked a question it cannot answer",
+          "check": "Use a chain of three where the two outer buffers share a stage type and confirm that clearing the middle one first wins."
+        },
+        {
+          "symptom": "The process ends without a message on a wide or long chain",
+          "cause": "An unguarded multiply overflowed, which in Swift ends the process rather than returning a wrong number",
+          "check": "Ask for a buffer one wider than the documented maximum and confirm a typed refusal comes back rather than the run ending."
+        }
+      ]
+    },
+    "execution": {
+      "timeBudget": {
+        "navigation": 4,
+        "solution": 9,
+        "coding": 26,
+        "verification": 6
+      },
+      "navigation": {
+        "say": "The reward for retiring a buffer depends on what is still present, so the order matters and greedy is out. I want to establish that in the first minute, because everything I do afterwards is a consequence of it.",
+        "questions": [
+          "Do the two ends of the chain have neighbours, or does a buffer at an end only see one real neighbour?",
+          "How long a chain do I have to support, since the answer decides whether an exhaustive baseline is even worth writing?",
+          "When the run-collapse optimisation lands, does a run have to be consecutive in the original chain, or only consecutive by the time it is retired?"
+        ],
+        "assumptions": [
+          "A missing neighbour at either end counts as a width of one, which is why padding removes every edge case rather than hiding one.",
+          "Widths are positive and bounded by a documented maximum, and the bound is what keeps three multiplied widths inside an integer.",
+          "A run may be assembled: buffers become consecutive as the ones between them are retired, which is the only reading under which the last part is interesting.",
+          "Identifiers are unique, and a repeat is a refusal rather than something to disambiguate."
+        ],
+        "edgeCases": [
+          "an empty chain and a chain of one, where the interval loop has no length to iterate and would otherwise trap",
+          "a chain where the best order is not sorted by width in either direction, which kills the obvious greedy heuristic",
+          "a chain whose stage types are all distinct, where no run can ever exceed one buffer",
+          "a chain that is entirely one stage type, which is the largest a single run can be"
+        ],
+        "restate": "Given a chain of buffers, choose the order to retire them so the total saving is largest, where retiring a buffer earns its width times the widths of the neighbours still present; report that total, report an order that achieves it, and then solve the variant where same-type buffers retire together."
+      },
+      "solution": {
+        "pitch": "The state is a stretch of the chain, and the choice inside a stretch is which buffer goes last. Fixing the last removal is what makes the two sides independent, because that buffer stands between them until the end and so its neighbours are the stretch's own bounds. Fill by increasing stretch length, record which buffer closed each stretch, and the order falls out of the same table. The final part breaks that model on purpose and the state grows a dimension to answer it.",
+        "dataStructures": [
+          "The widths padded with a sentinel of one at each end, so a boundary buffer is an ordinary buffer.",
+          "A square grid of best savings indexed by the two bounds of a stretch, filled by increasing length.",
+          "A second grid of the same shape recording which buffer closed each stretch, which is the only thing that separates knowing the number from knowing the plan.",
+          "A dictionary keyed on a stretch and a carried run length for the final part, because that key is exactly the state the two-dimensional grid could not hold."
+        ],
+        "types": [
+          "A buffer is a struct with an identifier, a width and a stage type, so the last part has something to group on without a parallel array.",
+          "The error enum separates a bad width, a width beyond the supported range, a repeated identifier and a chain that is too long, and the length error carries the length so a caller can see how far over it is.",
+          "The carried run length is wrapped in a small key type for the memo rather than left as a tuple, which makes the third dimension visible in the code rather than implied by it.",
+          "The supported maxima are static constants with doc comments explaining what each one protects, because the enumeration ceiling and the arithmetic ceiling are different numbers for different reasons."
+        ],
+        "composition": "The exhaustive baseline is not scaffolding, it is the proof. The suite asserts the fast planner equals it on every chain short enough to reach, which is an assertion that can be red where a call would be green. The order-reporting part composes by calling the same table-building helper the saving uses, so there is one decomposition. The final part composes with nothing, and saying that clearly is the honest answer rather than manufacturing a call.",
+        "tradeoff": "There is no space optimisation here and I want to say so rather than let it look like an omission. An entry reads its own row and its own column at arbitrary distance, so the usual rolling-row trick has nothing to roll. The second grid recording the choices doubles the space and is what buys the plan; without it the number is all you can ever report.",
+        "trap": "The fill order. A plain row-major sweep reads entries that have not been written yet and returns a smaller number that looks entirely reasonable, which is why the baseline exists. The second trap is the last-versus-first reading of the choice inside a stretch: choosing the first removal feels natural and does not decompose, and finding that out after writing the loop is expensive."
+      },
+      "coding": {
+        "order": [
+          "Write the validation and the replay of one concrete order first, because the baseline, the order-reporting part and my own checking all need the replay.",
+          "Write the exhaustive baseline next and confirm the worked chain reports one hundred and sixty-seven.",
+          "Write the interval table with the padding, and write the loop over stretch lengths before the loop over positions so the fill order is visible.",
+          "Compare the table against the baseline on the worked chain before writing anything else, because everything after this depends on it.",
+          "Add the second grid recording which buffer closed each stretch, then the recursive walk that reads it.",
+          "Replay the reported order through the helper written first and confirm it reproduces the table's number.",
+          "Write the run-collapse part last, starting by saying out loud why the earlier table cannot be reused."
+        ],
+        "commentary": [
+          "Padding with a sentinel at each end removes every boundary case, which is worth more than the line it costs.",
+          "An entry is the best saving from retiring everything strictly between these two bounds. That is why the bounds are the neighbours that survive throughout.",
+          "I am asking which buffer goes last, not first. Once the last one is fixed its neighbours are the bounds, and the two sides stop interacting.",
+          "The outer loop is over stretch length, not over rows. An entry depends only on strictly shorter stretches and this is the only order that guarantees they are there.",
+          "There is no rolling-row form of this. An entry reads its own row and its own column at any distance, so the usual space trick does not apply.",
+          "The second grid records which buffer closed each stretch. Without it I can report the number and nothing else, and a caller wants the plan.",
+          "I emit both sides before the closing buffer, because that is what closing last means. Either interleaving of the sides is valid; I am fixing one.",
+          "For the last part the stretch is no longer enough state. Two identical stretches are worth different amounts depending on what is attached to their left, so the count joins the key."
+        ],
+        "checkIn": "Before the last part, say: this one breaks the model the first three share, because the reward now depends on history and a stretch alone cannot express that. Do you want the third dimension written out, or would you rather I spent the time on the reconstruction I already have?"
+      },
+      "verification": {
+        "walkthroughs": [
+          "Walk a chain of one by hand: both neighbours are sentinels, so the saving is that buffer's own width, which is the smallest case the padding has to get right.",
+          "Walk a chain of two with widths three and four: retiring the three first earns one times three times four, then the four is alone and earns four, giving sixteen; retiring the four first gives fifteen. Sixteen is the answer and the order matters already.",
+          "Walk the worked chain of widths three, one, five and eight: the exhaustive baseline reports one hundred and sixty-seven, a row-major fill reports sixty-three, and retiring the narrowest first reports seventy-eight. Three different numbers from three different mistakes.",
+          "Walk the reported order back through the replay: buf-b, then buf-c, then buf-a, then buf-d, summing the neighbour products, and confirm the total lands on the same one hundred and sixty-seven.",
+          "Walk the run-collapse fixture of widths ten, one and ten with the outer two sharing a stage type: retiring each where it stands earns twenty-one, while clearing the middle one first lets the outer two retire as one run of two for forty, giving forty-one."
+        ],
+        "tests": "Run swift test --filter Problem31PipelineBufferRemovalPlannerTests and read the four suites in part order. The first suite's two-buffer case is the smallest thing that catches a missing sentinel; the second suite's comparison against the baseline on every short chain is the real correctness evidence; the third suite replays the order rather than trusting it; and the fourth suite compares the quartic planner against an exhaustive search written independently, which is the only honest way to check a recurrence that intricate.",
+        "complexity": "The baseline is factorial in the chain length, which is why it is capped at eight. The interval planner is cubic in time and quadratic in space, and the second grid does not change either. The order walk is linear in the chain. The run-collapse part is quartic in time, because there are a cubic number of states and each considers a linear number of later buffers of the same stage type, and its space is cubic.",
+        "moreTime": "Reporting which buffers were retired together in the run-collapse variant, which needs the same trick as the order reconstruction applied to a three-dimensional record. Handling a chain that is a tree of stages rather than a line, where the stretch becomes a subtree and the last-removal argument still holds. And the space question, which is the honest place to say that this pattern has no rolling-row form rather than pretending to one."
+      },
+      "code": "/// One intermediate buffer between two pipeline stages.\n///\n/// The width is what the scheduler has to reconcile when the buffer is retired,\n/// and the stage type is what Part 4's run collapse groups on.\npublic struct PipelineBuffer: Equatable, Sendable {\n    public let id: String\n    public let width: Int\n    public let stageType: String\n\n    public init(id: String, width: Int, stageType: String) {\n        self.id = id\n        self.width = width\n        self.stageType = stageType\n    }\n}\n\npublic enum RemovalError: Error, Equatable, Sendable {\n    case nonPositiveWidth(String)\n    case widthTooLarge(String)\n    case duplicateBufferID(String)\n    case chainTooLong(Int)\n    case notImplemented\n}\n\npublic struct BufferRemovalPlanner: Sendable {\n    /// The longest chain the permutation baseline will attempt. Every order of\n    /// retirement is tried, so the work grows as the factorial of the length and\n    /// nine buffers is already a different order of magnitude from eight.\n    public static let maximumExhaustiveChainLength = 8\n\n    /// The longest chain the planners will accept. The run-collapse planner is\n    /// quartic in this number, and the ceiling is also what makes the arithmetic\n    /// provably safe: see `maximumBufferWidth`.\n    public static let maximumPlannableChainLength = 40\n\n    /// The widest buffer accepted. Three widths are multiplied together in a\n    /// single term and the terms are summed once per buffer, so this ceiling\n    /// keeps the largest reachable total far inside an Int. An Int overflow in\n    /// Swift is a trap that ends the process rather than a wrong answer, so the\n    /// bound is checked before any arithmetic runs.\n    public static let maximumBufferWidth = 1_000\n\n    public init() {}\n\n    // MARK: Part 1 - Exhaustive saving for a short chain\n\n    /// The best total saving, found by trying every order of retirement.\n    ///\n    /// Deliberately the slow way. It exists so the interval planner in Part 2\n    /// has something to be proved equal to, and the suite asserts that equality\n    /// on every fixture short enough to reach here. That agreement is the\n    /// strongest correctness evidence an interval decomposition can have.\n    public func bestSavingExhaustive(_ buffers: [PipelineBuffer]) throws(RemovalError) -> Int {\n        let widths = try validatedWidths(buffers, limit: Self.maximumExhaustiveChainLength)\n        guard !widths.isEmpty else { return 0 }\n\n        var order = Array(0..<widths.count)\n        var best = 0\n        permute(&order, from: 0) { candidate in\n            best = max(best, replaySaving(candidate, widths: widths))\n        }\n        return best\n    }\n\n    // MARK: Part 2 - Best saving by interval decomposition\n\n    /// The best total saving, found by decomposing the chain into intervals.\n    ///\n    /// A projection of the table `retirementOrder` also walks, so there is one\n    /// decomposition in this file and both parts read the same numbers out of it.\n    public func bestSaving(_ buffers: [PipelineBuffer]) throws(RemovalError) -> Int {\n        let widths = try validatedWidths(buffers, limit: Self.maximumPlannableChainLength)\n        guard !widths.isEmpty else { return 0 }\n        return savingTable(widths).best[0][widths.count + 1]\n    }\n\n    // MARK: Part 3 - Report the retirement order\n\n    /// The IDs of the buffers in an order that achieves `bestSaving`.\n    ///\n    /// The table records, for every interval, which buffer was retired last\n    /// inside it. Walking that record emits both sides of an interval before the\n    /// buffer that closes it, which is exactly what \"retired last\" means, and\n    /// replaying the result reproduces the saving the table reported.\n    public func retirementOrder(_ buffers: [PipelineBuffer]) throws(RemovalError) -> [String] {\n        let widths = try validatedWidths(buffers, limit: Self.maximumPlannableChainLength)\n        guard !widths.isEmpty else { return [] }\n\n        let table = savingTable(widths)\n        var order: [Int] = []\n        appendOrder(from: 0, to: widths.count + 1, lastRemoved: table.lastRemoved, into: &order)\n        // The table is padded with a sentinel at each end, so a padded index of\n        // one is the first real buffer.\n        return order.map { buffers[$0 - 1].id }\n    }\n\n    // MARK: Part 4 - Collapse runs of one stage type\n\n    /// The best total saving once consecutive buffers of the same stage type may\n    /// be retired together, the whole run reconciled once.\n    ///\n    /// A run of r buffers saves r squared, scaled by the width of the buffer the\n    /// scheduler reconciles the run at, which is the rightmost of them.\n    ///\n    /// Nothing from Part 2 is reused, and that is the lesson rather than an\n    /// oversight: the saving now depends on how many same-type buffers were\n    /// already folded in from the left, so an interval on its own is no longer\n    /// enough state to describe a sub-problem. The state gains a third dimension\n    /// and the two-dimensional table cannot express it.\n    public func bestSavingWithRunCollapse(_ buffers: [PipelineBuffer]) throws(RemovalError) -> Int {\n        let widths = try validatedWidths(buffers, limit: Self.maximumPlannableChainLength)\n        guard !widths.isEmpty else { return 0 }\n\n        let types = buffers.map(\\.stageType)\n        // Keyed on the interval and the carried run length, which is the third\n        // dimension the interval alone could not carry.\n        var memo: [CollapseKey: Int] = [:]\n        return collapseSaving(\n            from: 0, to: widths.count - 1, carried: 0,\n            widths: widths, types: types, memo: &memo\n        )\n    }\n\n    // MARK: Shared machinery\n\n    /// Checks the chain once, for every part, and hands back the widths in order.\n    ///\n    /// Every guard fires before any arithmetic. The width ceiling is not\n    /// decoration: an unchecked multiply here would trap and take the process\n    /// down rather than returning something a caller could inspect.\n    private func validatedWidths(\n        _ buffers: [PipelineBuffer],\n        limit: Int\n    ) throws(RemovalError) -> [Int] {\n        guard buffers.count <= limit else { throw .chainTooLong(buffers.count) }\n\n        var seen: Set<String> = []\n        for buffer in buffers {\n            guard buffer.width > 0 else { throw .nonPositiveWidth(buffer.id) }\n            guard buffer.width <= Self.maximumBufferWidth else { throw .widthTooLarge(buffer.id) }\n            guard seen.insert(buffer.id).inserted else { throw .duplicateBufferID(buffer.id) }\n        }\n        return buffers.map(\\.width)\n    }\n\n    /// Every order of retirement, handed one at a time to `body`.\n    private func permute(_ order: inout [Int], from start: Int, _ body: ([Int]) -> Void) {\n        if start == order.count {\n            body(order)\n            return\n        }\n        for position in start..<order.count {\n            order.swapAt(start, position)\n            permute(&order, from: start + 1, body)\n            order.swapAt(start, position)\n        }\n    }\n\n    /// What one concrete order of retirement actually saves.\n    ///\n    /// A retired buffer's saving is its own width times the widths of the\n    /// buffers still present on either side of it, with a sentinel width of one\n    /// standing in at each end of the chain. Shared by the baseline and by the\n    /// suite's replay of the reported order.\n    private func replaySaving(_ order: [Int], widths: [Int]) -> Int {\n        var remaining = Array(0..<widths.count)\n        var total = 0\n        for index in order {\n            guard let position = remaining.firstIndex(of: index) else { continue }\n            let leftWidth = position > 0 ? widths[remaining[position - 1]] : 1\n            let rightWidth = position < remaining.count - 1 ? widths[remaining[position + 1]] : 1\n            total += leftWidth * widths[index] * rightWidth\n            remaining.remove(at: position)\n        }\n        return total\n    }\n\n    /// The interval table, plus the record of which buffer closes each interval.\n    ///\n    /// The widths are padded with a sentinel of one at each end so the two ends\n    /// of the chain need no special case at all. An entry spans the buffers\n    /// strictly between its two padded bounds, and it asks which of them is\n    /// retired **last**: once that buffer is fixed, its neighbours at retirement\n    /// time are the interval's own bounds, and the two sides stop interacting.\n    ///\n    /// Filled by increasing interval length, which is the whole fill order.\n    /// A plain row-major sweep reads entries that have not been written yet and\n    /// returns a plausible, smaller number rather than failing.\n    private func savingTable(_ widths: [Int]) -> (best: [[Int]], lastRemoved: [[Int]]) {\n        let padded = [1] + widths + [1]\n        let span = padded.count\n        var best = Array(repeating: Array(repeating: 0, count: span), count: span)\n        var lastRemoved = Array(repeating: Array(repeating: -1, count: span), count: span)\n\n        guard span >= 3 else { return (best, lastRemoved) }\n        for length in 2..<span {\n            for left in 0...(span - 1 - length) {\n                let right = left + length\n                for closing in (left + 1)..<right {\n                    let candidate = best[left][closing]\n                        + padded[left] * padded[closing] * padded[right]\n                        + best[closing][right]\n                    if candidate > best[left][right] || lastRemoved[left][right] == -1 {\n                        best[left][right] = candidate\n                        lastRemoved[left][right] = closing\n                    }\n                }\n            }\n        }\n        return (best, lastRemoved)\n    }\n\n    /// Walks the record of closing buffers, emitting both sides of an interval\n    /// before the buffer that closes it.\n    private func appendOrder(\n        from left: Int,\n        to right: Int,\n        lastRemoved: [[Int]],\n        into order: inout [Int]\n    ) {\n        guard right - left >= 2 else { return }\n        let closing = lastRemoved[left][right]\n        guard closing >= 0 else { return }\n        appendOrder(from: left, to: closing, lastRemoved: lastRemoved, into: &order)\n        appendOrder(from: closing, to: right, lastRemoved: lastRemoved, into: &order)\n        order.append(closing)\n    }\n\n    /// The third dimension, made a type so the memo reads as what it is.\n    private struct CollapseKey: Hashable {\n        let from: Int\n        let to: Int\n        let carried: Int\n    }\n\n    /// Best saving for the buffers `from...to`, given that `carried` buffers of\n    /// the same stage type as the one at `from` are already folded in from the\n    /// left and will be retired in the same run. The carried buffers sit to the\n    /// left of `from` and share its stage type.\n    ///\n    /// Two moves, and the second one is the reason this needs its own table:\n    /// close the run here, so it saves the square of its length scaled by this\n    /// buffer's width; or defer this buffer, clear everything between it and a\n    /// later buffer of the same stage type, and let the run grow.\n    private func collapseSaving(\n        from: Int,\n        to: Int,\n        carried: Int,\n        widths: [Int],\n        types: [String],\n        memo: inout [CollapseKey: Int]\n    ) -> Int {\n        guard from <= to else { return 0 }\n        let key = CollapseKey(from: from, to: to, carried: carried)\n        if let cached = memo[key] { return cached }\n\n        // Close the run at this buffer. Its length is what was carried in plus\n        // this one, and the width that scales it is this buffer's, because this\n        // is where the scheduler reconciles the run.\n        var best = (carried + 1) * (carried + 1) * widths[from]\n            + collapseSaving(\n                from: from + 1, to: to, carried: 0,\n                widths: widths, types: types, memo: &memo\n            )\n\n        // Or defer it. Everything strictly between here and the buffer it joins\n        // has to go first, which is what makes the two sides independent.\n        if from + 1 <= to {\n            for later in (from + 1)...to where types[later] == types[from] {\n                let deferred = collapseSaving(\n                    from: from + 1, to: later - 1, carried: 0,\n                    widths: widths, types: types, memo: &memo\n                ) + collapseSaving(\n                    from: later, to: to, carried: carried + 1,\n                    widths: widths, types: types, memo: &memo\n                )\n                best = max(best, deferred)\n            }\n        }\n\n        memo[key] = best\n        return best\n    }\n}\n"
+    }
+  },
+  "swift-32": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "One charge and one discharge, in that order. What does each interval need to know about everything before it, and how little is that?",
+        "concepts": [
+          "one pass carrying the cheapest interval seen so far",
+          "the ordering constraint as the whole difficulty",
+          "the same fold as the largest contiguous run of differences"
+        ],
+        "steps": [
+          "Ask each interval one question: if the pack discharged here, having charged at the cheapest price already seen, what would it make?",
+          "Carry the cheapest price seen so far and update it after asking, not before, so an interval never charges and discharges in the same place.",
+          "Keep the best answer seen rather than the last one, and start it at nothing earned, because no trade is always available.",
+          "Notice that this is the largest contiguous run of the interval-to-interval price differences. If you have written that fold before, you have already written this.",
+          "A negative price is a broken feed rather than an opportunity, so it is a refusal, and it names the interval it came from."
+        ],
+        "pitfalls": [
+          "subtracting the smallest price from the largest without regard to which comes first, which claims a profit the pack could not have made",
+          "starting the best answer at something other than nothing earned, which forces a bad trade on a falling curve",
+          "updating the cheapest price before asking the question, which quietly permits a same-interval round trip"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "Name the states before you write a transition. At the end of an interval, what are the only things the pack can be, and what does each one's best value come from?",
+        "concepts": [
+          "two states, holding or flat",
+          "each state computed from the previous interval's pair",
+          "seeding a state the pack has not reached yet"
+        ],
+        "steps": [
+          "There are exactly two states: at the end of an interval the pack either holds a charge or it does not.",
+          "Holding either continues from holding, or comes from being flat and paying this interval's price.",
+          "Flat either continues from flat, or comes from holding and collecting this interval's price.",
+          "Compute both from the previous interval's pair and assign them together. Reading one from the other's new value permits charging and discharging in the same interval.",
+          "Seed the pack flat with nothing earned, and holding at whatever charging in the first interval costs, because holding for free is not a state.",
+          "The answer is the flat state at the end: a plan that finishes still holding has paid for energy it never sold."
+        ],
+        "pitfalls": [
+          "seeding the holding state at nothing earned, which claims the pack can hold a charge without buying it",
+          "updating the two states in place one after the other, which happens to cost nothing here and is simply wrong in both later parts",
+          "reporting the holding state at the end rather than the flat one"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "The cap adds a dimension rather than a condition. Say what entry t of each row means before writing the loop, and then say what happens when the cap is enormous.",
+        "concepts": [
+          "one copy of each state per cycle count",
+          "a value no plan can reach, chosen so arithmetic on it is still safe",
+          "a cap that stops binding once it exceeds half the horizon"
+        ],
+        "steps": [
+          "Keep one copy of each state per cycle count, and define entry t as the best the pack can be worth in that state having used at most t cycles.",
+          "Within an interval, the holding entry at t comes from the flat entry at one fewer, since opening a cycle is what consumes the allowance.",
+          "The flat entry at t comes from the holding entry at the same t, because closing the cycle it already opened does not consume another.",
+          "Seed every holding entry at a value no plan can reach, and choose that value so adding a price to it is still a number. The smallest integer is not such a value.",
+          "A cycle needs two intervals, so once the cap is at least half the horizon it cannot bind. Detect that and hand the work to the part you already wrote.",
+          "That short circuit is what stops a cap of a billion sizing an array to a billion, and a negative cap is a refusal."
+        ],
+        "pitfalls": [
+          "seeding the unreachable state at the smallest integer and then adding a price to it, which overflows and ends the process rather than returning a wrong number",
+          "taking the allowance on the close rather than on the open, or on both, which halves or doubles the effective cap",
+          "sizing the arrays to the cap before checking whether the cap can bind at all"
+        ]
+      },
+      {
+        "part": 4,
+        "prompt": "Whether the pack may charge now depends on whether the previous interval was a discharge. Can either existing state answer that, and if not, what follows?",
+        "concepts": [
+          "a state the previous machine could not express",
+          "charging reachable only from a settled state",
+          "two ending states rather than one"
+        ],
+        "steps": [
+          "Check first that neither existing state records whether the previous interval was a discharge, which is why this is a new state rather than a condition on an old one.",
+          "Make discharged-this-interval its own state. It is reached only from holding, by collecting this interval's price.",
+          "Flat now means settled and free to charge, reached either by staying settled or by the settling interval that follows a discharge finishing.",
+          "Charging is reachable only from flat, which is the constraint expressed as a missing edge rather than as an if statement.",
+          "Compute all three from the previous interval's triple, for the same reason as before but with real consequences this time.",
+          "The answer is the better of the two states that leave the pack empty, since the pack may have discharged in the very last interval."
+        ],
+        "pitfalls": [
+          "letting charging be reachable from the discharged state, which silently removes the constraint the part exists for",
+          "reporting only the settled state at the end and losing a plan that sold in the final interval",
+          "adding the constraint as a check inside the existing two-state loop rather than growing the machine, which cannot be made correct"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "The single-cycle answer is larger than any trade the pack could actually make",
+          "cause": "The smallest price is being subtracted from the largest without regard to which one comes first",
+          "check": "Use a curve whose cheapest interval comes after its dearest and confirm the answer is the achievable trade rather than the arithmetic difference."
+        },
+        {
+          "symptom": "A falling curve reports a loss instead of nothing",
+          "cause": "The best answer was seeded at the first difference rather than at nothing earned, so no trade is not among the options",
+          "check": "Run a strictly falling curve through every part and confirm each reports nothing earned."
+        },
+        {
+          "symptom": "Profits look slightly too high everywhere, and impossibly high on a rising curve",
+          "cause": "The holding state was seeded at nothing earned, so the pack is holding a charge it never bought",
+          "check": "Run a curve of a single interval and confirm nothing is earned, then a two-interval rising curve and confirm the answer is the difference."
+        },
+        {
+          "symptom": "The process ends without a message once a cycle cap is supplied",
+          "cause": "The unreachable state was seeded at the smallest integer and a price was added to it, which overflows and ends the process",
+          "check": "Ask for a cap of one on any curve and confirm it returns the same answer as the single-cycle part rather than ending the run."
+        },
+        {
+          "symptom": "A very large cycle cap hangs or exhausts memory",
+          "cause": "The arrays are sized to the cap before checking whether a cap that large can bind at all",
+          "check": "Ask for a cap of a billion on a six-interval curve and confirm the unlimited answer comes back at once."
+        },
+        {
+          "symptom": "The settling variant returns the same answer as the unlimited one on a busy curve",
+          "cause": "Charging is still reachable from the interval in which the pack discharged, so the constraint is not being applied",
+          "check": "Use a curve with three separate rises close together and confirm the settling answer is strictly below the unlimited one."
+        }
+      ]
+    },
+    "execution": {
+      "timeBudget": {
+        "navigation": 4,
+        "solution": 9,
+        "coding": 26,
+        "verification": 6
+      },
+      "navigation": {
+        "say": "Every part of this is the same machine with edges added or removed, so the thing I want to get right in the first minute is the vocabulary: what states the pack can be in at the end of an interval. Every bug in this problem is a state that was needed and not named.",
+        "questions": [
+          "Does a cycle mean a charge and a discharge together, or does each count separately against the warranty?",
+          "Must the pack finish the horizon empty, or is a charge still held at the end worth something?",
+          "Is the settling interval one interval of doing nothing, or one interval in which the pack may still discharge something it holds?"
+        ],
+        "assumptions": [
+          "A cycle is a charge and its matching discharge, and it counts against the cap when it opens.",
+          "A plan that finishes still holding a charge has paid for energy it never sold, so the answer comes from a state that leaves the pack empty.",
+          "The settling interval is one interval in which the pack may not charge; it may do nothing else because it holds nothing.",
+          "Prices are non-negative, and a negative price is a broken feed rather than an opportunity."
+        ],
+        "edgeCases": [
+          "an empty curve and a curve of one interval, where no trade exists at all",
+          "a strictly falling curve, where doing nothing is the answer and a scheduler without that option reports a loss",
+          "a cap of no cycles, and a cap far larger than the horizon can use",
+          "a discharge in the very last interval, where the settling that follows it never happens"
+        ],
+        "restate": "Given a price per interval, schedule charges and discharges of a pack that holds one charge at a time to maximise profit, under four regimes: one cycle, unlimited cycles, at most a given number of cycles, and unlimited cycles with one settling interval after each discharge."
+      },
+      "solution": {
+        "pitch": "A state machine walked forward once per interval. Two states for the unlimited case, holding and flat, each computed from the previous interval's pair. The cap adds a copy of both per allowed cycle, so the machine gets wider rather than different. The settling rule adds a third state, because whether the pack may charge now depends on something neither existing state records. Naming the states is most of the work; the transitions follow.",
+        "dataStructures": [
+          "Two named scalars for the unlimited case, updated together from the previous interval's values.",
+          "Two arrays indexed by cycle count for the capped case, which is the same pair of scalars with a dimension added.",
+          "A small struct of three named values for the settling case, rebuilt from the previous one each interval rather than mutated in place.",
+          "A named constant standing for a profit no plan can reach, used to seed a state the pack has not entered yet."
+        ],
+        "types": [
+          "The three states are a struct with named fields rather than a dictionary keyed on an enum, because the machine is small, fixed, and read on every interval.",
+          "That struct is the domain modelling in this problem. There are no record types on purpose, since adding them would dilute what the problem is actually about.",
+          "The error enum separates a negative cap from a negative price, and the price case carries its interval, because a broken feed is something a caller has to go and find.",
+          "The unreachable seed is a named static constant rather than a literal, so the reason it is half the smallest integer rather than the smallest is visible at the point it matters."
+        ],
+        "composition": "The capped scheduler subsumes both simpler ones and the suite proves it rather than describing it: a cap of one reproduces the single-cycle answer on every curve, and a cap the size of the horizon reproduces the unlimited one. That is composition expressed as an invariant, which is the honest form here because the specialised versions genuinely are simpler code and not just calls. There is one literal call as well: once the cap exceeds half the horizon it cannot bind, and the capped scheduler hands the work to the unlimited one.",
+        "tradeoff": "Reporting which intervals the pack actually traded in would need the whole table kept plus a record of each decision, and the rolling scalar form forfeits it. I am keeping the scalar form because the question asks for the profit, and I would rather say what the reconstruction costs than pretend it is free. The other tradeoff is the short circuit on a large cap, which is the optimisation that matters; the storage type of the arrays is not.",
+        "trap": "The seeds. A holding state seeded at nothing earned claims the pack can hold a charge for free, and an unreachable state seeded at the smallest integer overflows the moment a price is added to it, which in Swift ends the process rather than returning a wrong number. The second trap is updating the states in place: it happens to be harmless in the unlimited case and is simply wrong in both parts that follow, which is why the habit is worth more than that part's answer."
+      },
+      "coding": {
+        "order": [
+          "Write the validation first, since all four parts need it and it is four lines.",
+          "Write the single-cycle pass and say out loud that it is the same fold as the largest contiguous run of differences.",
+          "Write the two-state machine next, naming the states in comments before writing either transition.",
+          "Check it on a rising curve and a falling curve before adding any dimension to it.",
+          "Add the cycle count dimension, writing the seeds before the loop because that is where this part goes wrong.",
+          "Add the short circuit for a cap that cannot bind, as a call into the part already written rather than a special case.",
+          "Write the settling machine last, starting by saying why the two-state machine cannot express the constraint."
+        ],
+        "commentary": [
+          "I update the cheapest price after asking the question, not before, so the pack never charges and discharges in the same interval.",
+          "There are exactly two states here: holding a charge, or flat. I want them named before I write either transition.",
+          "Both come from the previous interval's pair and I assign them together. Updating one from the other's new value quietly allows a same-interval round trip.",
+          "Holding is seeded at what charging in the first interval costs, not at nothing earned. Nothing earned would mean holding a charge for free.",
+          "Entry t of the holding row is the best the pack can be worth while holding, having opened at most t cycles. That sentence is what the whole loop is doing.",
+          "The seed is half the smallest integer rather than the smallest, because I add a price to it on the very next line and the smallest would trap.",
+          "A cycle needs two intervals, so once the cap reaches half the horizon it cannot bind. That is a call into the part I already wrote, not a special case of this one.",
+          "The two-state machine cannot say whether the previous interval was a discharge, so I am adding a state rather than a condition. Charging is reachable only from flat, and that missing edge is the constraint."
+        ],
+        "checkIn": "Before the third part, say: I am going to write the capped version as the general machine and let the first two stand as the special cases they are, rather than deleting them. Does that read as useful, or would you rather I collapsed everything into the general form?"
+      },
+      "verification": {
+        "walkthroughs": [
+          "Walk the worked curve of seven, one, five, three, six and four through the single-cycle pass: the cheapest so far falls to one at the second interval and the best discharge is six, giving five.",
+          "Walk the same curve through the two-state machine: one to five and three to six, which is four plus three, and the answer is seven rather than five because the pack may cycle twice.",
+          "Walk a curve with three separate rises: the best single rise is nine, the best two are fifteen, and all three are twenty, which is exactly what a cap of one, a cap of two and no cap must report.",
+          "Walk the settling curve of one, two, three, nought and two: selling into the third interval leaves the fourth settling and the fifth with nothing to sell, giving two, while selling into the second interval leaves the fourth free to charge at nought and the fifth to sell at two, giving three.",
+          "Walk a cap of a billion on a six-interval curve and confirm the short circuit answers it without ever sizing an array to the cap."
+        ],
+        "tests": "Run swift test --filter Problem32StorageArbitrageSchedulerTests and read the four suites in part order. The wrong-order fixture in the first suite catches subtracting the minimum from the maximum; the cap-of-one and loose-cap tests in the third suite are the invariants that prove the general machine subsumes the two special cases; the cap-of-two test is the one that catches a machine that only ever handles one or unlimited; and the busy-curve test in the fourth suite is what catches a settling state that is not actually blocking anything.",
+        "complexity": "The first two parts are linear in the number of intervals with a constant number of values carried. The capped part is the number of intervals times the cap, with space linear in the cap, and the short circuit is what keeps an absurd cap from mattering: once the cap exceeds half the horizon the work drops back to linear. The settling part is linear again, with three values instead of two.",
+        "moreTime": "Reporting the intervals the pack actually traded in, which needs the full table plus a decision record and is where the rolling scalar form has to be given up. A per-cycle fee, which is one constant subtracted on exactly one edge of the round trip and is a good test of whether the machine is understood. A settling period of more than one interval, which turns the single settling state into a small queue of them."
+      },
+      "code": "public enum ScheduleError: Error, Equatable, Sendable {\n    case negativeCycleCap\n    case negativePrice(index: Int)\n    case notImplemented\n}\n\npublic struct ArbitrageScheduler: Sendable {\n    public init() {}\n\n    // MARK: Part 1 - One charge and one discharge\n\n    /// The best profit from charging once and discharging once, in that order.\n    ///\n    /// One pass, carrying the cheapest interval seen so far. Every interval asks\n    /// one question: if I discharge here, having charged at the cheapest price I\n    /// have already seen, what do I make? The answer is the best of those.\n    ///\n    /// This is also the largest contiguous run of the interval-to-interval price\n    /// differences, which is worth noticing out loud: it is the same fold under\n    /// a different name.\n    public func bestProfitSingleCycle(prices: [Int]) throws(ScheduleError) -> Int {\n        try validate(prices: prices)\n        guard let first = prices.first else { return 0 }\n\n        var cheapestSoFar = first\n        var best = 0\n        for price in prices.dropFirst() {\n            best = max(best, price - cheapestSoFar)\n            cheapestSoFar = min(cheapestSoFar, price)\n        }\n        return best\n    }\n\n    // MARK: Part 2 - Unlimited cycles\n\n    /// The best profit with no limit on how many times the pack cycles.\n    ///\n    /// Two states, and naming them is the whole design: at the end of an\n    /// interval the pack is either holding a charge or flat. Both are computed\n    /// from the previous interval's pair and assigned together, never one from\n    /// the other's new value, because updating in place quietly permits charging\n    /// and discharging within the same interval.\n    ///\n    /// The pack starts flat with nothing earned, and charging in the first\n    /// interval costs its price.\n    public func bestProfitUnlimited(prices: [Int]) throws(ScheduleError) -> Int {\n        try validate(prices: prices)\n        guard let first = prices.first else { return 0 }\n\n        var holding = -first\n        var flat = 0\n        for price in prices.dropFirst() {\n            let previousHolding = holding\n            let previousFlat = flat\n            holding = max(previousHolding, previousFlat - price)\n            flat = max(previousFlat, previousHolding + price)\n        }\n        return flat\n    }\n\n    // MARK: Part 3 - A hard cycle cap\n\n    /// The best profit when the warranty allows at most `cycleCap` full cycles.\n    ///\n    /// The same two states, one copy of each per cycle count. Entry t of the\n    /// holding row is the best the pack can be worth while holding, having\n    /// opened at most t cycles; entry t of the flat row is the same while flat,\n    /// having closed at most t.\n    ///\n    /// A cycle needs two intervals, one to charge and one to discharge, so once\n    /// the cap is at least half the horizon it cannot bind any more. Detecting\n    /// that and handing the work to the unlimited scheduler is what keeps an\n    /// absurd cap from allocating an absurd array, and it is a call into a part\n    /// that is already written rather than a special case of this one.\n    public func bestProfit(prices: [Int], cycleCap: Int) throws(ScheduleError) -> Int {\n        guard cycleCap >= 0 else { throw .negativeCycleCap }\n        try validate(prices: prices)\n        guard !prices.isEmpty, cycleCap > 0 else { return 0 }\n        guard 2 * cycleCap < prices.count else { return try bestProfitUnlimited(prices: prices) }\n\n        var holding = Array(repeating: Self.unreachableProfit, count: cycleCap + 1)\n        var flat = Array(repeating: 0, count: cycleCap + 1)\n        for price in prices {\n            for cycles in 1...cycleCap {\n                holding[cycles] = max(holding[cycles], flat[cycles - 1] - price)\n                flat[cycles] = max(flat[cycles], holding[cycles] + price)\n            }\n        }\n        return flat[cycleCap]\n    }\n\n    // MARK: Part 4 - A settling interval after each discharge\n\n    /// The best profit when the pack needs one settling interval after every\n    /// discharge before it may charge again.\n    ///\n    /// The two-state machine cannot express this, because \"may I charge now\"\n    /// depends on whether the previous interval was a discharge and neither\n    /// state records that. So the machine gains a state rather than the code\n    /// gaining a special case: discharged-this-interval is now its own state,\n    /// and charging is reachable only from flat.\n    ///\n    /// The answer is the better of the two states that leave the pack empty,\n    /// since a plan that ends holding a charge has paid for energy it never sold.\n    public func bestProfitWithSettling(prices: [Int]) throws(ScheduleError) -> Int {\n        try validate(prices: prices)\n        guard let first = prices.first else { return 0 }\n\n        var state = MachineState(holding: -first, settling: 0, flat: 0)\n        for price in prices.dropFirst() {\n            let previous = state\n            state = MachineState(\n                holding: max(previous.holding, previous.flat - price),\n                settling: previous.holding + price,\n                flat: max(previous.flat, previous.settling)\n            )\n        }\n        return max(state.flat, state.settling)\n    }\n\n    // MARK: Shared machinery\n\n    /// A profit no plan can reach, used to seed a state the pack cannot be in\n    /// yet. Half of the smallest Int rather than the smallest Int, so that\n    /// adding a price to it stays a number instead of trapping.\n    private static let unreachableProfit = Int.min / 2\n\n    /// The three states of the pack at the end of an interval. Written out as a\n    /// type because the state machine is what this problem is about, and naming\n    /// the states is most of the work of getting the transitions right.\n    private struct MachineState {\n        /// Holding a charge bought at some earlier interval.\n        var holding: Int\n        /// Discharged during this interval, so the next one is the settling one.\n        var settling: Int\n        /// Empty and free to charge.\n        var flat: Int\n    }\n\n    /// A price curve has no negative prices. A caller that sends one has a\n    /// broken feed rather than an arbitrage opportunity, and the index is\n    /// reported because that is what makes the feed debuggable.\n    private func validate(prices: [Int]) throws(ScheduleError) {\n        for (index, price) in prices.enumerated() where price < 0 {\n            throw .negativePrice(index: index)\n        }\n    }\n}\n"
+    }
   }
 }

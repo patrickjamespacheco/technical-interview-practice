@@ -23,7 +23,10 @@ let package = Package(
         .library(name: "Problem26FirmwareBundleBudgetPlanner", targets: ["Problem26FirmwareBundleBudgetPlanner"]),
         .library(name: "Problem27LogTokenSegmenter", targets: ["Problem27LogTokenSegmenter"]),
         .library(name: "Problem28BuildRegressionChainAnalyzer", targets: ["Problem28BuildRegressionChainAnalyzer"]),
-        .library(name: "Problem29RuleGroupingAnalyzer", targets: ["Problem29RuleGroupingAnalyzer"])
+        .library(name: "Problem29RuleGroupingAnalyzer", targets: ["Problem29RuleGroupingAnalyzer"]),
+        .library(name: "Problem30DocumentRevisionDiffEngine", targets: ["Problem30DocumentRevisionDiffEngine"]),
+        .library(name: "Problem31PipelineBufferRemovalPlanner", targets: ["Problem31PipelineBufferRemovalPlanner"]),
+        .library(name: "Problem32StorageArbitrageScheduler", targets: ["Problem32StorageArbitrageScheduler"])
     ],
     targets: [
         .target(name: "Problem03PermissionManager"),
@@ -63,6 +66,12 @@ let package = Package(
         .target(name: "Problem28BuildRegressionChainAnalyzer"),
         .testTarget(name: "Problem28BuildRegressionChainAnalyzerTests", dependencies: ["Problem28BuildRegressionChainAnalyzer"]),
         .target(name: "Problem29RuleGroupingAnalyzer"),
-        .testTarget(name: "Problem29RuleGroupingAnalyzerTests", dependencies: ["Problem29RuleGroupingAnalyzer"])
+        .testTarget(name: "Problem29RuleGroupingAnalyzerTests", dependencies: ["Problem29RuleGroupingAnalyzer"]),
+        .target(name: "Problem30DocumentRevisionDiffEngine"),
+        .testTarget(name: "Problem30DocumentRevisionDiffEngineTests", dependencies: ["Problem30DocumentRevisionDiffEngine"]),
+        .target(name: "Problem31PipelineBufferRemovalPlanner"),
+        .testTarget(name: "Problem31PipelineBufferRemovalPlannerTests", dependencies: ["Problem31PipelineBufferRemovalPlanner"]),
+        .target(name: "Problem32StorageArbitrageScheduler"),
+        .testTarget(name: "Problem32StorageArbitrageSchedulerTests", dependencies: ["Problem32StorageArbitrageScheduler"])
     ]
 )
