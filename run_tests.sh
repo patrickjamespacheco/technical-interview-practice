@@ -144,6 +144,15 @@ if [[ "$ANSWER_ABS" == *.swift ]]; then
     elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem29RuleGroupingAnalyzer/Problem.swift" ]]; then
         PROBLEM_ID="29_rule_grouping_analyzer"
         SAME_FILE=1
+    elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem30DocumentRevisionDiffEngine/Problem.swift" ]]; then
+        PROBLEM_ID="30_document_revision_diff_engine"
+        SAME_FILE=1
+    elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem31PipelineBufferRemovalPlanner/Problem.swift" ]]; then
+        PROBLEM_ID="31_pipeline_buffer_removal_planner"
+        SAME_FILE=1
+    elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem32StorageArbitrageScheduler/Problem.swift" ]]; then
+        PROBLEM_ID="32_storage_arbitrage_scheduler"
+        SAME_FILE=1
     elif [[ "$ANSWER_BASENAME" =~ (^|_)([0-9][0-9]_[a-z0-9_]+)\.swift$ ]]; then
         PROBLEM_ID="${BASH_REMATCH[2]}"
     else
@@ -170,6 +179,9 @@ if [[ "$ANSWER_ABS" == *.swift ]]; then
         27_log_token_segmenter) ACTIVE_REL="Sources/Problem27LogTokenSegmenter/Problem.swift" ;;
         28_build_regression_chain_analyzer) ACTIVE_REL="Sources/Problem28BuildRegressionChainAnalyzer/Problem.swift" ;;
         29_rule_grouping_analyzer) ACTIVE_REL="Sources/Problem29RuleGroupingAnalyzer/Problem.swift" ;;
+        30_document_revision_diff_engine) ACTIVE_REL="Sources/Problem30DocumentRevisionDiffEngine/Problem.swift" ;;
+        31_pipeline_buffer_removal_planner) ACTIVE_REL="Sources/Problem31PipelineBufferRemovalPlanner/Problem.swift" ;;
+        32_storage_arbitrage_scheduler) ACTIVE_REL="Sources/Problem32StorageArbitrageScheduler/Problem.swift" ;;
         *) echo "Error: unknown Swift problem ID '$PROBLEM_ID'; no target mapping exists."; exit 1 ;;
     esac
     if [[ "${CMD[0]}" != "swift" || "${CMD[1]:-}" != "test" ]]; then
