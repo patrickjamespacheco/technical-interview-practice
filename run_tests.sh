@@ -153,6 +153,15 @@ if [[ "$ANSWER_ABS" == *.swift ]]; then
     elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem32StorageArbitrageScheduler/Problem.swift" ]]; then
         PROBLEM_ID="32_storage_arbitrage_scheduler"
         SAME_FILE=1
+    elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem33FirmwareTelemetryBufferCompactor/Problem.swift" ]]; then
+        PROBLEM_ID="33_firmware_telemetry_buffer_compactor"
+        SAME_FILE=1
+    elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem34FloodplainPondingAnalyzer/Problem.swift" ]]; then
+        PROBLEM_ID="34_floodplain_ponding_analyzer"
+        SAME_FILE=1
+    elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem35RedirectChainResolver/Problem.swift" ]]; then
+        PROBLEM_ID="35_redirect_chain_resolver"
+        SAME_FILE=1
     elif [[ "$ANSWER_BASENAME" =~ (^|_)([0-9][0-9]_[a-z0-9_]+)\.swift$ ]]; then
         PROBLEM_ID="${BASH_REMATCH[2]}"
     else
@@ -182,6 +191,9 @@ if [[ "$ANSWER_ABS" == *.swift ]]; then
         30_document_revision_diff_engine) ACTIVE_REL="Sources/Problem30DocumentRevisionDiffEngine/Problem.swift" ;;
         31_pipeline_buffer_removal_planner) ACTIVE_REL="Sources/Problem31PipelineBufferRemovalPlanner/Problem.swift" ;;
         32_storage_arbitrage_scheduler) ACTIVE_REL="Sources/Problem32StorageArbitrageScheduler/Problem.swift" ;;
+        33_firmware_telemetry_buffer_compactor) ACTIVE_REL="Sources/Problem33FirmwareTelemetryBufferCompactor/Problem.swift" ;;
+        34_floodplain_ponding_analyzer) ACTIVE_REL="Sources/Problem34FloodplainPondingAnalyzer/Problem.swift" ;;
+        35_redirect_chain_resolver) ACTIVE_REL="Sources/Problem35RedirectChainResolver/Problem.swift" ;;
         *) echo "Error: unknown Swift problem ID '$PROBLEM_ID'; no target mapping exists."; exit 1 ;;
     esac
     if [[ "${CMD[0]}" != "swift" || "${CMD[1]:-}" != "test" ]]; then

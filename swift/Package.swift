@@ -26,7 +26,10 @@ let package = Package(
         .library(name: "Problem29RuleGroupingAnalyzer", targets: ["Problem29RuleGroupingAnalyzer"]),
         .library(name: "Problem30DocumentRevisionDiffEngine", targets: ["Problem30DocumentRevisionDiffEngine"]),
         .library(name: "Problem31PipelineBufferRemovalPlanner", targets: ["Problem31PipelineBufferRemovalPlanner"]),
-        .library(name: "Problem32StorageArbitrageScheduler", targets: ["Problem32StorageArbitrageScheduler"])
+        .library(name: "Problem32StorageArbitrageScheduler", targets: ["Problem32StorageArbitrageScheduler"]),
+        .library(name: "Problem33FirmwareTelemetryBufferCompactor", targets: ["Problem33FirmwareTelemetryBufferCompactor"]),
+        .library(name: "Problem34FloodplainPondingAnalyzer", targets: ["Problem34FloodplainPondingAnalyzer"]),
+        .library(name: "Problem35RedirectChainResolver", targets: ["Problem35RedirectChainResolver"])
     ],
     targets: [
         .target(name: "Problem03PermissionManager"),
@@ -72,6 +75,12 @@ let package = Package(
         .target(name: "Problem31PipelineBufferRemovalPlanner"),
         .testTarget(name: "Problem31PipelineBufferRemovalPlannerTests", dependencies: ["Problem31PipelineBufferRemovalPlanner"]),
         .target(name: "Problem32StorageArbitrageScheduler"),
-        .testTarget(name: "Problem32StorageArbitrageSchedulerTests", dependencies: ["Problem32StorageArbitrageScheduler"])
+        .testTarget(name: "Problem32StorageArbitrageSchedulerTests", dependencies: ["Problem32StorageArbitrageScheduler"]),
+        .target(name: "Problem33FirmwareTelemetryBufferCompactor"),
+        .testTarget(name: "Problem33FirmwareTelemetryBufferCompactorTests", dependencies: ["Problem33FirmwareTelemetryBufferCompactor"]),
+        .target(name: "Problem34FloodplainPondingAnalyzer"),
+        .testTarget(name: "Problem34FloodplainPondingAnalyzerTests", dependencies: ["Problem34FloodplainPondingAnalyzer"]),
+        .target(name: "Problem35RedirectChainResolver"),
+        .testTarget(name: "Problem35RedirectChainResolverTests", dependencies: ["Problem35RedirectChainResolver"])
     ]
 )
