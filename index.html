@@ -874,6 +874,39 @@ const PROBLEMS = [
     tags: ["dynamic-programming", "state-machine", "time-series", "constraints", "optimization"],
     parts: 4,
     level: "staff"
+  },
+  {
+    path: "swift/practice_problems/problem_33_firmware_telemetry_buffer_compactor.swift",
+    test: "swift/Tests/Problem33FirmwareTelemetryBufferCompactorTests/Problem33FirmwareTelemetryBufferCompactorTests.swift",
+    title: "Firmware Telemetry Buffer Compactor",
+    description: "Compact a fixed-capacity on-device sample buffer in place: drop failed readings, cap repeated readings per sensor, and partition by severity, all with a single write cursor and no second buffer.",
+    language: "swift",
+    industry: "iot",
+    tags: ["two-pointers", "in-place-mutation", "value-semantics", "deduplication", "telemetry"],
+    parts: 3,
+    level: "senior"
+  },
+  {
+    path: "swift/practice_problems/problem_34_floodplain_ponding_analyzer.swift",
+    test: "swift/Tests/Problem34FloodplainPondingAnalyzerTests/Problem34FloodplainPondingAnalyzerTests.swift",
+    title: "Floodplain Ponding Analyzer",
+    description: "From a gauge-network elevation profile, find the widest impoundable span, compute the standing-water depth at every post in one converging pass, and report the largest single pond.",
+    language: "swift",
+    industry: "iot",
+    tags: ["two-pointers", "elevation-profile", "reconstruction", "value-semantics", "telemetry"],
+    parts: 3,
+    level: "senior"
+  },
+  {
+    path: "swift/practice_problems/problem_35_redirect_chain_resolver.swift",
+    test: "swift/Tests/Problem35RedirectChainResolverTests/Problem35RedirectChainResolverTests.swift",
+    title: "Redirect Chain Resolver",
+    description: "Resolve alias chains where each alias points to at most one target: detect loops in constant memory, report the loop entry and length, locate the midpoint and nth-from-last hop, and audit an entire alias table.",
+    language: "swift",
+    industry: "dev-tools",
+    tags: ["two-pointers", "cycle-detection", "enums", "routing", "value-semantics"],
+    parts: 4,
+    level: "senior"
   }
 ];
 // ============================================================

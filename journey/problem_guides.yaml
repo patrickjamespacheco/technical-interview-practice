@@ -5261,5 +5261,580 @@
       },
       "code": "public enum ScheduleError: Error, Equatable, Sendable {\n    case negativeCycleCap\n    case negativePrice(index: Int)\n    case notImplemented\n}\n\npublic struct ArbitrageScheduler: Sendable {\n    public init() {}\n\n    // MARK: Part 1 - One charge and one discharge\n\n    /// The best profit from charging once and discharging once, in that order.\n    ///\n    /// One pass, carrying the cheapest interval seen so far. Every interval asks\n    /// one question: if I discharge here, having charged at the cheapest price I\n    /// have already seen, what do I make? The answer is the best of those.\n    ///\n    /// This is also the largest contiguous run of the interval-to-interval price\n    /// differences, which is worth noticing out loud: it is the same fold under\n    /// a different name.\n    public func bestProfitSingleCycle(prices: [Int]) throws(ScheduleError) -> Int {\n        try validate(prices: prices)\n        guard let first = prices.first else { return 0 }\n\n        var cheapestSoFar = first\n        var best = 0\n        for price in prices.dropFirst() {\n            best = max(best, price - cheapestSoFar)\n            cheapestSoFar = min(cheapestSoFar, price)\n        }\n        return best\n    }\n\n    // MARK: Part 2 - Unlimited cycles\n\n    /// The best profit with no limit on how many times the pack cycles.\n    ///\n    /// Two states, and naming them is the whole design: at the end of an\n    /// interval the pack is either holding a charge or flat. Both are computed\n    /// from the previous interval's pair and assigned together, never one from\n    /// the other's new value, because updating in place quietly permits charging\n    /// and discharging within the same interval.\n    ///\n    /// The pack starts flat with nothing earned, and charging in the first\n    /// interval costs its price.\n    public func bestProfitUnlimited(prices: [Int]) throws(ScheduleError) -> Int {\n        try validate(prices: prices)\n        guard let first = prices.first else { return 0 }\n\n        var holding = -first\n        var flat = 0\n        for price in prices.dropFirst() {\n            let previousHolding = holding\n            let previousFlat = flat\n            holding = max(previousHolding, previousFlat - price)\n            flat = max(previousFlat, previousHolding + price)\n        }\n        return flat\n    }\n\n    // MARK: Part 3 - A hard cycle cap\n\n    /// The best profit when the warranty allows at most `cycleCap` full cycles.\n    ///\n    /// The same two states, one copy of each per cycle count. Entry t of the\n    /// holding row is the best the pack can be worth while holding, having\n    /// opened at most t cycles; entry t of the flat row is the same while flat,\n    /// having closed at most t.\n    ///\n    /// A cycle needs two intervals, one to charge and one to discharge, so once\n    /// the cap is at least half the horizon it cannot bind any more. Detecting\n    /// that and handing the work to the unlimited scheduler is what keeps an\n    /// absurd cap from allocating an absurd array, and it is a call into a part\n    /// that is already written rather than a special case of this one.\n    public func bestProfit(prices: [Int], cycleCap: Int) throws(ScheduleError) -> Int {\n        guard cycleCap >= 0 else { throw .negativeCycleCap }\n        try validate(prices: prices)\n        guard !prices.isEmpty, cycleCap > 0 else { return 0 }\n        guard 2 * cycleCap < prices.count else { return try bestProfitUnlimited(prices: prices) }\n\n        var holding = Array(repeating: Self.unreachableProfit, count: cycleCap + 1)\n        var flat = Array(repeating: 0, count: cycleCap + 1)\n        for price in prices {\n            for cycles in 1...cycleCap {\n                holding[cycles] = max(holding[cycles], flat[cycles - 1] - price)\n                flat[cycles] = max(flat[cycles], holding[cycles] + price)\n            }\n        }\n        return flat[cycleCap]\n    }\n\n    // MARK: Part 4 - A settling interval after each discharge\n\n    /// The best profit when the pack needs one settling interval after every\n    /// discharge before it may charge again.\n    ///\n    /// The two-state machine cannot express this, because \"may I charge now\"\n    /// depends on whether the previous interval was a discharge and neither\n    /// state records that. So the machine gains a state rather than the code\n    /// gaining a special case: discharged-this-interval is now its own state,\n    /// and charging is reachable only from flat.\n    ///\n    /// The answer is the better of the two states that leave the pack empty,\n    /// since a plan that ends holding a charge has paid for energy it never sold.\n    public func bestProfitWithSettling(prices: [Int]) throws(ScheduleError) -> Int {\n        try validate(prices: prices)\n        guard let first = prices.first else { return 0 }\n\n        var state = MachineState(holding: -first, settling: 0, flat: 0)\n        for price in prices.dropFirst() {\n            let previous = state\n            state = MachineState(\n                holding: max(previous.holding, previous.flat - price),\n                settling: previous.holding + price,\n                flat: max(previous.flat, previous.settling)\n            )\n        }\n        return max(state.flat, state.settling)\n    }\n\n    // MARK: Shared machinery\n\n    /// A profit no plan can reach, used to seed a state the pack cannot be in\n    /// yet. Half of the smallest Int rather than the smallest Int, so that\n    /// adding a price to it stays a number instead of trapping.\n    private static let unreachableProfit = Int.min / 2\n\n    /// The three states of the pack at the end of an interval. Written out as a\n    /// type because the state machine is what this problem is about, and naming\n    /// the states is most of the work of getting the transitions right.\n    private struct MachineState {\n        /// Holding a charge bought at some earlier interval.\n        var holding: Int\n        /// Discharged during this interval, so the next one is the settling one.\n        var settling: Int\n        /// Empty and free to charge.\n        var flat: Int\n    }\n\n    /// A price curve has no negative prices. A caller that sends one has a\n    /// broken feed rather than an arbitrage opportunity, and the index is\n    /// reported because that is what makes the feed debuggable.\n    private func validate(prices: [Int]) throws(ScheduleError) {\n        for (index, price) in prices.enumerated() where price < 0 {\n            throw .negativePrice(index: index)\n        }\n    }\n}\n"
     }
+  },
+  "swift-33": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "Two cursors move the same way here rather than converging. Say what each one means before you write the loop, and say what the gap between them is.",
+        "concepts": [
+          "a read cursor that visits every slot and a write cursor that only advances on a keep",
+          "everything below the write cursor is settled output, everything at or above the read cursor is unexamined",
+          "one private helper taking a keep test, so the next part is a different test and not a second loop"
+        ],
+        "steps": [
+          "Write the compaction as one private helper that takes a keep test, and make the public method a single call into it.",
+          "Decide what the keep test is handed before you write it. Part 2 needs to look at what has already been committed, so the buffer itself and both cursors are what it needs.",
+          "Copy the sample from the read position to the write position when the test says keep, and advance the write cursor only then.",
+          "Attribute a drop to its sensor as it happens, so the report is built by the same pass rather than by a second walk.",
+          "Trim the tail once the sweep is done: the slots above the write cursor still hold stale copies.",
+          "Return the attribution as well as the counts, because the next part needs it and a bare new length would make that part recount."
+        ],
+        "pitfalls": [
+          "allocating a second buffer and assigning it back, which is the one thing the device cannot afford and the reason this problem exists",
+          "returning only a new length, which forces the next part to walk the buffer again to rebuild the same attribution",
+          "leaving the stale copies above the write cursor in place, so the buffer count disagrees with the report"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "A run of the same reading may keep at most a few copies. What does the keep test compare against, and why is the obvious comparison the wrong one?",
+        "concepts": [
+          "a run is consecutive samples sharing a sensor and a value",
+          "the comparison is against the sample already committed a fixed number of slots back",
+          "the same helper from the part before, with a different test"
+        ],
+        "steps": [
+          "Reuse the helper. Nothing about the cursors changes; only the question asked at each slot does.",
+          "Keep anything at all while fewer samples have been committed than the limit allows: there is nothing that far back to compare with yet.",
+          "Otherwise compare the sample being read against the sample committed exactly the limit's worth of slots earlier, on both its sensor and its value.",
+          "Comparing against the previous sample read instead keeps one sample per run whatever the limit says, and no buffer whose runs are short shows it.",
+          "A limit of zero or less is a refusal, and it carries the limit that was asked for."
+        ],
+        "pitfalls": [
+          "comparing the sample being read against the previous sample read rather than against what was committed, which collapses every run to one",
+          "matching on the value alone, so two sensors reporting the same number look like one run",
+          "counting a run across an interruption, so a value that comes back after something else is treated as a continuation"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "Three bands instead of two. Which cursors do you need now, and which one must not move after a swap?",
+        "concepts": [
+          "a low cursor ending the settled first band and a high cursor starting the settled last band",
+          "a read cursor walking the unclassified middle between them",
+          "the sweep ends when the read cursor passes the high cursor, not when it reaches the end"
+        ],
+        "steps": [
+          "Say why the keep-or-drop helper does not apply: nothing is being dropped, so there is no keep test to write.",
+          "Name three regions and one cursor for each boundary, then write down what is true of each region before writing the loop.",
+          "On the lowest severity, swap with the low cursor and advance both the low and the read cursor: what came back was already classified.",
+          "On the middle severity, advance the read cursor alone.",
+          "On the highest severity, swap with the high cursor, retreat the high cursor, and leave the read cursor exactly where it is.",
+          "Report every band, including an empty range for a band the buffer holds none of, so a caller never has to check for a missing key."
+        ],
+        "pitfalls": [
+          "advancing the read cursor after a swap from the tail, which skips a sample nothing has looked at and hides on any buffer whose tail holds the lowest severity",
+          "running the sweep to the end of the buffer rather than stopping where the two inner cursors cross, which reshuffles the settled band",
+          "omitting a severity from the result when the buffer holds none of it"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "The buffer still holds its original number of samples after a compaction that reported drops",
+          "cause": "The write cursor was advanced correctly but the stale copies above it were never trimmed",
+          "check": "Drop the invalid readings from a batch that has one and confirm the buffer count equals the kept count in the report."
+        },
+        {
+          "symptom": "A repeat limit of two keeps one sample from a run of four",
+          "cause": "The keep test compares the sample being read against the previous sample read rather than against what was committed a limit's worth of slots back",
+          "check": "Cap a run of four identical readings at two and confirm two survive; a run of four is the shortest fixture that separates the two comparisons."
+        },
+        {
+          "symptom": "Two sensors that happen to report the same number are treated as one run",
+          "cause": "The repeat test matches on the value alone",
+          "check": "Interleave two sensors reporting the same value and confirm a limit of one drops nothing."
+        },
+        {
+          "symptom": "The partition looks right on most batches and leaves one sample in the wrong band",
+          "cause": "The read cursor advanced after a swap from the tail, so the sample that arrived from there was never classified",
+          "check": "Partition a batch whose last sample is the lowest severity and confirm it ends up in the first band."
+        },
+        {
+          "symptom": "The bands do not tile the buffer, or one severity is missing from the result",
+          "cause": "The ranges are derived from where the cursors happened to stop rather than from the three boundaries, or an empty band is omitted",
+          "check": "Partition a batch of one severity and confirm all three bands are reported with the other two empty and adjacent."
+        },
+        {
+          "symptom": "A second buffer built from the same batch reports different counts from the first",
+          "cause": "State that should belong to the instance is held in static storage",
+          "check": "Compact one buffer heavily, then build a fresh one from the same batch and confirm it reports the documented counts."
+        }
+      ]
+    },
+    "execution": {
+      "timeBudget": {
+        "navigation": 4,
+        "solution": 9,
+        "coding": 26,
+        "verification": 6
+      },
+      "navigation": {
+        "say": "Three passes over one buffer, and the constraint is that there is no second buffer. So before anything else I want to agree what in place means here, because it decides whether one helper covers the first two parts or whether I write two loops.",
+        "questions": [
+          "Does in place mean I may not allocate at all, or that I may not hold two full copies of the buffer at once?",
+          "Is a repeated reading a consecutive repeat, or any repeat of that sensor and value anywhere in the buffer?",
+          "Does the partition have to keep samples in their original order inside a band, or only put the bands in order?"
+        ],
+        "assumptions": [
+          "In place means one buffer: I may keep a fixed number of cursors and a small map, but not a second copy of the samples.",
+          "A repeated reading is a consecutive one, which is what a sensor stuck on a value actually produces.",
+          "Order inside a band does not matter, which is what lets the partition be a single pass rather than a stable sort.",
+          "Dropping a sample and reporting it are the same event, so the report is built by the pass rather than after it."
+        ],
+        "edgeCases": [
+          "an empty buffer and a buffer of one sample, where the cursors never separate",
+          "a buffer where nothing is dropped, so the write cursor tracks the read cursor exactly and every copy is a self-assignment",
+          "a run longer than the buffer's own tail, and a run interrupted and then resumed",
+          "a buffer holding only one severity, where two of the three bands are empty"
+        ],
+        "restate": "Rewrite a fixed-capacity telemetry buffer in place three ways: remove the readings flagged invalid, keep at most a given number of samples from each run of identical readings, and reorder the buffer into three severity bands, reporting what happened each time."
+      },
+      "solution": {
+        "pitch": "One read cursor and one lagging write cursor, which is the same-direction form of two pointers. The first two parts are the same loop with a different keep test, so I write the loop once as a private helper that takes the test and let both public methods be one line each. The third part is the three-region version of the same invariant, and it needs a third cursor coming in from the tail, so it does not share the helper. What it shares is the way of thinking, and I will say that out loud rather than force a call that does not fit.",
+        "dataStructures": [
+          "Two integer cursors and nothing else for the traversal: the whole point is that memory does not grow with the buffer.",
+          "One small dictionary keyed on sensor id for the drop attribution, which is bounded by the number of sensors rather than the number of samples.",
+          "A record type for the report, so the counts and the attribution travel together and the next part does not have to recompute either.",
+          "Three cursors for the partition, and three ranges derived from where two of them stopped."
+        ],
+        "types": [
+          "The report is a struct rather than a tuple, because it crosses a part boundary and a named field beats a positional one wherever a caller has to read it.",
+          "The severity is an ordered enum, because the partition is defined by its order and an unordered set of cases would leave that order living in the algorithm instead of the type.",
+          "The partition returns ranges rather than three arrays, which is the honest return for something that reordered a buffer in place: slicing it is the caller's business.",
+          "The error enum carries the offending limit, because a refusal that does not say what it refused makes the caller guess."
+        ],
+        "composition": "The keep test is the seam. It is a closure handed the buffer as it stands and both cursors, and that signature is chosen in the first part because the second part needs it: the repeat test has to look at what was already committed, which a test seeing only the sample being read cannot do. The third part does not call the helper and I would rather say why than fake it. Instead the suite asserts the relationship that does hold: partitioning and dropping the invalid readings commute, and partitioning never changes what the buffer holds, only where.",
+        "tradeoff": "Keeping the original order inside each severity band would need either a stable partition with a scratch buffer or three passes, and the single pass forfeits it. I am taking the single pass because the memory budget is the whole premise, and I would rather name what it costs than quietly deliver a sort.",
+        "trap": "Two, and they are different in kind. In the repeat cap, comparing the sample being read against the previous sample read looks right and collapses every run to one; the comparison has to be against what was committed a limit's worth of slots back. In the partition, advancing the read cursor after swapping a sample in from the tail skips a sample nobody has classified, and it is invisible on any buffer whose tail happens to hold the lowest severity."
+      },
+      "coding": {
+        "order": [
+          "Write the private compaction helper first, with the keep test as a parameter, because both of the first two parts are that loop.",
+          "Make the invalid-reading pass a one-line call into it, and check it on a batch where nothing is dropped before checking one where something is.",
+          "Add the trim of the stale tail before moving on, since the report and the buffer disagree without it.",
+          "Write the repeat cap as a second keep test, and say out loud what it compares against before writing the comparison.",
+          "Validate the limit before doing any work, so a bad limit never half-compacts a buffer.",
+          "Write the partition last, starting by naming the three regions and the boundary each cursor holds."
+        ],
+        "commentary": [
+          "Everything below the write cursor is final. Everything at or above the read cursor is unexamined. The gap between them is the hole left by drops, and I never sum anything over it, which is what makes this two pointers and not a window.",
+          "I hand the keep test the buffer as it stands, not just the sample being read, because the next part has to look at what I already committed.",
+          "I trim the tail after the sweep. The slots above the write cursor still hold copies of samples I have already moved.",
+          "The repeat test compares against the sample committed a limit's worth of slots back. Comparing against the previous sample read would keep one per run no matter what limit I was given.",
+          "While fewer samples have been committed than the limit allows, everything is kept: there is nothing that far back to compare against yet.",
+          "The keep-or-drop helper has nothing to decide in the partition, so I am not going to force it. Three regions, three cursors, same invariant.",
+          "After a swap with the tail cursor I leave the read cursor alone. What just arrived has not been looked at, and this is the classic place to get it wrong.",
+          "I report every band, empty ranges included, so the caller never has to distinguish an absent key from an empty one."
+        ],
+        "checkIn": "Before the third part, say: the partition genuinely cannot use the helper I built, so rather than force a call I would rather write it separately and let the tests assert that the two passes commute. Does that read as the right call, or would you rather I found a way to share the code?"
+      },
+      "verification": {
+        "walkthroughs": [
+          "Walk a batch of three identical readings, one invalid reading, two identical warnings and one critical through the invalid-reading pass: six survive, one goes, and the attribution names the sensor that lost it.",
+          "Walk the same batch through the repeat cap at two: the run of three loses one, the run of two is untouched, and the invalid reading is not this pass's business and stays.",
+          "Walk a run of four identical readings at a limit of two and confirm two survive. This is the shortest fixture that tells the committed-slot comparison apart from the previous-read comparison.",
+          "Walk a batch whose last sample is the lowest severity through the partition and confirm it lands in the first band, which is what a read cursor advancing after a tail swap gets wrong.",
+          "Walk an empty buffer and a buffer of one through all three, where the cursors never separate."
+        ],
+        "tests": "Run the compactor's suite and read the three parts in order. The run-of-four fixture in the second suite is the one that separates the two possible comparisons; the interleaved-sensors fixture is what catches a repeat test that matches on the value alone; and the tail-informational fixture in the third suite is what catches a read cursor advancing after a swap from the tail. The commuting test and the contents test in the third suite are the composition, expressed as invariants because a call does not exist here.",
+        "complexity": "Every part is one pass over the buffer, linear in the number of samples, with memory that does not grow with it: a fixed number of cursors plus a drop map bounded by the number of distinct sensors. The partition is a single pass too, not three, which is what the third cursor buys and what the loss of order inside a band costs.",
+        "moreTime": "Making the partition stable, which needs either a scratch buffer or a counting pass first and is a good conversation about what in place is actually worth. A repeat cap that measures a window of time rather than a run of positions, which is where this stops being two pointers and becomes a sliding window. And an uplink budget that drops the least severe samples first once the buffer is still too big after all three passes."
+      },
+      "code": "public enum Severity: Int, Comparable, Sendable, CaseIterable {\n    case info\n    case warning\n    case critical\n\n    public static func < (lhs: Severity, rhs: Severity) -> Bool {\n        lhs.rawValue < rhs.rawValue\n    }\n}\n\npublic struct Sample: Equatable, Sendable {\n    public let sensorID: String\n    public let value: Int\n    public let severity: Severity\n    public let isValid: Bool\n\n    public init(sensorID: String, value: Int, severity: Severity, isValid: Bool) {\n        self.sensorID = sensorID\n        self.value = value\n        self.severity = severity\n        self.isValid = isValid\n    }\n}\n\npublic struct CompactionReport: Equatable, Sendable {\n    public let keptCount: Int\n    public let droppedCount: Int\n    public let droppedBySensor: [String: Int]\n\n    public init(keptCount: Int, droppedCount: Int, droppedBySensor: [String: Int]) {\n        self.keptCount = keptCount\n        self.droppedCount = droppedCount\n        self.droppedBySensor = droppedBySensor\n    }\n}\n\npublic enum BufferError: Error, Equatable, Sendable {\n    case nonPositiveRepeatLimit(Int)\n    case notImplemented\n}\n\npublic struct TelemetryBuffer: Sendable {\n    public private(set) var samples: [Sample]\n\n    public init(samples: [Sample]) {\n        self.samples = samples\n    }\n\n    // MARK: The shared compaction cursor\n\n    /// One read cursor sweeping every slot, one write cursor that only advances\n    /// when a sample is kept. Everything below `write` is final output;\n    /// everything at or above `read` is unexamined; the span between them is\n    /// the hole left by dropped samples, not a candidate answer.\n    ///\n    /// The keep test is handed the buffer as it stands, so it can look at what\n    /// has already been committed - that is the only reason Part 2 works\n    /// without a second array. It is also handed both cursors, because a keep\n    /// test that only sees the read cursor cannot express a repeat limit.\n    private mutating func compact(\n        keeping shouldKeep: (_ buffer: [Sample], _ read: Int, _ write: Int) -> Bool\n    ) -> CompactionReport {\n        var write = 0\n        var droppedBySensor: [String: Int] = [:]\n\n        for read in 0..<samples.count {\n            if shouldKeep(samples, read, write) {\n                samples[write] = samples[read]\n                write += 1\n            } else {\n                droppedBySensor[samples[read].sensorID, default: 0] += 1\n            }\n        }\n\n        let droppedCount = samples.count - write\n        samples.removeLast(droppedCount)\n        return CompactionReport(\n            keptCount: write,\n            droppedCount: droppedCount,\n            droppedBySensor: droppedBySensor\n        )\n    }\n\n    // MARK: Part 1 - Drop invalid readings in place\n\n    /// Remove every reading the sensor flagged as bad, rewriting the buffer in\n    /// place and reporting what went.\n    ///\n    /// The report carries the per-sensor attribution rather than only a new\n    /// length, because Part 2 needs exactly that and a bare count would force\n    /// it to walk the buffer a second time to rebuild it.\n    @discardableResult\n    public mutating func dropInvalid() -> CompactionReport {\n        compact { buffer, read, _ in buffer[read].isValid }\n    }\n\n    // MARK: Part 2 - Cap repeated readings per sensor\n\n    /// Keep at most `limit` samples from each run of identical readings.\n    ///\n    /// A run is a stretch of consecutive samples sharing a sensor and a value:\n    /// a sensor that reports the same number ten times in a row has said one\n    /// thing, and the uplink budget only pays for `limit` of them.\n    ///\n    /// The keep test compares against the sample committed `limit` slots back,\n    /// not against the previous read. Comparing reads keeps one sample per run\n    /// whatever the limit says.\n    @discardableResult\n    public mutating func capRepeats(perSensor limit: Int) throws(BufferError) -> CompactionReport {\n        guard limit > 0 else { throw .nonPositiveRepeatLimit(limit) }\n\n        return compact { buffer, read, write in\n            guard write >= limit else { return true }\n            let committed = buffer[write - limit]\n            return committed.sensorID != buffer[read].sensorID || committed.value != buffer[read].value\n        }\n    }\n\n    // MARK: Part 3 - Partition by severity in one pass\n\n    /// Reorder the buffer so every informational sample comes first, then every\n    /// warning, then every critical one, and report the range each band\n    /// occupies.\n    ///\n    /// This is the same invariant with three regions instead of two, so the\n    /// keep-or-drop cursor has nothing to decide and `compact` does not apply.\n    /// A low cursor marks the end of the settled informational band, a high\n    /// cursor marks the start of the settled critical band, and the read cursor\n    /// walks the unclassified middle.\n    ///\n    /// After a swap with the high cursor the read cursor must stay where it is:\n    /// the sample that arrived from the tail has not been looked at yet.\n    ///\n    /// Every severity appears in the result, with an empty range when the\n    /// buffer holds none of that band.\n    public mutating func partitionBySeverity() -> [Severity: Range<Int>] {\n        var low = 0\n        var read = 0\n        var high = samples.count - 1\n\n        while read <= high {\n            switch samples[read].severity {\n            case .info:\n                samples.swapAt(low, read)\n                low += 1\n                read += 1\n            case .warning:\n                read += 1\n            case .critical:\n                samples.swapAt(read, high)\n                high -= 1\n            }\n        }\n\n        return [\n            .info: 0..<low,\n            .warning: low..<read,\n            .critical: read..<samples.count,\n        ]\n    }\n}\n"
+    }
+  },
+  "swift-34": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "Two cursors converge from the ends of the profile and there is no target to compare a sum against. What licenses moving one rather than the other?",
+        "concepts": [
+          "a pair's capacity is the shorter of the two elevations times the intervals between them",
+          "the move rule is a discard argument rather than a comparison against a target",
+          "the answer can never be stepped over because every discarded pair was already proven no better"
+        ],
+        "steps": [
+          "Measure the pair the two cursors currently stand on before moving either of them.",
+          "Argue which cursor to move before writing it. The capacity is capped by the shorter side, so moving the taller side inward shortens the span without ever lifting that cap.",
+          "So the shorter side is the one that advances, and every pair that move discards is one already shown to be no better than the pair just measured.",
+          "Keep the best pair seen rather than the last one, and remember that the posts in between are ignored entirely: this asks what two walls could hold.",
+          "A profile of fewer than two posts, and one where no pair holds anything, both report that there is no impoundment.",
+          "A gauge below datum is a miscalibrated post rather than a hollow, so it is a refusal that names the post."
+        ],
+        "pitfalls": [
+          "advancing the taller side, which discards pairs nothing has ruled out and reports a smaller answer on a profile that leans",
+          "trying to take the pair of tallest posts, which ignores that width is half the product",
+          "reporting a span of capacity nothing rather than saying there is no impoundment"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "Each cursor now carries the tallest post it has walked past. Which side's answer is already settled at each step, and what does that let you skip?",
+        "concepts": [
+          "a running maximum on each side, standing for the wall that side can offer",
+          "the shorter side's water level is already determined whatever the rest of the profile does",
+          "one converging pass in place of two prefix-maximum arrays"
+        ],
+        "steps": [
+          "Carry a running maximum on each side, and compare the two posts to decide which side to settle next.",
+          "Whichever post is shorter is the side whose answer cannot change: nothing past the other cursor is lower than the post standing opposite it, so that side's running maximum is the water level over it.",
+          "Raise that side's running maximum first, then record the depth as the difference. Recording first reports a negative depth at every post that is itself the tallest so far.",
+          "Advance that cursor and repeat until the two cursors have passed each other, so every post gets a depth.",
+          "Make the total a sum of the depths rather than a second walk, so there is exactly one converging pass in the file.",
+          "Comparing the two running maxima instead of the two posts is a different statement of the same rule, not a bug. The bug is moving the wrong side."
+        ],
+        "pitfalls": [
+          "advancing the taller side, which invents water over ground that would drain",
+          "recording the depth before raising the running maximum, which reports negative depths and is why the profile is worth exposing rather than only the total",
+          "stopping the sweep when the cursors meet rather than when they pass, which leaves one post without a depth"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "The depths are already computed. What is a single pond, in terms of that array, and what decides between two of the same size?",
+        "concepts": [
+          "a pond is a maximal run of consecutive posts with water above them",
+          "reading the depths rather than deriving anything again",
+          "a tie rule that makes the answer independent of scan direction"
+        ],
+        "steps": [
+          "Ask the previous part for the depths and scan them. Nothing here needs the profile again.",
+          "Walk to the first post holding water, then run forward while the water continues, summing as you go.",
+          "That run's bounds are inclusive and its sum is its volume; then carry on from the post after it.",
+          "Keep a run only when it beats the best seen, so two ponds of the same volume resolve to the earlier one.",
+          "A profile holding no water anywhere reports that there is no pond."
+        ],
+        "pitfalls": [
+          "deriving the depths again here instead of reading them, which is the same computation written twice with half the evidence",
+          "taking the longest run rather than the one holding the most, which are different on any profile with an uneven bed",
+          "replacing the best run on an equal volume, which makes the answer depend on which way the scan happened to run"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "The widest span is smaller than a pair you can find by hand",
+          "cause": "The sweep advances the taller side, so it discards pairs the discard argument never ruled out",
+          "check": "Compare the sweep against looking at every pair on a small profile that leans, where the outer pair is the answer."
+        },
+        {
+          "symptom": "A profile that clearly holds water reports a total of nothing",
+          "cause": "The running maximum is never raised, or the sweep stops when the cursors meet rather than when they pass",
+          "check": "Run a profile with one deep basin between two banks and confirm the depths fill to the level of the lower bank."
+        },
+        {
+          "symptom": "The total is right but some depths are negative",
+          "cause": "The depth is recorded before the running maximum is raised, so every post that is itself the tallest so far reports a negative",
+          "check": "Ask for the depths of a profile of one post and confirm the answer is a single zero."
+        },
+        {
+          "symptom": "A profile that leans reports more water than it holds",
+          "cause": "The taller side is being advanced, so one bank sets the water level without the far bank ever capping it",
+          "check": "Run a three-post profile whose first post is the tallest and confirm the middle post holds one, not two."
+        },
+        {
+          "symptom": "The total and the depths disagree",
+          "cause": "The total is computed by its own walk rather than as the sum of the depths",
+          "check": "On every fixture, confirm the total equals the sum of the reported depths."
+        },
+        {
+          "symptom": "Two ponds of the same volume return different answers on different runs",
+          "cause": "The best run is replaced on an equal volume rather than only on a greater one",
+          "check": "Run a profile with two identical hollows and confirm the earlier one comes back."
+        }
+      ]
+    },
+    "execution": {
+      "timeBudget": {
+        "navigation": 4,
+        "solution": 9,
+        "coding": 26,
+        "verification": 6
+      },
+      "navigation": {
+        "say": "All three parts are converging cursors over the same profile, and the whole difficulty is one conditional in each. So the minute I spend up front is on the model: what a post covers, and what a pair of posts is allowed to assume about the ground between them.",
+        "questions": [
+          "For the widest span, do the posts in between matter, or am I asking what two walls could hold regardless of the bed?",
+          "Is the depth wanted per post, or only the total? They are different asks and only one of them shows a whole class of bug.",
+          "Are elevations guaranteed non-negative, and is a reading below datum data or a fault?"
+        ],
+        "assumptions": [
+          "Each post covers one interval of channel, which is the standard first-order model these gauges are spaced for.",
+          "The widest span ignores the ground between its two posts: it asks what the walls could hold.",
+          "Elevations are non-negative, and a reading below datum is a miscalibrated post rather than a hollow.",
+          "The depth profile is wanted, not only the total, and the total is a projection of it."
+        ],
+        "edgeCases": [
+          "an empty profile and a profile of one post, where no pair exists at all",
+          "a monotone profile, rising or falling, which holds nothing anywhere but still has a widest span",
+          "a flat profile at datum, where every pair holds nothing and the honest answer is that there is no impoundment",
+          "two hollows of exactly the same volume, where the tie rule becomes observable"
+        ],
+        "restate": "Given elevations at evenly spaced gauge posts along a channel, report the pair of posts that could impound the most between them, the standing water depth over every post once the channel saturates, the total, and the single largest body of standing water."
+      },
+      "solution": {
+        "pitch": "Two cursors converging from the ends, three times. What makes this the interesting corner of the family is that there is no target to compare a sum against, so the rule for which cursor moves has to be argued from a discard: whatever I advance, I must be able to say that everything it walks past was already proven no better. For the widest span that argument is about the shorter wall capping the capacity. For the depths it is about the shorter side's water level already being settled. The third part is not a new sweep at all, it reads the depths the second part produced.",
+        "dataStructures": [
+          "Two integer cursors and, for the depth pass, two running maxima. Nothing that grows with the profile except the answer itself.",
+          "One array of depths, which is the output rather than working state: the pass fills each slot exactly once and never reads one back.",
+          "A record type for the impoundment carrying both post ids as well as the number, so a planner can go and look at the posts.",
+          "A record type for the pond carrying inclusive bounds and a volume, derived by a plain scan of the depths."
+        ],
+        "types": [
+          "Posts are a struct with an id rather than bare integers, because every answer here is something a person has to go and stand next to.",
+          "The impoundment and the pond are separate types rather than one span type, because they answer different questions and share only their shape.",
+          "The depth of a post is a plain integer array indexed alongside the profile, which is the honest representation of one number per post.",
+          "The error names the post rather than the index, because an index means nothing to whoever has to recalibrate the gauge."
+        ],
+        "composition": "The total is the sum of the depth profile and nothing else, which is the composition made literal: the richer method is the primitive and the simpler one is its projection, so there is exactly one converging depth pass in the file. The largest pond reads that same array and never re-derives a depth. The widest span stands alone because its running state is a best pair rather than a pair of running maxima, and rather than force a call I would rather have the suite assert the relationship that does hold: the widest span's capacity is never less than the total water, because the rectangle it describes contains all of it.",
+        "tradeoff": "Returning the depths costs an array where the total alone would cost two integers. I want that array anyway, because the total is exactly the number that can stay right while the profile underneath it is wrong, and if this ran over a profile too large to hold I would offer a streaming total as a second method rather than give up the profile.",
+        "trap": "One conditional decides the whole thing, and the way to get it wrong is to advance the taller side. It is the discard argument run backwards, and on a profile that leans it invents water over ground that would drain. The second trap is ordering inside the branch: raise the running maximum, then record the depth. Recording first reports a negative depth at every post that is itself the tallest so far."
+      },
+      "coding": {
+        "order": [
+          "Write the validation first, since all four entry points need it and it is three lines.",
+          "Write the widest span next, saying the discard argument out loud before writing the conditional that follows from it.",
+          "Check it against a profile that leans, where advancing the wrong side gives a visibly smaller answer.",
+          "Write the depth pass, and write the running-maximum update above the depth line deliberately rather than by accident.",
+          "Make the total a sum of that array immediately, so there is never a second walk to keep in step.",
+          "Write the largest pond last as a plain scan of the depths, with the tie rule stated in a comment."
+        ],
+        "commentary": [
+          "There is no target to compare against here, so the move rule has to come from a discard argument. The capacity is capped by the shorter wall, so moving the taller one can only shorten the span.",
+          "That is why the shorter side advances: every pair it walks past is one I have already shown to be no better than the pair I just measured.",
+          "In the depth pass each cursor carries the tallest post it has walked past. Whichever post is shorter is the side whose water level is already settled.",
+          "I raise the running maximum first and record the depth second. The other order reports a negative depth at every post that is itself the tallest so far.",
+          "The cursors run until they pass each other, not until they meet, or the last post never gets a depth.",
+          "The total is the sum of that array. A total that walks the profile again is the same idea written twice, and the second copy is where they drift apart.",
+          "The largest pond reads the depths rather than deriving anything. A maximal run of positive depths is exactly what a body of standing water is.",
+          "I replace the best run only on a strictly greater volume, so two equal ponds resolve to the earlier one rather than to whichever the scan reached last."
+        ],
+        "checkIn": "Before the depth pass, say: I am going to return the depth at every post and make the total a sum of it, rather than returning the total alone. It costs an array, and it buys a whole class of bug being visible. Does that trade sound right for what you want to see?"
+      },
+      "verification": {
+        "walkthroughs": [
+          "Walk the worked twelve-post profile through the depth pass: the depths come out as zero, zero, one, zero, one, two, one, zero, zero, one, zero, zero, and the total is six.",
+          "Walk the same profile through the widest span: the two posts of height two, seven intervals apart, give fourteen, and no taller pair beats it because the taller pairs are closer together.",
+          "Walk a three-post profile whose first post is the tallest: the middle post holds one, and advancing the taller side would claim two.",
+          "Walk a basin of one deep hollow between two banks and confirm it fills to the level of the lower bank rather than the higher one.",
+          "Walk a profile of one post through the depth pass and confirm the answer is a single zero, which is what recording before raising the running maximum gets wrong."
+        ],
+        "tests": "Run the analyzer's suite and read the three parts in order. The leaning three-post fixture appears in both of the first two suites and is the one that catches advancing the wrong side. The single-post fixture is what catches the ordering inside the branch. The suite also checks the sweep against looking at every pair, and checks that the widest span's capacity is never less than the total water, which is the cross-part relationship this problem can honestly assert.",
+        "complexity": "Every part is a single pass, linear in the number of posts. The depth pass uses one array for its output and two integers of working state, where the prefix-maximum formulation would use two arrays of working state as well; that is the whole reason the converging form is worth knowing. The largest pond is another linear scan over the array already produced.",
+        "moreTime": "Uneven post spacing, which turns every width into a distance and is a good test of whether the model was understood or memorised. A permeable bed, where each post drains at some rate and the question becomes how long the water stands. And streaming the profile, where the total survives and the depth array does not, which is exactly the trade this design made in the other direction."
+      },
+      "code": "public struct GaugePost: Equatable, Sendable {\n    public let id: String\n    public let elevation: Int\n\n    public init(id: String, elevation: Int) {\n        self.id = id\n        self.elevation = elevation\n    }\n}\n\npublic struct Impoundment: Equatable, Sendable {\n    public let leftID: String\n    public let rightID: String\n    public let capacity: Int\n\n    public init(leftID: String, rightID: String, capacity: Int) {\n        self.leftID = leftID\n        self.rightID = rightID\n        self.capacity = capacity\n    }\n}\n\npublic struct Pond: Equatable, Sendable {\n    public let startIndex: Int\n    public let endIndex: Int\n    public let volume: Int\n\n    public init(startIndex: Int, endIndex: Int, volume: Int) {\n        self.startIndex = startIndex\n        self.endIndex = endIndex\n        self.volume = volume\n    }\n}\n\npublic enum ProfileError: Error, Equatable, Sendable {\n    case negativeElevation(id: String)\n    case notImplemented\n}\n\npublic struct FloodplainAnalyzer: Sendable {\n    public init() {}\n\n    // MARK: Part 1 - Widest impoundable span\n\n    /// The pair of posts that could hold back the most water between them,\n    /// measured as the shorter of the two elevations times the number of\n    /// intervals separating them.\n    ///\n    /// Two cursors converge from the ends. There is no target to compare a sum\n    /// against here, so the move rule comes from a discard argument instead:\n    /// the span's capacity is capped by the shorter side, and moving the taller\n    /// side inward can only shorten the span without ever raising that cap.\n    /// So the shorter side is the one that moves, and every pair it discards\n    /// was already proven no better than the pair just measured.\n    public func widestImpoundment(profile: [GaugePost]) throws(ProfileError) -> Impoundment? {\n        try validate(profile)\n        guard profile.count >= 2 else { return nil }\n\n        var lo = 0\n        var hi = profile.count - 1\n        var best: Impoundment?\n\n        while lo < hi {\n            let capacity = min(profile[lo].elevation, profile[hi].elevation) * (hi - lo)\n            if capacity > (best?.capacity ?? 0) {\n                best = Impoundment(leftID: profile[lo].id, rightID: profile[hi].id, capacity: capacity)\n            }\n            if profile[lo].elevation <= profile[hi].elevation {\n                lo += 1\n            } else {\n                hi -= 1\n            }\n        }\n\n        return best\n    }\n\n    // MARK: Part 2 - Standing depth at every post\n\n    /// The depth of standing water above every post once the channel has\n    /// saturated.\n    ///\n    /// The same two cursors, now each carrying the tallest post it has walked\n    /// past. Whichever side is shorter is the side whose answer is already\n    /// settled: nothing beyond the other cursor can be lower than the side\n    /// standing opposite it, so the running maximum on the shorter side is the\n    /// water level over that post, whatever the rest of the profile does.\n    ///\n    /// The running maximum is updated before the depth is recorded. Recording\n    /// first reports a negative depth at every post that is itself the tallest\n    /// so far, which is why the profile is worth exposing: a total can stay\n    /// plausible while the profile underneath it is wrong.\n    public func pondingProfile(profile: [GaugePost]) throws(ProfileError) -> [Int] {\n        try validate(profile)\n        guard !profile.isEmpty else { return [] }\n\n        var depths = [Int](repeating: 0, count: profile.count)\n        var lo = 0\n        var hi = profile.count - 1\n        var leftMax = 0\n        var rightMax = 0\n\n        while lo <= hi {\n            // The shorter side is the one that moves. Advancing the taller\n            // side is the discard argument run backwards, and it invents\n            // water over ground that would drain.\n            if profile[lo].elevation <= profile[hi].elevation {\n                leftMax = max(leftMax, profile[lo].elevation)\n                depths[lo] = leftMax - profile[lo].elevation\n                lo += 1\n            } else {\n                rightMax = max(rightMax, profile[hi].elevation)\n                depths[hi] = rightMax - profile[hi].elevation\n                hi -= 1\n            }\n        }\n\n        return depths\n    }\n\n    /// The total standing water across the whole profile.\n    ///\n    /// This is the sum of the depth at every post. There is one converging walk\n    /// in this file and the total is a projection of it, because a total that\n    /// derives itself separately is a second implementation of the same idea\n    /// with none of the evidence.\n    public func totalPondedVolume(profile: [GaugePost]) throws(ProfileError) -> Int {\n        try pondingProfile(profile: profile).reduce(0, +)\n    }\n\n    // MARK: Part 3 - The largest single pond\n\n    /// The single body of standing water holding the most, as the maximal run\n    /// of consecutive posts with water above them.\n    ///\n    /// This reads the depths rather than re-deriving them. Where two ponds hold\n    /// the same volume the earlier one wins, so the answer never depends on\n    /// which way the scan happened to run.\n    public func largestPond(profile: [GaugePost]) throws(ProfileError) -> Pond? {\n        let depths = try pondingProfile(profile: profile)\n\n        var best: Pond?\n        var index = 0\n\n        while index < depths.count {\n            guard depths[index] > 0 else {\n                index += 1\n                continue\n            }\n            var end = index\n            var volume = 0\n            while end < depths.count, depths[end] > 0 {\n                volume += depths[end]\n                end += 1\n            }\n            if volume > (best?.volume ?? 0) {\n                best = Pond(startIndex: index, endIndex: end - 1, volume: volume)\n            }\n            index = end\n        }\n\n        return best\n    }\n\n    // MARK: Shared validation\n\n    /// A gauge below datum is a miscalibrated post rather than a hollow, and\n    /// the report names the post so someone can go and look at it.\n    private func validate(_ profile: [GaugePost]) throws(ProfileError) {\n        for post in profile where post.elevation < 0 {\n            throw .negativeElevation(id: post.id)\n        }\n    }\n}\n"
+    }
+  },
+  "swift-35": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "Two cursors again, but there is no array and no ordering. What is left of the family here, and what should the probe hand back?",
+        "concepts": [
+          "a structure with one successor per id and no random access",
+          "one cursor stepping once and another stepping twice, so a loop is the only way they meet",
+          "the return type as the design decision, chosen for what the next part needs"
+        ],
+        "steps": [
+          "Reject an id the table has never heard of, either as an alias or as something an alias points at, before walking anything.",
+          "Advance the fast cursor two hops and the slow cursor one, and stop the moment the fast cursor runs out of chain.",
+          "Say what it means when the two cursors land on the same id: only a loop can bring a faster cursor back onto a slower one.",
+          "Decide the return type deliberately. A yes-or-no answer tells the next part that a loop exists and nothing about where, so the next part would repeat this entire walk.",
+          "Report the meeting id, and on the other branch report where the chain actually ended.",
+          "Nothing here may grow with the length of the chain, which is the constraint the whole problem exists for."
+        ],
+        "pitfalls": [
+          "keeping a set of visited ids, which is correct and is the thing the constraint forbids",
+          "returning a bare yes or no, which throws away the one fact the next part needs",
+          "advancing the fast cursor two hops without checking that the first of them exists"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "The probe found a meeting point, which is not the loop entry. What turns one into the other, and why does it work?",
+        "concepts": [
+          "the probe as phase one and this as phase two",
+          "the distance from the start to the entry equalling the distance from the meeting point to the entry",
+          "an id that is already a destination being zero hops from itself"
+        ],
+        "steps": [
+          "On a chain that ends, count hops with a single walk from the start to the destination the probe named.",
+          "On a chain that loops, work out the distance argument before writing anything: the walk from the start to the entry and the walk from the meeting point to the entry are the same length.",
+          "That is what licenses resetting one cursor to the start and stepping both one hop at a time until they land together, which is the entry.",
+          "Measure the loop by walking once around from the entry until you come back to it.",
+          "An id already at a destination is zero hops from itself, and an off-by-one here shows up only on a chain of one.",
+          "An unknown id is one of the answers here rather than a refusal, because a caller auditing a table wants a value back, not a throw."
+        ],
+        "pitfalls": [
+          "reporting the meeting point as the loop entry, which is right on a loop of one or two and wrong the moment a tail feeds a longer loop",
+          "stepping the fast cursor two hops in phase two, which is phase one's rule applied where the proof does not hold",
+          "counting the destination as one hop rather than zero, so every chain reads one longer than it is"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "Two positional questions about a chain that ends. What are the cursors doing differently from the first part, and where does the refusal come from?",
+        "concepts": [
+          "the same rate difference used for a completely different purpose",
+          "a lead cursor sent out ahead by a fixed offset, so the gap between the cursors is the answer",
+          "one shared gate, asked of the part before rather than re-derived"
+        ],
+        "steps": [
+          "Ask the previous part whether the chain ends before doing any positional work, and refuse a chain that loops, naming its entry.",
+          "For the midpoint, step one cursor once and another twice until the fast one runs out of chain; the slow one is then standing on the middle.",
+          "Say what happens on an even number of ids and pick the later of the two middles deliberately rather than by accident.",
+          "For the query from the end, send a lead cursor out by the offset first, then step both cursors together until the lead reaches the destination.",
+          "Refuse an offset of zero or less, and refuse an offset longer than the chain, saying how long the chain actually was.",
+          "Nothing here stores the chain, which is the point: both answers come out of the gap between two cursors."
+        ],
+        "pitfalls": [
+          "collecting the chain into an array and indexing it, which answers both questions and abandons the constraint the problem is about",
+          "re-deriving whether the chain loops instead of asking the part that already knows",
+          "an offset that walks off the end of the chain and reports the last id rather than refusing"
+        ]
+      },
+      {
+        "part": 4,
+        "prompt": "Every alias in the table, summarised. What does this part actually have to compute that the part before it does not already?",
+        "concepts": [
+          "the previous part applied across the table and nothing more",
+          "a tie rule that keeps the answer independent of dictionary ordering",
+          "distinct loop entries rather than one per alias caught in a loop"
+        ],
+        "steps": [
+          "Walk the table's aliases in a stable order rather than whatever order the dictionary offers.",
+          "Resolve each one with the part already written, and count what comes back by kind.",
+          "Track the longest chain to a destination, replacing it only on a strictly greater length so ties resolve to the earlier id.",
+          "Collect loop entries into a set, since many aliases can feed the same loop, then report them sorted.",
+          "A table with no chain that ends has no longest chain at all, which is a value rather than a length of nothing."
+        ],
+        "pitfalls": [
+          "walking the dictionary in its natural order, which makes ties resolve differently from run to run",
+          "counting one loop entry per alias caught in a loop rather than one per distinct loop",
+          "reporting a longest chain of length nothing on a table where nothing terminates"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "A chain that loops never returns and the process hangs",
+          "cause": "The walk has no second cursor, so nothing ever detects that the chain has closed on itself",
+          "check": "Probe an alias that points at itself and confirm it comes back at once reporting a loop."
+        },
+        {
+          "symptom": "The loop entry is right for loops reached directly and wrong for an alias feeding one from outside",
+          "cause": "The meeting point is being reported as the entry rather than converted into it",
+          "check": "Resolve an alias with a tail of two hops into a loop of three and confirm the entry is the first id of the loop, not where the cursors met."
+        },
+        {
+          "symptom": "Every chain reads one hop longer than it is",
+          "cause": "The destination is being counted as a hop rather than as where the hops stop",
+          "check": "Resolve an id that is already a destination and confirm it reports zero hops."
+        },
+        {
+          "symptom": "The midpoint is one id early on chains of even length",
+          "cause": "The fast cursor stops one step too soon, so the slow cursor takes the earlier of the two middles",
+          "check": "Take the midpoint of a chain of four ids and confirm it is the third, not the second."
+        },
+        {
+          "symptom": "A query counting from the end returns the destination for any offset past the chain",
+          "cause": "The lead cursor runs off the end silently instead of refusing",
+          "check": "Ask for an offset one greater than the chain length and confirm it refuses, naming both the offset and the real length."
+        },
+        {
+          "symptom": "The audit names one loop entry per alias caught in a loop",
+          "cause": "Entries are being appended rather than collected into a set",
+          "check": "Audit a table where several aliases feed the same loop and confirm the entry list is sorted and holds each loop once."
+        }
+      ]
+    },
+    "execution": {
+      "timeBudget": {
+        "navigation": 4,
+        "solution": 9,
+        "coding": 26,
+        "verification": 6
+      },
+      "navigation": {
+        "say": "This is a two-pointer problem with the array taken away, so the first thing I want settled is the memory constraint, because it is the only thing that rules out the obvious answer. A visited set solves every part of this in five lines, and if it is allowed I should just say so rather than write something cleverer for no reason.",
+        "questions": [
+          "Is the constant-memory requirement real, or is a visited set per resolution acceptable? It changes the whole approach.",
+          "Is an id that appears only as a target a destination, and an id that appears nowhere an error? I want the difference stated.",
+          "For the query counting from the end, does the destination itself count as one, or as zero?"
+        ],
+        "assumptions": [
+          "Memory per resolution is fixed: cursors and counters, nothing that grows with the chain.",
+          "An id that appears as a target but never as an alias is a real destination; an id that appears nowhere is a typo and is refused.",
+          "The destination counts as one when counting from the end, so an offset of one is the destination and an offset equal to the id count is the start.",
+          "The midpoint of an even-length chain is the later of the two middles."
+        ],
+        "edgeCases": [
+          "an id that is already a destination, which is a chain of one and where every off-by-one shows",
+          "an alias pointing at itself, and a loop of two, where the meeting point happens to be the entry",
+          "a tail feeding a longer loop, which is the only shape where phase two is observable",
+          "an empty table, and an id the table has never heard of"
+        ],
+        "restate": "Given an alias table where each alias has at most one target, report whether a chain from an id ends or loops, resolve it to a destination and hop count or to a loop entry and length, answer two positional questions about a chain that ends, and summarise the whole table, all in memory that does not grow with chain length."
+      },
+      "solution": {
+        "pitch": "Two cursors moving at different rates over a structure that has one successor per node. The first part is the detection walk and its return type is the design decision: it hands back the meeting id rather than a yes or no, because that id is the only thing the second part needs to start from. The second part is phase two of the same algorithm plus a hop count. The third part is the same rate trick used for something completely different, which is what makes the technique feel general rather than like a trick. The fourth is the second part applied across the table.",
+        "dataStructures": [
+          "Two string cursors and an integer counter. Nothing per resolution grows with the chain, which is the whole constraint.",
+          "The alias table itself, which precomputes the set of ids it knows so a typo can be told from a destination without a scan.",
+          "A set of loop entries in the audit, because many aliases can feed one loop and the answer wants each loop once.",
+          "A single record for the longest chain, replaced only on a strictly greater length."
+        ],
+        "types": [
+          "The probe is an enum with two cases carrying ids rather than an optional or a boolean, which is what stops the second part re-running the first.",
+          "The resolution is an enum with three cases, so an unknown id is a value a caller can switch on rather than a refusal it has to catch mid-audit.",
+          "The audit uses a small named record for the longest chain rather than a tuple, because a tuple is not equatable and this crosses a test boundary.",
+          "The error enum separates an offset that is not positive from one that is longer than the chain, and the second carries the real length, because those are different mistakes for the caller to make."
+        ],
+        "composition": "The chain runs one way through the whole file. The second part calls the first and does phase two only. The third part asks the second whether the chain ends rather than working that out again, which is both the composition and the correct behaviour, since a loop has no midpoint. The fourth part is the second applied to every alias. The return types are what make this possible: a probe that answered true or false, or a resolution that threw on an unknown id, would each break the link immediately below them.",
+        "tradeoff": "Resolving the same chain repeatedly re-walks it, and a cache keyed on id would make an audit of a deep table much faster. I am not adding one because it would be the visited set arriving through the back door and it would break the per-request memory budget the resolver exists to respect. If the audit became the hot path I would build the reverse graph once and process it in bulk rather than memoise the single-id path.",
+        "trap": "Phase two is the trap and it is a proof rather than a coding detail. After the cursors meet, the distance from the start to the loop entry equals the distance from the meeting point to the entry, and that is what licenses resetting one cursor to the start and stepping both at rate one. Someone who cannot reconstruct that argument writes a plausible variant that is right on a loop of one or two and wrong on a tail feeding a loop of three."
+      },
+      "coding": {
+        "order": [
+          "Write the known-id check first, because three of the four parts start with it.",
+          "Write the detection walk, checking both hops of the fast cursor before taking either.",
+          "Decide the return type out loud before writing the signature, since that decision is what the next part lives on.",
+          "Write the hop count and phase two next, and state the distance argument in a comment before the loop it justifies.",
+          "Write the shared gate for the positional queries as a call into the resolution, not as a second detection walk.",
+          "Write the two positional queries, then the audit last, which is a loop over the table and nothing else."
+        ],
+        "commentary": [
+          "There is no array here and no ordering, only the promise that each id has at most one successor. That is all two pointers ever actually needed.",
+          "I check that the fast cursor's first hop exists before taking its second, otherwise the chain ends and I step into nothing.",
+          "I am returning the meeting id rather than a yes or no. A yes would tell the next part a loop exists and nothing about where, and it would have to run this whole walk again.",
+          "The meeting point is not the entry. The distance from the start to the entry equals the distance from the meeting point to the entry, which is why I reset one cursor to the start and step both once.",
+          "An id that is already a destination is zero hops from itself. That is the case where an off-by-one here would first show.",
+          "The midpoint uses the same rate difference for something completely different: when the fast cursor runs out of chain, the slow one is on the middle.",
+          "For the query from the end I send one cursor out by the offset first, then move both together. The gap between them is the answer and nothing is stored.",
+          "The positional queries ask the resolution whether the chain ends rather than detecting it again. A loop has no midpoint, so the gate belongs there.",
+          "The audit walks the aliases in sorted order and replaces the longest chain only on a strictly greater length, so a tie does not depend on dictionary ordering."
+        ],
+        "checkIn": "After the first part, say: I have made the probe return where the cursors met rather than a boolean, specifically so the next part does not have to walk the chain again. Is that the level of forward planning you want, or would you rather I kept each part's interface minimal and accepted the rework?"
+      },
+      "verification": {
+        "walkthroughs": [
+          "Walk an alias three hops from its destination and confirm the probe reports the destination and the resolution reports three hops.",
+          "Walk an id that is already a destination and confirm it reports zero hops, which is the shortest fixture an off-by-one fails.",
+          "Walk a tail of two hops into a loop of three: the cursors meet on the second id of the loop, and phase two has to turn that into the first. This is the only shape where the meeting point and the entry differ.",
+          "Walk an alias pointing at itself and confirm the loop has length one, and a loop of two and confirm it has length two.",
+          "Walk a chain of four ids through the midpoint query and confirm it returns the third, then ask for an offset one past the chain and confirm it refuses with the real length."
+        ],
+        "tests": "Run the resolver's suite and read the four parts in order. The tailed-loop fixture in the second suite is the one that separates the meeting point from the loop entry; the self-loop and two-id loop fixtures are there precisely because they are the shapes where the wrong answer looks right. In the third suite the four offsets from one to the chain length pin the counting convention at both ends, and the fourth suite checks that the two counts add up to the number of aliases the table holds.",
+        "complexity": "Every walk is linear in the length of the chain and uses a fixed amount of memory: two cursors and a counter, whatever the chain does. The audit is that once per alias, so it is quadratic in the worst case where every alias sits on one long chain, which is the price of not caching and is a deliberate trade against the per-request memory budget.",
+        "moreTime": "A hop limit as a second safeguard, which is what most real resolvers actually ship and is worth contrasting with detection. Aliases with more than one target, which stops being a chain and becomes a graph and takes the constant-memory guarantee with it. And an audit that builds the reverse graph once and resolves every alias in one pass, which is the right answer the moment the audit rather than the request is the hot path."
+      },
+      "code": "public struct AliasTable: Sendable {\n    private let targets: [String: String]\n    private let known: Set<String>\n\n    public init(targets: [String: String]) {\n        self.targets = targets\n        self.known = Set(targets.keys).union(targets.values)\n    }\n\n    /// The next id in the chain, or nil when this id resolves to itself: it is\n    /// a real destination rather than another alias.\n    public func target(of id: String) -> String? {\n        targets[id]\n    }\n\n    /// Whether this id appears in the table at all, either as an alias or as\n    /// something an alias points at. An id that does not is a typo rather than\n    /// a terminal.\n    public func contains(_ id: String) -> Bool {\n        known.contains(id)\n    }\n\n    /// Every id the table redirects away from, sorted, so an audit walks the\n    /// table in a stable order.\n    public var aliasIDs: [String] {\n        targets.keys.sorted()\n    }\n}\n\npublic enum ChainProbe: Equatable, Sendable {\n    case terminates(finalID: String)\n    case loops(meetingID: String)\n}\n\npublic enum Resolution: Equatable, Sendable {\n    case terminal(id: String, hops: Int)\n    case cycle(entryID: String, length: Int)\n    case unknownAlias(String)\n}\n\npublic enum ChainError: Error, Equatable, Sendable {\n    case unknownAlias(String)\n    case cyclicChain(entryID: String)\n    case nonPositiveOffset(Int)\n    case offsetBeyondChain(offset: Int, length: Int)\n    case notImplemented\n}\n\npublic struct LongestChain: Equatable, Sendable {\n    public let startID: String\n    public let hops: Int\n\n    public init(startID: String, hops: Int) {\n        self.startID = startID\n        self.hops = hops\n    }\n}\n\npublic struct ChainAudit: Equatable, Sendable {\n    public let terminalCount: Int\n    public let cyclicCount: Int\n    public let longestChain: LongestChain?\n    public let cycleEntryIDs: [String]\n\n    public init(\n        terminalCount: Int,\n        cyclicCount: Int,\n        longestChain: LongestChain?,\n        cycleEntryIDs: [String]\n    ) {\n        self.terminalCount = terminalCount\n        self.cyclicCount = cyclicCount\n        self.longestChain = longestChain\n        self.cycleEntryIDs = cycleEntryIDs\n    }\n}\n\npublic struct ChainResolver: Sendable {\n    private let table: AliasTable\n\n    public init(table: AliasTable) {\n        self.table = table\n    }\n\n    // MARK: Part 1 - Probe a chain in constant memory\n\n    /// Walk the chain with one cursor at one hop per step and another at two,\n    /// and say what happened.\n    ///\n    /// The return carries the meeting id rather than a bare yes or no, because\n    /// the meeting point is the only thing phase two has to start from. A probe\n    /// that answered `true` would leave the next part re-running this entire\n    /// walk to recover something this one already knew.\n    public func probe(from id: String) throws(ChainError) -> ChainProbe {\n        guard table.contains(id) else { throw .unknownAlias(id) }\n\n        var slow = id\n        var fast = id\n\n        while true {\n            guard let oneHop = table.target(of: fast) else { return .terminates(finalID: fast) }\n            guard let twoHops = table.target(of: oneHop) else { return .terminates(finalID: oneHop) }\n            fast = twoHops\n            // Safe: the fast cursor got two hops out of this position, so the\n            // slow cursor, which is behind it, can certainly take one.\n            slow = table.target(of: slow) ?? slow\n            if slow == fast { return .loops(meetingID: slow) }\n        }\n    }\n\n    // MARK: Part 2 - Resolve to a terminal or a named loop\n\n    /// Where this id actually ends up: a real destination and how far away it\n    /// is, or the loop it falls into and how big that loop is.\n    ///\n    /// The probe is phase one. On a chain that terminates the work left is a\n    /// single walk that counts hops. On a chain that loops the work left is\n    /// phase two, and phase two is a proof rather than a coding detail: the\n    /// distance from the start to the loop entry equals the distance from the\n    /// meeting point to the loop entry, so resetting one cursor to the start\n    /// and stepping both one hop at a time lands them together on the entry.\n    public func resolve(from id: String) -> Resolution {\n        guard let outcome = try? probe(from: id) else { return .unknownAlias(id) }\n\n        switch outcome {\n        case .terminates(let finalID):\n            var hops = 0\n            var cursor = id\n            while cursor != finalID, let next = table.target(of: cursor) {\n                cursor = next\n                hops += 1\n            }\n            return .terminal(id: finalID, hops: hops)\n\n        case .loops(let meetingID):\n            var fromStart = id\n            var fromMeeting = meetingID\n            while fromStart != fromMeeting {\n                fromStart = table.target(of: fromStart) ?? fromStart\n                fromMeeting = table.target(of: fromMeeting) ?? fromMeeting\n            }\n            let entry = fromStart\n\n            var length = 1\n            var cursor = table.target(of: entry) ?? entry\n            while cursor != entry {\n                cursor = table.target(of: cursor) ?? cursor\n                length += 1\n            }\n            return .cycle(entryID: entry, length: length)\n        }\n    }\n\n    // MARK: Part 3 - Positional queries on a terminating chain\n\n    /// The id halfway along a chain that terminates, taking the later of the\n    /// two middles when the chain has an even number of ids.\n    ///\n    /// Two cursors again, and the rate difference is doing something completely\n    /// different from what it did in Part 1: when the fast cursor runs out of\n    /// chain the slow one is standing on the middle.\n    public func midpointID(from id: String) throws(ChainError) -> String {\n        try requireTerminating(id)\n\n        var slow = id\n        var fast: String? = id\n        while let position = fast, let oneHop = table.target(of: position) {\n            slow = table.target(of: slow) ?? slow\n            fast = table.target(of: oneHop)\n        }\n        return slow\n    }\n\n    /// The id `offset` places from the end of a chain that terminates, counting\n    /// the destination itself as one.\n    ///\n    /// A lead cursor goes `offset - 1` hops out first, then both cursors step\n    /// together until the lead reaches the destination. The gap between them is\n    /// the answer, and nothing has to be stored to find it.\n    public func id(from start: String, hopsFromEnd offset: Int) throws(ChainError) -> String {\n        guard offset > 0 else { throw .nonPositiveOffset(offset) }\n        try requireTerminating(start)\n\n        var lead = start\n        var length = 1\n        for _ in 1..<offset {\n            guard let next = table.target(of: lead) else {\n                throw .offsetBeyondChain(offset: offset, length: length)\n            }\n            lead = next\n            length += 1\n        }\n\n        var trail = start\n        while let next = table.target(of: lead) {\n            lead = next\n            trail = table.target(of: trail) ?? trail\n        }\n        return trail\n    }\n\n    // MARK: Part 4 - Audit the whole table\n\n    /// Resolve every alias in the table and summarise what came back.\n    ///\n    /// This is Part 2 applied across the table and nothing else. Where two\n    /// aliases tie on length the earlier id wins, so the audit does not depend\n    /// on dictionary ordering.\n    public func audit() -> ChainAudit {\n        var terminalCount = 0\n        var cyclicCount = 0\n        var longest: LongestChain?\n        var entries: Set<String> = []\n\n        for alias in table.aliasIDs {\n            switch resolve(from: alias) {\n            case .terminal(_, let hops):\n                terminalCount += 1\n                if hops > (longest?.hops ?? -1) {\n                    longest = LongestChain(startID: alias, hops: hops)\n                }\n            case .cycle(let entryID, _):\n                cyclicCount += 1\n                entries.insert(entryID)\n            case .unknownAlias:\n                continue\n            }\n        }\n\n        return ChainAudit(\n            terminalCount: terminalCount,\n            cyclicCount: cyclicCount,\n            longestChain: longest,\n            cycleEntryIDs: entries.sorted()\n        )\n    }\n\n    // MARK: Shared gate for the positional queries\n\n    /// The positional queries only mean anything on a chain that ends, so they\n    /// share one gate, and that gate is Part 2 rather than a second walk.\n    private func requireTerminating(_ id: String) throws(ChainError) {\n        switch resolve(from: id) {\n        case .terminal:\n            return\n        case .cycle(let entryID, _):\n            throw .cyclicChain(entryID: entryID)\n        case .unknownAlias(let missing):\n            throw .unknownAlias(missing)\n        }\n    }\n}\n"
+    }
   }
 }
