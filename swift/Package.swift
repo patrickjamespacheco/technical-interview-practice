@@ -33,7 +33,9 @@ let package = Package(
         .library(name: "Problem36DispatchWindowMatcher", targets: ["Problem36DispatchWindowMatcher"]),
         .library(name: "Problem37LedgerNettingFinder", targets: ["Problem37LedgerNettingFinder"]),
         .library(name: "Problem68ClinicRoomBookingSelector", targets: ["Problem68ClinicRoomBookingSelector"]),
+        .library(name: "Problem69RelayCoveragePlanner", targets: ["Problem69RelayCoveragePlanner"]),
         .library(name: "Problem70DepotChargerCapacitySizer", targets: ["Problem70DepotChargerCapacitySizer"]),
+        .library(name: "Problem71AllocationYieldOptimiser", targets: ["Problem71AllocationYieldOptimiser"]),
         .library(name: "Problem72FilingDeadlineSequencer", targets: ["Problem72FilingDeadlineSequencer"])
     ],
     targets: [
@@ -93,8 +95,12 @@ let package = Package(
         .testTarget(name: "Problem37LedgerNettingFinderTests", dependencies: ["Problem37LedgerNettingFinder"]),
         .target(name: "Problem68ClinicRoomBookingSelector"),
         .testTarget(name: "Problem68ClinicRoomBookingSelectorTests", dependencies: ["Problem68ClinicRoomBookingSelector"]),
+        .target(name: "Problem69RelayCoveragePlanner"),
+        .testTarget(name: "Problem69RelayCoveragePlannerTests", dependencies: ["Problem69RelayCoveragePlanner"]),
         .target(name: "Problem70DepotChargerCapacitySizer"),
         .testTarget(name: "Problem70DepotChargerCapacitySizerTests", dependencies: ["Problem70DepotChargerCapacitySizer"]),
+        .target(name: "Problem71AllocationYieldOptimiser"),
+        .testTarget(name: "Problem71AllocationYieldOptimiserTests", dependencies: ["Problem71AllocationYieldOptimiser"]),
         .target(name: "Problem72FilingDeadlineSequencer"),
         .testTarget(name: "Problem72FilingDeadlineSequencerTests", dependencies: ["Problem72FilingDeadlineSequencer"])
     ]
