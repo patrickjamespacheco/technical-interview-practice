@@ -8202,5 +8202,371 @@ window.JOURNEY_PROBLEMS = {
         ]
       }
     }
+  },
+  "swift-69": {
+    "id": "swift-69",
+    "title": "Relay Coverage Planner",
+    "description": "Cover a linear corridor with the fewest radio relays by scanning a reachability frontier rather than sorting, name the gaps when no cover exists, report the chosen relays, and hold a minimum handoff overlap between neighbours.",
+    "language": "swift",
+    "industry": "iot",
+    "tags": [
+      "greedy",
+      "coverage-analysis",
+      "frontier-scan",
+      "reconstruction",
+      "optimization"
+    ],
+    "level": "senior",
+    "stubPath": "swift/practice_problems/problem_69_relay_coverage_planner.swift",
+    "testPath": "swift/Tests/Problem69RelayCoveragePlannerTests/Problem69RelayCoveragePlannerTests.swift",
+    "sourceScript": "journey-sources/swift-69.js",
+    "lessonAvailable": true,
+    "lessonScript": "journey-lessons/swift-69.js",
+    "example": "let planner = RelayCoveragePlanner()\nlet corridor = 0...5\nlet relays = [Relay(id: \"r0\", position: 0, radius: 3),\n              Relay(id: \"r1\", position: 1, radius: 4)]\nplanner.reachRange(of: relays[1], corridor: corridor) // -> 0...5\ntry planner.gaps(coveredBy: relays, corridor: corridor) // -> []\ntry planner.minimumRelayCount(relays, corridor: corridor) // -> 1\ntry planner.minimumRelaySelection(relays, corridor: corridor) // -> [\"r1\"]",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Reach ranges and gaps",
+        "contract": "Clip each relay to the corridor and return every inclusive uncovered range.\nValidate a positive-length corridor, radii, ids, and the supported count."
+      },
+      {
+        "part": 2,
+        "title": "How many relays",
+        "contract": "Scan the coverage frontier, committing the relay that reaches furthest. A gap\nis a typed failure carrying Part 1's exact ranges. Avoid a quadratic scan."
+      },
+      {
+        "part": 3,
+        "title": "Which relays",
+        "contract": "Return the chosen ids in corridor order. Parts 2 and 3 must share one private\nscanner so the count and reconstruction cannot disagree."
+      },
+      {
+        "part": 4,
+        "title": "Minimum handoff overlap",
+        "contract": "Require adjacent selected ranges to overlap by at least the given margin.\nReuse the same scanner with the shifted eligibility frontier.\n\npublic struct Relay: Equatable, Sendable {\n    public let id: String; public let position: Int; public let radius: Int\n    public init(id: String, position: Int, radius: Int) { self.id = id; self.position = position; self.radius = radius }\n}\npublic enum CoverageError: Error, Equatable, Sendable {\n    case uncoverable(gaps: [ClosedRange<Int>]); case nonPositiveCorridorLength(Int)\n    case negativeRadius(id: String); case duplicateRelayID(String); case tooManyRelays(Int)\n    case negativeMargin(Int); case notImplemented\n}\npublic struct RelayCoveragePlanner: Sendable {\n    public static let maximumRelayCount = 100_000\n    public init() {}\n    public func reachRange(of relay: Relay, corridor: ClosedRange<Int>) -> ClosedRange<Int>? { nil }\n    public func gaps(coveredBy relays: [Relay], corridor: ClosedRange<Int>) throws(CoverageError) -> [ClosedRange<Int>] { throw .notImplemented }\n    public func minimumRelayCount(_ relays: [Relay], corridor: ClosedRange<Int>) throws(CoverageError) -> Int { throw .notImplemented }\n    public func minimumRelaySelection(_ relays: [Relay], corridor: ClosedRange<Int>) throws(CoverageError) -> [String] { throw .notImplemented }\n    public func minimumRelaySelection(_ relays: [Relay], corridor: ClosedRange<Int>, handoffMargin: Int) throws(CoverageError) -> [String] { throw .notImplemented }\n}"
+      }
+    ],
+    "testSuites": [
+      "Part 1 - Reach ranges and gaps",
+      "Part 2 - How many relays",
+      "Part 3 - Which relays",
+      "Part 4 - Minimum handoff overlap"
+    ],
+    "partSuites": [
+      [
+        "Part 1 - Reach ranges and gaps"
+      ],
+      [
+        "Part 2 - How many relays"
+      ],
+      [
+        "Part 3 - Which relays"
+      ],
+      [
+        "Part 4 - Minimum handoff overlap"
+      ]
+    ],
+    "commands": {
+      "answerPath": "swift/practice_problem_answers/my_answer_69_relay_coverage_planner.swift",
+      "copyCommand": "cp swift/practice_problems/problem_69_relay_coverage_planner.swift swift/practice_problem_answers/my_answer_69_relay_coverage_planner.swift",
+      "openCommand": "code swift/practice_problems/problem_69_relay_coverage_planner.swift",
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_69_relay_coverage_planner.swift -c swift test --filter Problem69RelayCoveragePlannerTests",
+      "partTestCommands": [
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_69_relay_coverage_planner.swift -c swift test --filter Problem69RelayCoveragePlannerTests.RelayPart1Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_69_relay_coverage_planner.swift -c swift test --filter Problem69RelayCoveragePlannerTests.RelayPart2Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_69_relay_coverage_planner.swift -c swift test --filter Problem69RelayCoveragePlannerTests.RelayPart3Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_69_relay_coverage_planner.swift -c swift test --filter Problem69RelayCoveragePlannerTests.RelayPart4Tests"
+      ]
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "How will clipped inclusive ranges expose every real coverage gap?",
+          "concepts": [
+            "inclusive integer corridor ranges",
+            "clipping relay reach to caller bounds",
+            "rich infeasibility instead of a boolean"
+          ],
+          "steps": [
+            "Validate the corridor and relay records.",
+            "Clip each position-radius range to the corridor.",
+            "Merge ranges in start order and emit every stretch between them."
+          ],
+          "pitfalls": [
+            "treating a zero-radius relay as empty",
+            "forgetting the final gap",
+            "returning only whether coverage exists"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "At the next uncovered point, which local choice leaves every future option at least as good?",
+          "concepts": [
+            "the next uncovered point as frontier",
+            "furthest reachable end as the safe choice",
+            "infeasibility when no eligible relay advances"
+          ],
+          "steps": [
+            "Start at the corridor lower bound.",
+            "Consider relays able to cover the frontier.",
+            "Commit the one with the furthest end.",
+            "Advance to one past that end and repeat."
+          ],
+          "pitfalls": [
+            "advancing to the covered end instead of one past it",
+            "choosing nearest position instead of furthest end",
+            "sorting by a key without stating its proof"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "How will count and selected ids remain two views of one frontier scan?",
+          "concepts": [
+            "one private scanner",
+            "deterministic tie-breaking",
+            "reconstruction in corridor order"
+          ],
+          "steps": [
+            "Make the scanner return ids.",
+            "Project the count from the same result.",
+            "Replay the selected relays through Part 1 gap analysis."
+          ],
+          "pitfalls": [
+            "writing a second count-only loop",
+            "returning input order",
+            "failing to replay the chosen cover"
+          ]
+        },
+        {
+          "part": 4,
+          "prompt": "What changes when consecutive chosen relays must overlap by a required margin?",
+          "concepts": [
+            "handoff overlap as shifted eligibility",
+            "the same furthest-reach invariant",
+            "typed rejection of negative margins"
+          ],
+          "steps": [
+            "Validate the margin.",
+            "Restrict the next eligible start using the prior chosen end.",
+            "Keep the same furthest-end choice among eligible relays.",
+            "Verify every adjacent selected range has enough overlap."
+          ],
+          "pitfalls": [
+            "checking coverage but not adjacent handoff",
+            "copying the Part 3 scanner",
+            "counting endpoints with the wrong inclusive formula"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "A boundary point is reported uncovered",
+            "cause": "Inclusive reach was treated as half-open",
+            "check": "Use a zero-radius relay at an endpoint."
+          },
+          {
+            "symptom": "The planner chooses one extra relay",
+            "cause": "The frontier advances to the last covered point instead of the next point",
+            "check": "After a relay ending at f, inspect whether the next frontier is f + 1."
+          },
+          {
+            "symptom": "Count and selection disagree",
+            "cause": "Two frontier loops were implemented",
+            "check": "Confirm both public methods read one private scanner."
+          },
+          {
+            "symptom": "Coverage succeeds but a receiver cannot hand off",
+            "cause": "The margin overload checks union coverage only",
+            "check": "Measure the inclusive overlap of every adjacent selected pair."
+          }
+        ]
+      }
+    }
+  },
+  "swift-71": {
+    "id": "swift-71",
+    "title": "Allocation Yield Optimiser",
+    "description": "Allocate a cash budget across lots by yield ratio with exact rational arithmetic, measure what the same rule loses when lots become all-or-nothing, and return the exchange that improves any allocation the rule would not have produced.",
+    "language": "swift",
+    "industry": "fintech",
+    "tags": [
+      "greedy",
+      "exchange-argument",
+      "fractional-knapsack",
+      "rational-arithmetic",
+      "optimization"
+    ],
+    "level": "senior",
+    "stubPath": "swift/practice_problems/problem_71_allocation_yield_optimiser.swift",
+    "testPath": "swift/Tests/Problem71AllocationYieldOptimiserTests/Problem71AllocationYieldOptimiserTests.swift",
+    "sourceScript": "journey-sources/swift-71.js",
+    "lessonAvailable": true,
+    "lessonScript": "journey-lessons/swift-71.js",
+    "example": "let optimiser = YieldOptimiser()\nlet lots = [Lot(id: \"a\", sizeCents: 10, yieldCents: 60),\n            Lot(id: \"b\", sizeCents: 20, yieldCents: 100),\n            Lot(id: \"c\", sizeCents: 30, yieldCents: 120)]\ntry optimiser.orderedByYieldRatio(lots).map(\\.id) // -> [\"a\", \"b\", \"c\"]\ntry optimiser.greedyShortfall(lots, budgetCents: 50) // -> 60\ntry optimiser.allocateDivisible(lots, budgetCents: 50).totalYield // -> 240/1",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "Ratio ordering",
+        "contract": "Validate the lots and order them by exact yield per cent, ties by id. Compare\nratios with integer cross-products, never floating point."
+      },
+      {
+        "part": 2,
+        "title": "Fractional allocation",
+        "contract": "Take whole lots in ratio order, then the affordable fraction of the next.\nDivisibility makes the exchange argument safe: money moved from a lower ratio\nlot to a higher ratio lot always improves yield."
+      },
+      {
+        "part": 3,
+        "title": "All or nothing, and the shortfall",
+        "contract": "Apply the same rule to whole lots, then find the exact best subset under the\ndocumented ceiling and report the loss. The ratio proof breaks because a\npartial exchange is forbidden; use exhaustive subset search, not greedy twice."
+      },
+      {
+        "part": 4,
+        "title": "The exchange certificate",
+        "contract": "For a divisible allocation return either optimality or the concrete amount to\nmove from a lower-ratio lot to a higher-ratio one, with its exact gain.\n\npublic struct Ratio: Equatable, Comparable, Sendable {\n    public let numerator: Int; public let denominator: Int\n    public init(_ numerator: Int, over denominator: Int) { precondition(numerator >= 0 && denominator > 0); var a = numerator, b = denominator; while b != 0 { (a, b) = (b, a % b) }; let d = max(1, a); self.numerator = numerator / d; self.denominator = denominator / d }\n    public static func < (lhs: Ratio, rhs: Ratio) -> Bool { lhs.numerator * rhs.denominator < rhs.numerator * lhs.denominator }\n}\npublic struct Lot: Equatable, Sendable { public let id: String; public let sizeCents: Int; public let yieldCents: Int; public init(id: String, sizeCents: Int, yieldCents: Int) { self.id = id; self.sizeCents = sizeCents; self.yieldCents = yieldCents } }\npublic struct DivisibleAllocation: Equatable, Sendable {\n    public let wholeLots: [String]; public let partialLot: (id: String, fraction: Ratio)?; public let totalYield: Ratio\n    public init(wholeLots: [String], partialLot: (id: String, fraction: Ratio)?, totalYield: Ratio) { self.wholeLots = wholeLots; self.partialLot = partialLot; self.totalYield = totalYield }\n    public static func == (lhs: Self, rhs: Self) -> Bool { false }\n}\npublic struct WholeAllocation: Equatable, Sendable { public let lots: [String]; public let totalYield: Int; public let unusedBudgetCents: Int; public init(lots: [String], totalYield: Int, unusedBudgetCents: Int) { self.lots = lots; self.totalYield = totalYield; self.unusedBudgetCents = unusedBudgetCents } }\npublic enum ExchangeCertificate: Equatable, Sendable { case alreadyOptimal; case improve(reduce: String, increase: String, amountCents: Int, gain: Ratio) }\npublic enum AllocationError: Error, Equatable, Sendable { case nonPositiveSize(id: String); case negativeYield(id: String); case duplicateLotID(String); case negativeBudget(Int); case tooManyLotsForExactSearch(Int); case tooManyLots(Int); case allocationExceedsBudget(Int); case unknownLotInAllocation(String); case notImplemented }\npublic struct YieldOptimiser: Sendable {\n    public static let maximumExactSearchLotCount = 20; public static let maximumLotCount = 100_000\n    public init() {}\n    public func orderedByYieldRatio(_ lots: [Lot]) throws(AllocationError) -> [Lot] { throw .notImplemented }\n    public func allocateDivisible(_ lots: [Lot], budgetCents: Int) throws(AllocationError) -> DivisibleAllocation { throw .notImplemented }\n    public func allocateWholeByRatio(_ lots: [Lot], budgetCents: Int) throws(AllocationError) -> WholeAllocation { throw .notImplemented }\n    public func allocateWholeExactly(_ lots: [Lot], budgetCents: Int) throws(AllocationError) -> WholeAllocation { throw .notImplemented }\n    public func greedyShortfall(_ lots: [Lot], budgetCents: Int) throws(AllocationError) -> Int { throw .notImplemented }\n    public func certificate(for allocation: [String: Int], lots: [Lot], budgetCents: Int) throws(AllocationError) -> ExchangeCertificate { throw .notImplemented }\n}"
+      }
+    ],
+    "testSuites": [
+      "Part 1 - Ratio ordering",
+      "Part 2 - Fractional allocation",
+      "Part 3 - All or nothing, and the shortfall",
+      "Part 4 - The exchange certificate"
+    ],
+    "partSuites": [
+      [
+        "Part 1 - Ratio ordering"
+      ],
+      [
+        "Part 2 - Fractional allocation"
+      ],
+      [
+        "Part 3 - All or nothing, and the shortfall"
+      ],
+      [
+        "Part 4 - The exchange certificate"
+      ]
+    ],
+    "commands": {
+      "answerPath": "swift/practice_problem_answers/my_answer_71_allocation_yield_optimiser.swift",
+      "copyCommand": "cp swift/practice_problems/problem_71_allocation_yield_optimiser.swift swift/practice_problem_answers/my_answer_71_allocation_yield_optimiser.swift",
+      "openCommand": "code swift/practice_problems/problem_71_allocation_yield_optimiser.swift",
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_71_allocation_yield_optimiser.swift -c swift test --filter Problem71AllocationYieldOptimiserTests",
+      "partTestCommands": [
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_71_allocation_yield_optimiser.swift -c swift test --filter Problem71AllocationYieldOptimiserTests.YieldPart1Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_71_allocation_yield_optimiser.swift -c swift test --filter Problem71AllocationYieldOptimiserTests.YieldPart2Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_71_allocation_yield_optimiser.swift -c swift test --filter Problem71AllocationYieldOptimiserTests.YieldPart3Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_71_allocation_yield_optimiser.swift -c swift test --filter Problem71AllocationYieldOptimiserTests.YieldPart4Tests"
+      ]
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "How can ratio order remain exact and deterministic in cents?",
+          "concepts": [
+            "cross multiplication instead of floating point",
+            "reduced non-negative rational values",
+            "id tie-breaks"
+          ],
+          "steps": [
+            "Validate every lot.",
+            "Compare cross-products.",
+            "Break equal ratios by id.",
+            "Reduce every Ratio by the greatest common divisor."
+          ],
+          "pitfalls": [
+            "using Double",
+            "leaving rationals unreduced",
+            "omitting the tie-break"
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "Which property makes ratio-greedy provably safe for this variant?",
+          "concepts": [
+            "divisibility as the proof precondition",
+            "moving budget from lower ratio to higher ratio",
+            "one partial final lot"
+          ],
+          "steps": [
+            "Walk exact ratio order.",
+            "Take each affordable lot whole.",
+            "Spend the remainder on a fraction of the next lot.",
+            "Return the exact total yield."
+          ],
+          "pitfalls": [
+            "taking more than one partial lot",
+            "rounding the final yield",
+            "stating ratio order without the exchange argument"
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "Why does all-or-nothing allocation invalidate that exchange, and what independent oracle measures the loss?",
+          "concepts": [
+            "minimum ticket size forbids a partial exchange",
+            "ratio greedy can strand budget",
+            "exhaustive subset search under a strict ceiling"
+          ],
+          "steps": [
+            "Run ratio order while taking whole lots only.",
+            "Enumerate every subset independently.",
+            "Keep the best feasible whole allocation.",
+            "Subtract greedy yield from exact yield."
+          ],
+          "pitfalls": [
+            "reusing greedy inside the exact method",
+            "assuming a fractional proof survives indivisibility",
+            "shifting a bit before checking the lot ceiling"
+          ]
+        },
+        {
+          "part": 4,
+          "prompt": "How can code return the exchange proof itself?",
+          "concepts": [
+            "a ratio inversion",
+            "a feasible transferred amount",
+            "exact positive gain"
+          ],
+          "steps": [
+            "Validate the caller allocation.",
+            "Find an underfilled higher-ratio lot and funded lower-ratio lot.",
+            "Transfer the largest feasible amount.",
+            "Return the exact gain or alreadyOptimal."
+          ],
+          "pitfalls": [
+            "returning an arbitrary hill-climbing move",
+            "accepting unknown ids",
+            "reporting a non-positive gain"
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "Ratio ties or totals change across runs",
+            "cause": "Floating-point division is used",
+            "check": "Compare ratios only by integer cross-products and reduce returned rationals."
+          },
+          {
+            "symptom": "Whole-lot shortfall is always zero",
+            "cause": "The exact allocator repeats ratio greedy",
+            "check": "For sizes 10, 20, 30 and yields 60, 100, 120 under budget 50, verify greedy 160 and exact 220."
+          },
+          {
+            "symptom": "The certificate claims a swap that does not improve yield",
+            "cause": "The pair is not a strict ratio inversion",
+            "check": "Apply the returned transfer and compare exact rational totals."
+          },
+          {
+            "symptom": "Large exact searches trap",
+            "cause": "The bit shift occurs before the twenty-lot guard",
+            "check": "Reject the count before constructing the subset bound."
+          }
+        ]
+      }
+    }
   }
 };

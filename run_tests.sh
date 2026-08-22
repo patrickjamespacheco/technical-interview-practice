@@ -171,8 +171,14 @@ if [[ "$ANSWER_ABS" == *.swift ]]; then
     elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem68ClinicRoomBookingSelector/Problem.swift" ]]; then
         PROBLEM_ID="68_clinic_room_booking_selector"
         SAME_FILE=1
+    elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem69RelayCoveragePlanner/Problem.swift" ]]; then
+        PROBLEM_ID="69_relay_coverage_planner"
+        SAME_FILE=1
     elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem70DepotChargerCapacitySizer/Problem.swift" ]]; then
         PROBLEM_ID="70_depot_charger_capacity_sizer"
+        SAME_FILE=1
+    elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem71AllocationYieldOptimiser/Problem.swift" ]]; then
+        PROBLEM_ID="71_allocation_yield_optimiser"
         SAME_FILE=1
     elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem72FilingDeadlineSequencer/Problem.swift" ]]; then
         PROBLEM_ID="72_filing_deadline_sequencer"
@@ -212,7 +218,9 @@ if [[ "$ANSWER_ABS" == *.swift ]]; then
         36_dispatch_window_matcher) ACTIVE_REL="Sources/Problem36DispatchWindowMatcher/Problem.swift" ;;
         37_ledger_netting_finder) ACTIVE_REL="Sources/Problem37LedgerNettingFinder/Problem.swift" ;;
         68_clinic_room_booking_selector) ACTIVE_REL="Sources/Problem68ClinicRoomBookingSelector/Problem.swift" ;;
+        69_relay_coverage_planner) ACTIVE_REL="Sources/Problem69RelayCoveragePlanner/Problem.swift" ;;
         70_depot_charger_capacity_sizer) ACTIVE_REL="Sources/Problem70DepotChargerCapacitySizer/Problem.swift" ;;
+        71_allocation_yield_optimiser) ACTIVE_REL="Sources/Problem71AllocationYieldOptimiser/Problem.swift" ;;
         72_filing_deadline_sequencer) ACTIVE_REL="Sources/Problem72FilingDeadlineSequencer/Problem.swift" ;;
         *) echo "Error: unknown Swift problem ID '$PROBLEM_ID'; no target mapping exists."; exit 1 ;;
     esac
