@@ -559,6 +559,28 @@ to Part 1.
 - When concurrent operations accept timestamps, give competing tasks the same
   injected instant unless timestamp ordering is the behavior under test. Distinct
   synthetic times can make actor scheduling order change window membership.
+- **A stub may ship a provided helper type when building it is not the lesson.**
+  The standard library has no heap, and a problem whose subject is a greedy sweep
+  should not spend its budget on sift-up and sift-down. Problem 70 ships a
+  `MinHeap` and problem 72 a `MaxHeap`, each declared in the stub itself rather
+  than in a second file under `Sources/`, so that the stub a candidate copies is
+  compilable on its own and the reference answer stays byte-identical to what
+  `execution.code` carries. Say in the opening comment that the type is provided
+  and why. Where the heap itself is the lesson, do the opposite.
+
+## Catalogue numbers are allocated in family blocks, so gaps are deliberate
+
+Problem numbers are not a dense sequence and must not be renumbered to close a
+gap. The pattern-family build-out reserves a block of five consecutive numbers
+per family up front, and families land in whatever order the ship tasks run, so
+`index.html` legitimately jumps from 37 to 68. Within a block the numbers are
+assigned by the family's difficulty ladder rather than by build order, which is
+why 68, 70 and 72 can exist while 69 and 71 do not yet.
+
+Nothing in the toolchain requires contiguity: `PROBLEMS` is an array,
+`swift/Package.swift` is a list of named targets, and every journey key is
+`<language>-<number>`. A new problem takes the number its family block assigns
+it, never the next free integer.
 
 ## Keeping the problem index up to date
 

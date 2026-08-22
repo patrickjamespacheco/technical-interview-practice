@@ -31,7 +31,10 @@ let package = Package(
         .library(name: "Problem34FloodplainPondingAnalyzer", targets: ["Problem34FloodplainPondingAnalyzer"]),
         .library(name: "Problem35RedirectChainResolver", targets: ["Problem35RedirectChainResolver"]),
         .library(name: "Problem36DispatchWindowMatcher", targets: ["Problem36DispatchWindowMatcher"]),
-        .library(name: "Problem37LedgerNettingFinder", targets: ["Problem37LedgerNettingFinder"])
+        .library(name: "Problem37LedgerNettingFinder", targets: ["Problem37LedgerNettingFinder"]),
+        .library(name: "Problem68ClinicRoomBookingSelector", targets: ["Problem68ClinicRoomBookingSelector"]),
+        .library(name: "Problem70DepotChargerCapacitySizer", targets: ["Problem70DepotChargerCapacitySizer"]),
+        .library(name: "Problem72FilingDeadlineSequencer", targets: ["Problem72FilingDeadlineSequencer"])
     ],
     targets: [
         .target(name: "Problem03PermissionManager"),
@@ -87,6 +90,12 @@ let package = Package(
         .target(name: "Problem36DispatchWindowMatcher"),
         .testTarget(name: "Problem36DispatchWindowMatcherTests", dependencies: ["Problem36DispatchWindowMatcher"]),
         .target(name: "Problem37LedgerNettingFinder"),
-        .testTarget(name: "Problem37LedgerNettingFinderTests", dependencies: ["Problem37LedgerNettingFinder"])
+        .testTarget(name: "Problem37LedgerNettingFinderTests", dependencies: ["Problem37LedgerNettingFinder"]),
+        .target(name: "Problem68ClinicRoomBookingSelector"),
+        .testTarget(name: "Problem68ClinicRoomBookingSelectorTests", dependencies: ["Problem68ClinicRoomBookingSelector"]),
+        .target(name: "Problem70DepotChargerCapacitySizer"),
+        .testTarget(name: "Problem70DepotChargerCapacitySizerTests", dependencies: ["Problem70DepotChargerCapacitySizer"]),
+        .target(name: "Problem72FilingDeadlineSequencer"),
+        .testTarget(name: "Problem72FilingDeadlineSequencerTests", dependencies: ["Problem72FilingDeadlineSequencer"])
     ]
 )
