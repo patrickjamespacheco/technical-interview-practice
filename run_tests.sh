@@ -168,6 +168,15 @@ if [[ "$ANSWER_ABS" == *.swift ]]; then
     elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem37LedgerNettingFinder/Problem.swift" ]]; then
         PROBLEM_ID="37_ledger_netting_finder"
         SAME_FILE=1
+    elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem68ClinicRoomBookingSelector/Problem.swift" ]]; then
+        PROBLEM_ID="68_clinic_room_booking_selector"
+        SAME_FILE=1
+    elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem70DepotChargerCapacitySizer/Problem.swift" ]]; then
+        PROBLEM_ID="70_depot_charger_capacity_sizer"
+        SAME_FILE=1
+    elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem72FilingDeadlineSequencer/Problem.swift" ]]; then
+        PROBLEM_ID="72_filing_deadline_sequencer"
+        SAME_FILE=1
     elif [[ "$ANSWER_BASENAME" =~ (^|_)([0-9][0-9]_[a-z0-9_]+)\.swift$ ]]; then
         PROBLEM_ID="${BASH_REMATCH[2]}"
     else
@@ -202,6 +211,9 @@ if [[ "$ANSWER_ABS" == *.swift ]]; then
         35_redirect_chain_resolver) ACTIVE_REL="Sources/Problem35RedirectChainResolver/Problem.swift" ;;
         36_dispatch_window_matcher) ACTIVE_REL="Sources/Problem36DispatchWindowMatcher/Problem.swift" ;;
         37_ledger_netting_finder) ACTIVE_REL="Sources/Problem37LedgerNettingFinder/Problem.swift" ;;
+        68_clinic_room_booking_selector) ACTIVE_REL="Sources/Problem68ClinicRoomBookingSelector/Problem.swift" ;;
+        70_depot_charger_capacity_sizer) ACTIVE_REL="Sources/Problem70DepotChargerCapacitySizer/Problem.swift" ;;
+        72_filing_deadline_sequencer) ACTIVE_REL="Sources/Problem72FilingDeadlineSequencer/Problem.swift" ;;
         *) echo "Error: unknown Swift problem ID '$PROBLEM_ID'; no target mapping exists."; exit 1 ;;
     esac
     if [[ "${CMD[0]}" != "swift" || "${CMD[1]:-}" != "test" ]]; then

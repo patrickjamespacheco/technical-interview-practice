@@ -6231,5 +6231,618 @@
       },
       "code": "public struct LedgerEntry: Equatable, Sendable {\n    public let id: String\n    public let amountMinor: Int\n\n    public init(id: String, amountMinor: Int) {\n        self.id = id\n        self.amountMinor = amountMinor\n    }\n}\n\npublic struct EntrySet: Equatable, Sendable {\n    public let entryIDs: [String]\n    public let total: Int\n\n    public init(entryIDs: [String], total: Int) {\n        self.entryIDs = entryIDs\n        self.total = total\n    }\n}\n\npublic struct PairScan: Equatable, Sendable {\n    public let exactMatches: [EntrySet]\n    public let nearest: EntrySet?\n\n    public init(exactMatches: [EntrySet], nearest: EntrySet?) {\n        self.exactMatches = exactMatches\n        self.nearest = nearest\n    }\n}\n\npublic enum NettingError: Error, Equatable, Sendable {\n    case unsortedLedger(index: Int)\n    case nonPositiveGroupSize(Int)\n    case groupSizeExceedsLedger(Int)\n    case groupSizeExceedsSupportedMaximum(k: Int, maximum: Int)\n    case amountRangeUnsupported(maxAbsoluteAmount: Int)\n    case notImplemented\n}\n\npublic struct NettingFinder: Sendable {\n    /// The largest group this finder will assemble. Sums of up to this many\n    /// amounts are what the range guard below is sized against.\n    public static let maxGroupSize = 8\n\n    /// The ceiling on a single entry's magnitude. It is a machine limit rather\n    /// than an accounting one: Swift traps on `Int` overflow in debug and in\n    /// release alike, so a sum that does not fit ends the process instead of\n    /// returning a wrong number. Bounding a single amount here is what makes\n    /// every sum of up to `maxGroupSize` amounts safe without a check inside\n    /// the sweep.\n    public static let maxAbsoluteAmount = Int.max / (maxGroupSize + 1)\n\n    private let ledger: [LedgerEntry]\n\n    public init(ledger: [LedgerEntry]) throws(NettingError) {\n        for (index, entry) in ledger.enumerated() {\n            guard entry.amountMinor.magnitude <= UInt(Self.maxAbsoluteAmount) else {\n                throw .amountRangeUnsupported(maxAbsoluteAmount: Self.maxAbsoluteAmount)\n            }\n            guard index > 0 else { continue }\n            let previous = ledger[index - 1]\n            let ordered = previous.amountMinor < entry.amountMinor\n                || (previous.amountMinor == entry.amountMinor && previous.id <= entry.id)\n            guard ordered else { throw .unsortedLedger(index: index) }\n        }\n        self.ledger = ledger\n    }\n\n    /// The day-file as read, for a caller that wants to check what it handed in.\n    public var entries: [LedgerEntry] { ledger }\n\n    // MARK: Part 1 - Scan one range for pairs\n\n    /// Every pair inside `range` whose amounts net to `target`, plus the pair\n    /// that came closest whether or not any of them landed.\n    ///\n    /// Two cursors converge from the ends of the range. Sortedness is what\n    /// makes that legal: when the running sum is under the target the only way\n    /// to raise it is to give up the smallest amount still in play, and when it\n    /// is over, the only way to lower it is to give up the largest.\n    ///\n    /// The nearest pair rides along rather than being computed by a second\n    /// sweep, because the callers in later parts need it. A method that\n    /// returned only the exact matches would force each of them to re-run this\n    /// whole sweep with a different accumulator, which is the same algorithm\n    /// written twice.\n    ///\n    /// Two sets naming the same amounts are one explanation for a reconciler,\n    /// so a repeated amount is consumed once: after a hit, both cursors step\n    /// past every entry carrying the amount they just used, and every reported\n    /// set names the earliest entries carrying its amounts.\n    public func scanPairs(summingTo target: Int, in range: Range<Int>) -> PairScan {\n        var lo = max(range.lowerBound, 0)\n        var hi = min(range.upperBound, ledger.count) - 1\n\n        var exactMatches: [EntrySet] = []\n        var nearest: EntrySet?\n\n        while lo < hi {\n            let sum = ledger[lo].amountMinor + ledger[hi].amountMinor\n\n            if isCloser(sum, than: nearest, to: target) {\n                nearest = set(at: [lo, earliestWitness(of: hi, after: lo)], total: sum)\n            }\n\n            if sum == target {\n                exactMatches.append(set(at: [lo, earliestWitness(of: hi, after: lo)], total: sum))\n\n                let lowAmount = ledger[lo].amountMinor\n                let highAmount = ledger[hi].amountMinor\n                while lo < hi, ledger[lo].amountMinor == lowAmount { lo += 1 }\n                while lo < hi, ledger[hi].amountMinor == highAmount { hi -= 1 }\n            } else if sum < target {\n                lo += 1\n            } else {\n                hi -= 1\n            }\n        }\n\n        return PairScan(exactMatches: exactMatches, nearest: nearest)\n    }\n\n    // MARK: Part 2 - Triples\n\n    /// Every distinct set of three entries netting to `target`.\n    ///\n    /// The sweep from Part 1 becomes the inner loop. Fixing the first entry\n    /// turns the question into a pair question over the suffix after it, which\n    /// is the whole reduction, and the range argument is what lets that suffix\n    /// be handed down without copying the file.\n    ///\n    /// Duplicate suppression happens in two places and both are needed. The\n    /// outer loop skips an amount equal to the one it just used, because that\n    /// entry would ask the same question of a shorter suffix and get back a\n    /// subset of the same answers. The inner skips live in Part 1.\n    public func triples(summingTo target: Int) -> [EntrySet] {\n        var results: [EntrySet] = []\n        guard ledger.count >= 3 else { return results }\n\n        for index in 0...(ledger.count - 3) {\n            if index > 0, ledger[index].amountMinor == ledger[index - 1].amountMinor { continue }\n\n            let scan = scanPairs(\n                summingTo: residual(of: target, minus: ledger[index].amountMinor),\n                in: (index + 1)..<ledger.count\n            )\n            for pair in scan.exactMatches {\n                results.append(prepending(index, to: pair))\n            }\n        }\n\n        return results\n    }\n\n    // MARK: Part 3 - Nearest triple when nothing nets exactly\n\n    /// The set of three entries whose total comes closest to `target`.\n    ///\n    /// This is the same outer enumeration as Part 2 reading the other half of\n    /// what Part 1 already returns. Nothing about the sweep is rewritten, which\n    /// is exactly what the richer return type bought.\n    ///\n    /// Ties resolve to the lower total, and then to the entries that appear\n    /// earlier in the file, so two runs over one day-file cannot disagree.\n    public func closestTriple(to target: Int) -> EntrySet? {\n        guard ledger.count >= 3 else { return nil }\n\n        var best: EntrySet?\n        for index in 0...(ledger.count - 3) {\n            if index > 0, ledger[index].amountMinor == ledger[index - 1].amountMinor { continue }\n\n            let scan = scanPairs(\n                summingTo: residual(of: target, minus: ledger[index].amountMinor),\n                in: (index + 1)..<ledger.count\n            )\n            guard let pair = scan.nearest else { continue }\n\n            let candidate = prepending(index, to: pair)\n            if isCloser(candidate.total, than: best, to: target) {\n                best = candidate\n            }\n        }\n\n        return best\n    }\n\n    // MARK: Part 4 - The general k-entry reduction\n\n    /// Every distinct set of exactly `k` entries netting to `target`.\n    ///\n    /// The reduction is the point: a k-sum is a (k - 1)-sum over each suffix,\n    /// and the recursion bottoms out in exactly one call to the Part 1 sweep\n    /// when two entries are left to place. There is one sweep in this file and\n    /// four questions asked of it.\n    public func groups(ofSize k: Int, summingTo target: Int) throws(NettingError) -> [EntrySet] {\n        guard k > 0 else { throw .nonPositiveGroupSize(k) }\n        guard k <= Self.maxGroupSize else {\n            throw .groupSizeExceedsSupportedMaximum(k: k, maximum: Self.maxGroupSize)\n        }\n        guard k <= ledger.count else { throw .groupSizeExceedsLedger(k) }\n\n        return reduce(k: k, summingTo: target, from: 0)\n    }\n\n    // MARK: The reduction, and the pieces every part shares\n\n    private func reduce(k: Int, summingTo target: Int, from start: Int) -> [EntrySet] {\n        if k == 2 {\n            return scanPairs(summingTo: target, in: start..<ledger.count).exactMatches\n        }\n        if k == 1 {\n            guard let index = (start..<ledger.count).first(where: { ledger[$0].amountMinor == target })\n            else { return [] }\n            return [set(at: [index], total: target)]\n        }\n\n        var results: [EntrySet] = []\n        var index = start\n        while index <= ledger.count - k {\n            defer { index += 1 }\n            if index > start, ledger[index].amountMinor == ledger[index - 1].amountMinor { continue }\n\n            let deeper = reduce(\n                k: k - 1,\n                summingTo: residual(of: target, minus: ledger[index].amountMinor),\n                from: index + 1\n            )\n            for group in deeper {\n                results.append(prepending(index, to: group))\n            }\n        }\n\n        return results\n    }\n\n    private func set(at indices: [Int], total: Int) -> EntrySet {\n        EntrySet(entryIDs: indices.map { ledger[$0].id }, total: total)\n    }\n\n    private func prepending(_ index: Int, to group: EntrySet) -> EntrySet {\n        EntrySet(\n            entryIDs: [ledger[index].id] + group.entryIDs,\n            total: ledger[index].amountMinor + group.total\n        )\n    }\n\n    /// The target the rest of a group has to reach once one entry is fixed.\n    ///\n    /// A caller may pass any `Int` as a target, and the entry amounts are\n    /// bounded but the target is not, so this subtraction is the one place in\n    /// the file where overflow is reachable. Saturating is the right answer\n    /// rather than trapping or wrapping: a residual that does not fit in an\n    /// `Int` is one no bounded group of amounts can ever reach, and the\n    /// saturated value behaves exactly like the unreachable target it stands\n    /// for, including for the nearest-miss question.\n    private func residual(of target: Int, minus amount: Int) -> Int {\n        let (value, overflowed) = target.subtractingReportingOverflow(amount)\n        guard overflowed else { return value }\n        return amount < 0 ? Int.max : Int.min\n    }\n\n    /// How far a total sits from the target, saturating rather than trapping\n    /// for the same reason the residual does.\n    private func distance(_ total: Int, to target: Int) -> Int {\n        let (value, overflowed) = total.subtractingReportingOverflow(target)\n        guard !overflowed, value != Int.min else { return Int.max }\n        return value < 0 ? -value : value\n    }\n\n    /// The earliest entry after `lo` carrying the same amount as `index`.\n    ///\n    /// A hit can only land on a block boundary, because advancing a cursor\n    /// inside a run of equal amounts leaves the sum unchanged. So the low\n    /// cursor is already on the first entry carrying its amount while the high\n    /// cursor is on the last entry carrying its own, and naming the first of\n    /// both is what makes a reported set the earliest witness rather than\n    /// whichever entry the sweep happened to stop on.\n    private func earliestWitness(of index: Int, after lo: Int) -> Int {\n        let amount = ledger[index].amountMinor\n        var witness = index\n        while witness - 1 > lo, ledger[witness - 1].amountMinor == amount {\n            witness -= 1\n        }\n        return witness\n    }\n\n    /// The nearest-miss ordering, stated once so Parts 1 and 3 cannot drift:\n    /// closer wins, then the lower total, then the entries that appear earlier\n    /// in the file, which the sweep and the outer enumeration both reach first.\n    private func isCloser(_ total: Int, than current: EntrySet?, to target: Int) -> Bool {\n        guard let current else { return true }\n\n        let candidate = distance(total, to: target)\n        let incumbent = distance(current.total, to: target)\n        if candidate != incumbent { return candidate < incumbent }\n        return total < current.total\n    }\n}\n"
     }
+  },
+  "swift-68": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "Every later part reads the day through one order. What is the key, and what happens to two requests that finish at the same minute?",
+        "concepts": [
+          "half-open bookings, so a request beginning as the room is released is compatible with it",
+          "one sort key for the whole file, chosen for the sweep that comes next rather than for readability",
+          "a deterministic tie-break, without which the selection is not reproducible and no test can assert it"
+        ],
+        "steps": [
+          "Write the overlap test first: two bookings collide only when each starts strictly before the other ends.",
+          "Check it on the pair that meets at a boundary before moving on. That single comparison decides every answer in the file.",
+          "Order the day by the minute the room is released, earliest first.",
+          "Break ties by id. Two requests ending at the same minute must come back in the same order on every run.",
+          "Validate as part of ordering, since every later part reaches the day through it: a real span, no repeated id, and no more requests than the supported count."
+        ],
+        "pitfalls": [
+          "testing overlap with `<=` on one side, which makes back-to-back requests collide and quietly halves the answer",
+          "sorting without a tie-break, so a day with two equal finishes gives a different selection depending on the sort's internals",
+          "validating in each part separately, which drifts as soon as one part gains a check the others do not"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "Say out loud why earliest-finish is safe before you write the loop. If you cannot, you have no evidence the answer is right.",
+        "concepts": [
+          "the exchange argument: swapping an optimal schedule's first booking for the earliest-finishing compatible one cannot reduce the count",
+          "a greedy choice that is never revisited, which is what makes one pass enough",
+          "returning the selection rather than the count, because the next part needs the bookings themselves"
+        ],
+        "steps": [
+          "State the argument in one sentence: the earliest finish leaves at least as much of the day free to the right, so the swap never loses a booking.",
+          "Walk the ordered day keeping a single piece of state, the minute the room was last released.",
+          "Accept a request when it starts at or after that minute, and skip it otherwise. Half-open means `>=`, not `>`.",
+          "Try the wrong keys on paper before trusting the right one: start time fails on three requests, shortest duration fails on three others.",
+          "Make the count read the selection's size rather than running a second sweep of its own."
+        ],
+        "pitfalls": [
+          "sorting by start time, which commits to a long request first and hosts one booking where two fit",
+          "sorting by shortest duration, which takes a short request that collides with both of its neighbours",
+          "returning only a count, which forces the next part to write the same sweep a second time"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "This is a minimisation and the last part was a maximisation. Why is there no second algorithm to write here?",
+        "concepts": [
+          "fewest declines and most bookings hosted are one answer read from opposite ends",
+          "a set complement over the order already established, not a new sweep",
+          "reporting in the same finish order, so a caller can read the two lists side by side"
+        ],
+        "steps": [
+          "Take the ids of what the previous part accepted.",
+          "Walk the ordered day again and keep whatever is not in that set.",
+          "Return them in finish order, which is what makes the accepted and declined lists line up for a reader.",
+          "Sanity check the shape: the two lists together must be exactly the day, with nothing in both."
+        ],
+        "pitfalls": [
+          "writing a fresh greedy that minimises declines directly, which is the same problem solved twice and can disagree with itself",
+          "comparing whole records instead of ids, which is fine until two requests are genuinely equal",
+          "returning the declines in input order, so the two lists no longer read against each other"
+        ]
+      },
+      {
+        "part": 4,
+        "prompt": "The check-in count turns out to equal the last part's answer. Argue why before you write anything, because the argument is the implementation.",
+        "concepts": [
+          "point stabbing: the fewest instants touching every request on the day's list",
+          "on intervals the smallest observing set and the largest compatible selection are the same number",
+          "attribution as the actual work, since every request has to be filed under a check-in including the declined ones"
+        ],
+        "steps": [
+          "Argue the equality first. A request was declined only because it begins before some accepted request is released while finishing no earlier than it does.",
+          "Conclude that the accepted request's last minute lies inside it, so the accepted requests' last minutes observe the whole day.",
+          "Take the last minute of each accepted request. Half-open means one minute before its end, not its end.",
+          "File every request on the day's list under the earliest check-in that falls inside it, which needs a walk over the requests rather than over the selection.",
+          "Sort each check-in's ids so the plan is reproducible, and let the bare minutes be a projection of the plan rather than a separate computation."
+        ],
+        "pitfalls": [
+          "placing a check-in on a request's end minute, where the room has already been released and nothing is observed",
+          "filing only the accepted requests, which leaves the declined ones unobserved and makes the plan wrong rather than merely incomplete",
+          "writing a second sweep for the minutes instead of reading them off the selection, which is the composition this part exists to teach"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "Back-to-back requests are reported as colliding and the room hosts half of what it should",
+          "cause": "The overlap test uses `<=` where the half-open convention needs `<`, so a release minute counts as shared",
+          "check": "Ask whether a request running to 600 overlaps one starting at 600 and confirm it does not."
+        },
+        {
+          "symptom": "The room hosts one request on a day where two obviously fit",
+          "cause": "The sweep is ordered by start time or by duration, and commits to a request that blocks both of the others",
+          "check": "Run a day holding one long request and two short disjoint ones inside it, and confirm both short ones are accepted."
+        },
+        {
+          "symptom": "The selection changes between runs on a day with two requests finishing at the same minute",
+          "cause": "The ordering has no tie-break, so the sort's internal behaviour decides which of the two is seen first",
+          "check": "Hand the same tied day over twice in different input orders and confirm the selection is identical."
+        },
+        {
+          "symptom": "Accepted and declined do not add up to the day's request count",
+          "cause": "The declines are computed by a second greedy rather than as the complement of the selection",
+          "check": "Confirm the two lists are disjoint and their union is exactly the day, on a day with nested requests."
+        },
+        {
+          "symptom": "A check-in observes nothing, or a request is left with no check-in inside it",
+          "cause": "The check-in is placed on a request's end rather than on its last minute, so half-open puts it past the request",
+          "check": "Take three requests that meet at their boundaries and confirm each check-in is one minute before an end."
+        },
+        {
+          "symptom": "The supervision plan omits requests that were declined",
+          "cause": "The attribution walks the accepted selection rather than the whole day's list",
+          "check": "Confirm every request id appears exactly once across the plan on a day where most requests are declined."
+        }
+      ]
+    },
+    "execution": {
+      "timeBudget": {
+        "navigation": 4,
+        "solution": 9,
+        "coding": 26,
+        "verification": 6
+      },
+      "navigation": {
+        "say": "The minute worth spending here is on the interval convention and on which requests the last question covers. Half-open or closed changes one comparison in four places, and whether supervision covers the whole list or only the accepted subset changes whether that part is interesting at all.",
+        "questions": [
+          "Are bookings half-open, so a request beginning as the room is released is compatible with it?",
+          "Are the requests all for one room, or is capacity part of the question?",
+          "Do the supervisory check-ins have to observe every request on the list, or only the ones the room accepted?",
+          "Does the caller need the bookings themselves, or would counts be enough?"
+        ],
+        "assumptions": [
+          "Bookings are half-open in minutes from midnight, so touching requests are compatible.",
+          "There is exactly one procedure room, which is what makes this a selection rather than a capacity question.",
+          "Supervision covers every request on the day's list, accepted or declined, because supervision is about the list rather than the schedule.",
+          "Requests finishing at the same minute are ordered by id, so a caller sees the same selection every run."
+        ],
+        "edgeCases": [
+          "an empty day, where every answer is empty rather than a failure",
+          "requests meeting exactly at a boundary, which the half-open convention says all fit",
+          "nested requests, where only the innermost is hosted and the outer ones still need observing",
+          "two requests finishing at the same minute, which is where a missing tie-break shows"
+        ],
+        "restate": "Given a day's booking requests for one procedure room, report the largest set the room can host, the requests that must therefore be declined, and the fewest minutes at which a supervisor must look in so every request on the list is observed, with what each check-in sees."
+      },
+      "solution": {
+        "pitch": "One sort key carries the whole file: order by the minute the room is released, earliest first. The exchange argument is what licenses it, and it is short enough to say aloud. Take any optimal schedule and swap its first booking for the compatible request that finishes earliest; the swap leaves at least as much of the day free to the right, so the count never drops, and repeating it turns any optimal schedule into this one. The declines are then the complement of the selection rather than a second minimisation, and the supervision question turns out to be the same number again, because on intervals the smallest observing set and the largest compatible selection coincide.",
+        "dataStructures": [
+          "One sorted array and one accumulating array. There is no auxiliary structure here at all, which is worth noticing given how often greedy reaches for a heap.",
+          "A single integer of state during the sweep: the minute the room was last released.",
+          "A set of accepted ids for the complement, so the declines are one filtering pass rather than a search per request.",
+          "For the supervision plan, one bucket per check-in, filled by a walk over the day's requests in the same finish order."
+        ],
+        "types": [
+          "A booking is a struct with a readable string id, because every answer here is a list of requests a human then goes and looks at.",
+          "The duration property exists for the reader rather than the algorithm, which never needs it; the sort key is the end alone.",
+          "A check-in is its own type carrying the minute and the requests it observes, because a supervisor needs both and recovering the second afterwards is a second pass.",
+          "The failures are a typed enum naming the offending request, since the caller's next move is to go and fix that row."
+        ],
+        "composition": "Everything reaches the day through the ordering, so the key is defined once. The count is the selection's size rather than a second sweep, and the declines are the selection's complement. The fourth part is the one worth defending: its minutes come from the selection, because the exchange argument that justifies the selection also proves those minutes observe every request, including the declined ones. That is a composition an assertion can catch being wrong, since the check-in count must equal the compatible count on every input.",
+        "tradeoff": "Making the selection rather than the count the primitive costs an allocation on a call that only wanted a number. I want it because two of the four parts need the bookings themselves, and a count-returning primitive would have forced the sweep to be written twice. If a hot path ever needed the count alone, that is a specialised overload, not a reason to weaken the primitive.",
+        "trap": "Two. The first is the boundary: with half-open bookings the sweep tests `start >= lastEnd`, and the `>` version silently rejects every back-to-back pair. The second is the sort key itself, which is the whole problem in disguise. Start time and shortest duration both produce plausible schedules and both are wrong on three-request days, and a candidate who cannot state the exchange argument has no way to tell which one they wrote."
+      },
+      "coding": {
+        "order": [
+          "Write the overlap predicate and the ordering together, since the second is the only place validation lives.",
+          "Say the exchange argument out loud, then write the sweep it justifies.",
+          "Check the sweep against a day with one long request containing two short disjoint ones, which is where a start-time key goes visibly wrong.",
+          "Write the declines as a complement, in one line, and resist the urge to make them interesting.",
+          "Argue the equality between check-ins and the selection before writing the fourth part, because the argument is the implementation.",
+          "Finish with the attribution, which is the only genuinely new loop in that part."
+        ],
+        "commentary": [
+          "I am sorting by finish time, and here is why that is safe rather than convenient.",
+          "Take any optimal schedule. Swap its first booking for the compatible request that finishes earliest. That leaves at least as much of the day free afterwards, so the count cannot drop.",
+          "Repeat the swap and any optimal schedule turns into this one, so the greedy is optimal rather than merely reasonable.",
+          "The bookings are half-open, so a request starting exactly when the room is released is compatible; that makes the test `>=` and not `>`.",
+          "The declines are the complement. Fewest declines and most hosted are the same answer, so writing a second greedy here would be solving the problem twice.",
+          "For the supervision, notice the count first: it is the same number as the selection, and that is not a coincidence on intervals.",
+          "Every declined request was declined because it starts before some accepted request is released while ending no earlier, so that accepted request's last minute lies inside it.",
+          "So the minutes come from the selection, and the only new work is filing each request under the earliest check-in that falls inside it."
+        ],
+        "checkIn": "Before the fourth part I would say: I am reading the supervision question as covering every request on the day's list, not only the ones the room accepted. If it were the accepted subset the answer would be one check-in per accepted request and the question would be trivial, so I am assuming you meant the list. Tell me if not."
+      },
+      "verification": {
+        "walkthroughs": [
+          "Walk the four worked requests: 540 to 600, 560 to 640, 600 to 660 and 630 to 700. In finish order they are already b1, b2, b3, b4.",
+          "The sweep takes b1, skips b2 because 560 is below 600, takes b3 because 600 is not below 600, and skips b4 because 630 is below 660. Two hosted, two declined.",
+          "Run the same day with a start-time key on a three-request example instead: a request from 0 to 100 with two short ones at 10 to 20 and 30 to 40 gives one where the right key gives two.",
+          "Check the check-ins: 599 and 659. b2 runs from 560 to 640 and contains 599, b4 runs from 630 to 700 and contains 659, so both declined requests are observed.",
+          "Count them: two check-ins for two hosted requests, which is the equality the fourth part rests on, and it holds on every fixture worth trying."
+        ],
+        "tests": "Run the selector's suite and read the four parts in order. The first suite's tied-finish fixture is what catches a missing tie-break, and the boundary test is what catches the wrong comparison. The second suite checks the sweep against an exhaustive search over every subset, which is the strongest statement available here. The fourth suite asserts that the check-in count equals the compatible count on every fixture and that every request is filed exactly once.",
+        "complexity": "The sort dominates at O(n log n), and every part after it is one linear pass with constant extra state beyond the output. The attribution in the last part looks quadratic as written and is not in practice, because each request stops at the first check-in that contains it; if the check-in list were large enough for that to matter, a merge walk over two already-sorted sequences replaces it without changing the answer.",
+        "moreTime": "Weighted requests, where each booking carries a value and the objective is the largest total rather than the largest count. That is the moment greedy stops working and dynamic programming takes over, and knowing where that line is matters more than any of this code. Then several rooms, which turns the selection into an assignment. Then a rolling day, where requests arrive during the sweep and the exchange argument has to be re-examined against decisions already communicated to patients."
+      },
+      "code": "public struct Booking: Equatable, Sendable {\n    public let id: String\n    public let start: Int\n    public let end: Int\n\n    public init(id: String, start: Int, end: Int) {\n        self.id = id\n        self.start = start\n        self.end = end\n    }\n\n    /// Bookings are half-open in minutes from midnight, so a booking that ends\n    /// where another begins occupies no shared minute of the room.\n    public var duration: Int { end - start }\n}\n\npublic struct SupervisionCheckIn: Equatable, Sendable {\n    public let minute: Int\n    public let bookingIDs: [String]\n\n    public init(minute: Int, bookingIDs: [String]) {\n        self.minute = minute\n        self.bookingIDs = bookingIDs\n    }\n}\n\npublic enum BookingError: Error, Equatable, Sendable {\n    case endNotAfterStart(id: String)\n    case duplicateBookingID(String)\n    case tooManyBookings(Int)\n    case notImplemented\n}\n\npublic struct RoomBookingSelector: Sendable {\n    /// The day's request list is bounded so the sort is the only cost that\n    /// matters and no caller can hand over an unbounded schedule.\n    public static let maximumBookingCount = 100_000\n\n    public init() {}\n\n    // MARK: Part 1 - Validate and order\n\n    /// Whether two bookings would need the room at the same minute.\n    ///\n    /// Half-open: a booking running to 600 and one starting at 600 share no\n    /// minute, so the room can host both back to back.\n    public func overlaps(_ first: Booking, _ second: Booking) -> Bool {\n        first.start < second.end && second.start < first.end\n    }\n\n    /// The requests ordered by the minute they release the room, earliest\n    /// first, with ties broken by id.\n    ///\n    /// This is the only sort key in the file, and every later part reads the\n    /// day through it. The tie-break is not decoration: two requests that end\n    /// at the same minute must order the same way on every run, or the\n    /// selection a caller sees is not reproducible.\n    public func orderedByFinish(_ bookings: [Booking]) throws(BookingError) -> [Booking] {\n        try validate(bookings)\n        return bookings.sorted { left, right in\n            left.end == right.end ? left.id < right.id : left.end < right.end\n        }\n    }\n\n    // MARK: Part 2 - The most compatible bookings\n\n    /// The largest set of requests the one room can host, as the bookings\n    /// themselves.\n    ///\n    /// The exchange argument in one sentence: take any optimal schedule and\n    /// swap its first booking for the compatible one that finishes earliest;\n    /// the swap leaves at least as much of the day free to the right, so the\n    /// count never drops, and repeating it turns any optimal schedule into\n    /// this one. That sentence is the whole justification for the key, which\n    /// is why sorting by start or by duration is not a matter of taste.\n    ///\n    /// This method, not the count, is the primitive: a count alone would force\n    /// the next part to run the sweep a second time.\n    public func selectCompatible(_ bookings: [Booking]) throws(BookingError) -> [Booking] {\n        var accepted: [Booking] = []\n        for booking in try orderedByFinish(bookings) {\n            // Half-open again: a request may start exactly when the room is\n            // released, so the test is `>=` rather than `>`.\n            guard let last = accepted.last else {\n                accepted.append(booking)\n                continue\n            }\n            if booking.start >= last.end {\n                accepted.append(booking)\n            }\n        }\n        return accepted\n    }\n\n    /// How many requests the room can host, which is a projection of the\n    /// selection rather than a second sweep.\n    public func maximumCompatibleCount(_ bookings: [Booking]) throws(BookingError) -> Int {\n        try selectCompatible(bookings).count\n    }\n\n    // MARK: Part 3 - Which requests to decline\n\n    /// The requests scheduling has to turn away, in the same finish order the\n    /// selection was made in.\n    ///\n    /// Fewest declines and most bookings hosted are the same answer read from\n    /// opposite ends, so this is the complement of the selection and not a\n    /// minimisation of its own.\n    public func bookingsToDecline(_ bookings: [Booking]) throws(BookingError) -> [Booking] {\n        let acceptedIDs = Set(try selectCompatible(bookings).map(\\.id))\n        return try orderedByFinish(bookings).filter { !acceptedIDs.contains($0.id) }\n    }\n\n    // MARK: Part 4 - Fewest supervisory check-ins\n\n    /// The fewest minutes at which a supervisor must look in so that every\n    /// request on the day's list is in progress at one of them, with the\n    /// requests each check-in observes.\n    ///\n    /// The minutes are not a new algorithm and it would be a mistake to write\n    /// one. The fewest check-ins is exactly the number of requests the room\n    /// could host, and the last minute of each accepted request is a check-in\n    /// that works: a request was declined only because it begins before some\n    /// accepted request is released while finishing no earlier than that\n    /// request does, so that accepted request's last minute lies inside it.\n    /// A maximisation and a minimisation coinciding is a property of\n    /// intervals, and it is the reason this part composes with Part 2 rather\n    /// than repeating it.\n    ///\n    /// The attribution is the work. Every request on the day's list is filed\n    /// under the earliest check-in that falls inside it, which needs a walk\n    /// over the requests rather than over the selection.\n    public func supervisionPlan(_ bookings: [Booking]) throws(BookingError) -> [SupervisionCheckIn] {\n        let minutes = try selectCompatible(bookings).map { $0.end - 1 }\n        guard !minutes.isEmpty else { return [] }\n\n        var observed: [[String]] = Array(repeating: [], count: minutes.count)\n        for booking in try orderedByFinish(bookings) {\n            // The minutes are ascending, so the first one at or after this\n            // request's start is the earliest that can fall inside it, and the\n            // argument above guarantees one exists.\n            for (index, minute) in minutes.enumerated() where minute >= booking.start {\n                observed[index].append(booking.id)\n                break\n            }\n        }\n\n        return zip(minutes, observed).map { minute, ids in\n            SupervisionCheckIn(minute: minute, bookingIDs: ids.sorted())\n        }\n    }\n\n    /// The check-in minutes alone, which is a projection of the plan.\n    public func supervisionCheckIns(_ bookings: [Booking]) throws(BookingError) -> [Int] {\n        try supervisionPlan(bookings).map(\\.minute)\n    }\n\n    // MARK: Shared validation\n\n    /// The precondition every part rests on. All four entry points reach the\n    /// day's list through `orderedByFinish`, so the check lives once, here.\n    private func validate(_ bookings: [Booking]) throws(BookingError) {\n        guard bookings.count <= Self.maximumBookingCount else {\n            throw .tooManyBookings(bookings.count)\n        }\n        var seen = Set<String>()\n        seen.reserveCapacity(bookings.count)\n        for booking in bookings {\n            guard booking.end > booking.start else {\n                throw .endNotAfterStart(id: booking.id)\n            }\n            guard seen.insert(booking.id).inserted else {\n                throw .duplicateBookingID(booking.id)\n            }\n        }\n    }\n}\n"
+    }
+  },
+  "swift-70": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "Two events land on the same instant, one arrival and one departure. Which comes first, and what does the answer cost if you leave it to the sort?",
+        "concepts": [
+          "a session decomposes into an arrival and a departure, which is what turns an interval question into a walk",
+          "departures before arrivals at a shared instant, because a bay vacated now is available now",
+          "a deterministic order among events of the same kind, so the timeline is reproducible"
+        ],
+        "steps": [
+          "Turn each session into its two events and put them all in one list.",
+          "Order by instant first, then put departures ahead of arrivals when instants are equal.",
+          "Break the remaining ties by vehicle id, so two arrivals at the same minute always come back the same way.",
+          "Say why the departure rule matters: with it a handover uses one bay, without it the same schedule appears to need two.",
+          "Validate here, since the parts that walk events reach them through this method: a real session, no repeated vehicle id, no more sessions than supported."
+        ],
+        "pitfalls": [
+          "sorting on the instant alone and relying on the sort's stability, which is not a contract and is off by one bay on handovers",
+          "ordering arrivals first, which is the reflex reading of a timeline and is wrong for a resource that frees on departure",
+          "leaving same-kind ties unordered, which makes the timeline unassertable even when the counts are right"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "The answer is a number the schedule forces rather than a subset of it. What does the sweep carry, and what does the obvious alternative cost?",
+        "concepts": [
+          "peak simultaneous occupancy as the bay count, which is what a resource question asks rather than a selection",
+          "a running counter over the ordered events, with the maximum it reaches as the answer",
+          "the same walk serving the next part, so there is exactly one sweep in the file"
+        ],
+        "steps": [
+          "Walk the ordered events raising a counter on an arrival and lowering it on a departure.",
+          "Keep the largest value the counter ever reaches; that is the number of bays.",
+          "Notice that this is linear after the sort, and that comparing every pair of sessions is quadratic for the same answer.",
+          "Put the walk in one private helper now, because the next part needs the same walk with more detail attached.",
+          "Check the empty schedule deliberately: no sessions is zero bays, not a failure."
+        ],
+        "pitfalls": [
+          "counting overlaps pairwise, which is correct and unusable at the supported session count while passing every functional test",
+          "tracking the counter but not its maximum, which reports the occupancy at the end of the day rather than the peak",
+          "writing this sweep and then writing a second one for the next part, which is the duplication the shared helper exists to prevent"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "A planner cannot act on a single number. What does each window need to carry, and when do two windows at the same occupancy stay apart?",
+        "concepts": [
+          "windows between consecutive events, each with the vehicles parked during it",
+          "the previous part as a projection of this one, both reading the same walk",
+          "a stretch that ends the instant it begins is not a window"
+        ],
+        "steps": [
+          "Extend the walk so that between two consecutive event instants it can name who is parked.",
+          "Skip stretches of zero length and stretches with nobody in them; neither is a window a planner can look at.",
+          "Take the maximum occupancy across the stretches, then report the ones that reach it.",
+          "Keep consecutive peak stretches separate. An event between them changed the fleet, and a merged window would claim vehicles that were never there together.",
+          "List each window's vehicle ids in ascending order so two runs cannot disagree."
+        ],
+        "pitfalls": [
+          "merging adjacent stretches that share an occupancy, which reports a set of vehicles that was never simultaneously parked",
+          "emitting a zero-length stretch where two events share an instant, which inflates the window list with nothing",
+          "recomputing the peak here with a separate walk, so the two parts can disagree on the same schedule"
+        ]
+      },
+      {
+        "part": 4,
+        "prompt": "The counter knows how many vehicles are parked and never which bay each is in. What structure closes that gap, and what must hold besides the bay count?",
+        "concepts": [
+          "a heap of occupied bays keyed by the instant each frees, so the earliest release is always in hand",
+          "a heap of free bay indices, so the assignment is reproducible rather than merely valid",
+          "two properties that have to hold together: the right number of bays, and no bay double-booked"
+        ],
+        "steps": [
+          "Walk the sessions in arrival order, with ties by vehicle id so the assignment is deterministic.",
+          "Before placing a vehicle, release every bay whose occupant has already departed. Half-open again means the release test is at or before, not strictly before.",
+          "Take the lowest free bay if there is one, and open a new bay only when there is none.",
+          "Record the vehicle in that bay and push the bay back with the instant its new occupant leaves.",
+          "Check both properties afterwards, because getting the count right while double-booking a bay is the characteristic failure here."
+        ],
+        "pitfalls": [
+          "deriving the assignment from the running counter, which produces the right number of bays with two vehicles in one of them",
+          "releasing bays with a strict comparison, which refuses to reuse a bay on a handover and opens one bay too many",
+          "taking any free bay rather than the lowest, which is correct but unassertable and hides real ordering bugs"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "A schedule where one vehicle leaves as the next arrives reports two bays",
+          "cause": "Events at a shared instant are ordered by time alone, so the arrival is counted before the departure",
+          "check": "Decompose two back-to-back sessions and confirm the departure event comes before the arrival event."
+        },
+        {
+          "symptom": "The bay count is right but the peak windows list one window too many",
+          "cause": "Stretches of zero length between two events at the same instant are being emitted as windows",
+          "check": "Confirm every reported window has an end strictly after its start on a schedule with simultaneous arrivals."
+        },
+        {
+          "symptom": "A peak window names vehicles that were never parked at the same time",
+          "cause": "Consecutive stretches at the same occupancy are being merged, across an event that changed the fleet",
+          "check": "Take two sessions that hand over at one instant and confirm two separate windows come back, each naming one vehicle."
+        },
+        {
+          "symptom": "The bay assignment uses the right number of bays but two overlapping vehicles share one",
+          "cause": "The assignment is being derived from the occupancy counter, which never knew which bay anyone was in",
+          "check": "For every pair of vehicles sharing a bay, confirm their sessions do not overlap."
+        },
+        {
+          "symptom": "The assignment opens one more bay than the sizer said were needed",
+          "cause": "Occupied bays are released with a strict comparison, so a bay freed at the arriving vehicle's instant is not reused",
+          "check": "Assign two back-to-back sessions and confirm both land in bay zero."
+        },
+        {
+          "symptom": "The peak count and the peak windows disagree on the same schedule",
+          "cause": "Each part runs its own sweep instead of both reading one shared walk",
+          "check": "Confirm every reported window's occupancy equals the reported bay count, on every schedule."
+        }
+      ]
+    },
+    "execution": {
+      "timeBudget": {
+        "navigation": 4,
+        "solution": 9,
+        "coding": 26,
+        "verification": 6
+      },
+      "navigation": {
+        "say": "The question worth asking first is what happens at a shared instant, because it is the whole boundary decision and it changes the answer by a bay. The second is whether the caller wants a number or a plan, because that decides which method is the primitive.",
+        "questions": [
+          "Is a bay freed at the instant its vehicle departs, so an arrival at that same instant can use it?",
+          "Are all bays interchangeable, or do vehicles have constraints on which one they can use?",
+          "Does the depot need to know when the peak occurs and which vehicles cause it, or only how many bays to build?",
+          "Should the assignment be reproducible run to run, or is any valid assignment acceptable?"
+        ],
+        "assumptions": [
+          "Sessions are half-open in minutes, so a bay vacated at an instant is available at that instant.",
+          "Bays are interchangeable, which is what makes this a counting question rather than a matching one.",
+          "The planner wants the windows and the vehicles, so the richer method is the primitive and the count is read off it.",
+          "The assignment takes the lowest free bay, so the yard signage is the same every time the plan is regenerated."
+        ],
+        "edgeCases": [
+          "an empty schedule, where the depot needs no bays and there is nothing to assign",
+          "a handover at a shared instant, which is the fixture that separates the two event orderings",
+          "the whole fleet returning at once, where the bay count is the fleet size",
+          "sessions that never meet, where one bay serves the entire day"
+        ],
+        "restate": "Given each vehicle's charging window, decompose the schedule into ordered events, report how many bays the depot must build, report every stretch at that peak with the vehicles responsible, and assign every vehicle a concrete bay using no more bays than that."
+      },
+      "solution": {
+        "pitch": "Decompose each session into an arrival and a departure, order them with departures ahead of arrivals at a shared instant, and walk. The counter's maximum is the bay count; the stretches where it sits at that maximum are the peak windows. Both are projections of one walk, which is why they cannot disagree. The fourth question is the one the counter cannot answer, because knowing how many vehicles are parked tells you nothing about which bay each is in, so it gets a heap of occupied bays keyed by release instant and a heap of free indices beside it.",
+        "dataStructures": [
+          "One event array, sorted once. The whole first three parts read it and nothing else.",
+          "A set of the vehicles currently parked, which is what lets a window name its fleet rather than only count it.",
+          "For the assignment, a heap of occupied bays keyed by release instant, so the earliest release is always at hand.",
+          "A second heap of free bay indices, which is what makes the assignment reproducible rather than merely valid."
+        ],
+        "types": [
+          "An event is an enum with associated values rather than a struct with a flag, so an arrival and a departure cannot be confused at a call site.",
+          "It exposes its instant and vehicle id as computed properties, because the sort needs both without unwrapping.",
+          "A peak window is a struct carrying the stretch, the occupancy and the vehicles, since a planner needs all three and recovering the third afterwards is another pass.",
+          "The occupied bay is a private Comparable struct, ordered by release instant, which is what lets the provided heap do the work without a custom heap."
+        ],
+        "composition": "Parts two and three both read one private walk, and that seam is deliberate rather than incidental: the count is the maximum occupancy the walk reaches and the windows are the stretches that reach it, so there is one sweep in the file and no way for them to disagree. Part four cannot call either of them, since neither hands back a bay, so the suite asserts the composition as an invariant instead: the number of distinct bays used must equal the reported bay count, and no two vehicles sharing a bay may overlap. That second check is the one that catches a plausible assignment, because using the right number of bays and double-booking one is exactly what deriving it from the counter produces.",
+        "tradeoff": "Carrying the parked set through the walk costs a set insertion and removal per event, where a bare counter would be two increments. I want it because the windows are what a planner acts on, and reconstructing them afterwards means a second walk over the same events. If the count alone were ever the whole requirement, the walk projects to it in one line.",
+        "trap": "Two, and the first is a single line in a comparator. At a shared instant departures must come first, and an ordering that leaves that to the sort's stability reports a bay the depot never needs. The second is the complexity: comparing every pair of sessions gives the same answer as the sweep and is quadratic, so at a hundred thousand sessions it is ten billion comparisons. No test here times it, which is exactly why it is worth saying out loud."
+      },
+      "coding": {
+        "order": [
+          "Write the event decomposition and its comparator first, stating the shared-instant rule aloud as you write it.",
+          "Check it immediately on two back-to-back sessions, which is the schedule the wrong ordering gets wrong.",
+          "Write the walk as one private helper that produces stretches with their fleets, not as a bare counter.",
+          "Read the bay count off it, then the peak windows off it, and notice that neither needs new logic.",
+          "Write the assignment last, with the two heaps, and say why the counter could not have produced it.",
+          "Finish by checking both assignment properties, not just the bay count."
+        ],
+        "commentary": [
+          "Each session becomes two events, which is what turns an interval question into a walk.",
+          "At a shared instant the departure comes first, because a bay vacated at that instant is available at that instant.",
+          "That is not a stylistic choice: order them the other way and a schedule where one vehicle hands over to the next appears to need two bays.",
+          "I am making the walk produce stretches with their fleets rather than a bare count, because the next question needs the fleets and I would otherwise walk twice.",
+          "The bay count is the largest occupancy the walk reaches; the peak windows are the stretches that reach it. One sweep, two questions.",
+          "I keep consecutive peak stretches separate, because an event between them changed who is parked and merging them would name a fleet that never existed.",
+          "For the assignment the counter is no help at all. It knows how many vehicles are parked and never which bay each is in.",
+          "So occupied bays go into a heap keyed by when they free, and free bays into a heap keyed by index, which makes the assignment reproducible as well as correct."
+        ],
+        "checkIn": "Before the assignment I would say: I am going to hand out the lowest-numbered free bay each time. Any free bay would be equally correct, but a reproducible assignment is worth more to a yard that has to paint the numbers on the floor, and it makes the plan diffable when the schedule changes."
+      },
+      "verification": {
+        "walkthroughs": [
+          "Walk four sessions: one vehicle from 0 to 30 and three shorter ones at 5 to 10, 15 to 20 and 25 to 40.",
+          "The occupancy runs one, two, one, two, one, two, one, so the depot needs two bays and hits that peak three separate times.",
+          "Reorder the events so arrivals come first at shared instants and watch a two-session handover claim it needs two bays.",
+          "Assign the four sessions: the long vehicle takes bay zero and every short one reuses bay one, because each is released before the next arrives.",
+          "Try deriving that assignment from the counter instead and watch two overlapping vehicles land in the same bay while the bay count still looks right."
+        ],
+        "tests": "Run the sizer's suite and read the four parts in order. The first suite's handover fixture is what catches the event ordering, and the second suite cross-checks the sweep against counting occupancy one minute at a time. The fourth suite checks the two assignment properties separately, which is what makes a plausible-but-double-booked assignment red rather than green.",
+        "complexity": "The sort dominates at O(n log n) and the walk is linear in the events. The assignment is O(n log n) as well, from the two heaps. The alternative worth naming and declining is the pairwise overlap count, which is O(n squared) for the identical answer: it passes every functional test in this suite and does not finish at the supported session count, which is why the requirement is stated in the problem rather than enforced by a timing test.",
+        "moreTime": "Bays with different charging rates, which turns the assignment from interchangeable into a matching problem. Then a cost objective, where opening a bay has a capital cost and the question becomes how many bays are worth building rather than how many are needed. And a live schedule, where sessions arrive and the assignment has to be stable enough that a vehicle already told to use bay four is not moved."
+      },
+      "code": "public struct ChargeSession: Equatable, Sendable {\n    public let vehicleID: String\n    public let arrival: Int\n    public let departure: Int\n\n    public init(vehicleID: String, arrival: Int, departure: Int) {\n        self.vehicleID = vehicleID\n        self.arrival = arrival\n        self.departure = departure\n    }\n}\n\npublic enum ChargeEvent: Equatable, Sendable {\n    case arrives(vehicleID: String, at: Int)\n    case departs(vehicleID: String, at: Int)\n\n    public var instant: Int {\n        switch self {\n        case .arrives(_, let at), .departs(_, let at): at\n        }\n    }\n\n    public var vehicleID: String {\n        switch self {\n        case .arrives(let vehicleID, _), .departs(let vehicleID, _): vehicleID\n        }\n    }\n}\n\npublic struct PeakWindow: Equatable, Sendable {\n    public let start: Int\n    public let end: Int\n    public let occupancy: Int\n    public let vehicleIDs: [String]\n\n    public init(start: Int, end: Int, occupancy: Int, vehicleIDs: [String]) {\n        self.start = start\n        self.end = end\n        self.occupancy = occupancy\n        self.vehicleIDs = vehicleIDs\n    }\n}\n\npublic enum DepotError: Error, Equatable, Sendable {\n    case departureNotAfterArrival(vehicleID: String)\n    case duplicateVehicleID(String)\n    case tooManySessions(Int)\n    case notImplemented\n}\n\n/// A binary min-heap, provided because the standard library has none and\n/// building one is not what this problem is about. Use it, or do not; the\n/// public interface is what the tests read.\npublic struct MinHeap<Element: Comparable>: Sendable where Element: Sendable {\n    private var storage: [Element] = []\n\n    public init() {}\n\n    public var count: Int { storage.count }\n    public var isEmpty: Bool { storage.isEmpty }\n\n    /// The smallest element, without removing it.\n    public var minimum: Element? { storage.first }\n\n    public mutating func insert(_ element: Element) {\n        storage.append(element)\n        var child = storage.count - 1\n        while child > 0 {\n            let parent = (child - 1) / 2\n            guard storage[child] < storage[parent] else { break }\n            storage.swapAt(child, parent)\n            child = parent\n        }\n    }\n\n    public mutating func popMin() -> Element? {\n        guard let smallest = storage.first else { return nil }\n        storage.swapAt(0, storage.count - 1)\n        storage.removeLast()\n\n        var parent = 0\n        while true {\n            let left = parent * 2 + 1\n            let right = left + 1\n            var swap = parent\n            if left < storage.count, storage[left] < storage[swap] { swap = left }\n            if right < storage.count, storage[right] < storage[swap] { swap = right }\n            guard swap != parent else { break }\n            storage.swapAt(parent, swap)\n            parent = swap\n        }\n        return smallest\n    }\n}\n\npublic struct ChargerCapacitySizer: Sendable {\n    /// The day's schedule is bounded, which is also what makes the quadratic\n    /// version of the second part unusable rather than merely slow.\n    public static let maximumSessionCount = 100_000\n\n    public init() {}\n\n    // MARK: Part 1 - Decompose into events\n\n    /// The schedule as the arrivals and departures a sweep walks.\n    ///\n    /// The ordering is the whole boundary decision and it is made once, here.\n    /// At a shared instant departures come first, because a bay vacated at 30\n    /// is available to a vehicle arriving at 30. Leaving that to the sort's\n    /// stability is not a contract, and it is off by one bay on exactly the\n    /// schedules a depot cares about.\n    public func events(from sessions: [ChargeSession]) throws(DepotError) -> [ChargeEvent] {\n        try validate(sessions)\n\n        var timeline: [ChargeEvent] = []\n        timeline.reserveCapacity(sessions.count * 2)\n        for session in sessions {\n            timeline.append(.arrives(vehicleID: session.vehicleID, at: session.arrival))\n            timeline.append(.departs(vehicleID: session.vehicleID, at: session.departure))\n        }\n\n        return timeline.sorted { left, right in\n            if left.instant != right.instant { return left.instant < right.instant }\n            if left.isDeparture != right.isDeparture { return left.isDeparture }\n            return left.vehicleID < right.vehicleID\n        }\n    }\n\n    // MARK: Part 2 - Peak occupancy\n\n    /// How many bays the depot must build so that no returning vehicle waits.\n    ///\n    /// This reads the maximum off the one sweep in the file rather than\n    /// running a sweep of its own. The alternative that suggests itself, one\n    /// comparison per pair of sessions, is correct and quadratic; at the\n    /// supported session count it is ten billion comparisons and no test here\n    /// would tell you.\n    public func requiredBays(_ sessions: [ChargeSession]) throws(DepotError) -> Int {\n        try occupancySegments(sessions).map(\\.occupancy).max() ?? 0\n    }\n\n    // MARK: Part 3 - When, and who\n\n    /// Every stretch of the day at which the depot is at its peak, with the\n    /// vehicles parked during it.\n    ///\n    /// Consecutive stretches stay separate even when both sit at the peak: an\n    /// event between them changed who is parked, and merging them would report\n    /// a set of vehicles that were never simultaneously present.\n    public func peakWindows(_ sessions: [ChargeSession]) throws(DepotError) -> [PeakWindow] {\n        let segments = try occupancySegments(sessions)\n        guard let peak = segments.map(\\.occupancy).max() else { return [] }\n        return segments.filter { $0.occupancy == peak }\n    }\n\n    // MARK: Part 4 - Assign a bay to every session\n\n    /// The bay each vehicle should be sent to, using no more bays than the\n    /// depot must build.\n    ///\n    /// The running counter of the sweep cannot answer this: it knows how many\n    /// vehicles are parked, never which bay each is in. Releasing a bay means\n    /// knowing when its occupant leaves, so the occupied bays live in a heap\n    /// keyed by departure and the free ones in a heap keyed by index, which is\n    /// what keeps the assignment reproducible.\n    public func bayAssignment(_ sessions: [ChargeSession]) throws(DepotError) -> [String: Int] {\n        try validate(sessions)\n\n        let byArrival = sessions.sorted { left, right in\n            left.arrival == right.arrival\n                ? left.vehicleID < right.vehicleID\n                : left.arrival < right.arrival\n        }\n\n        var assignment: [String: Int] = [:]\n        var occupied = MinHeap<OccupiedBay>()\n        var free = MinHeap<Int>()\n        var opened = 0\n\n        for session in byArrival {\n            // Half-open again: a bay whose occupant departs exactly now is\n            // free now, so the release test is `<=` rather than `<`.\n            while let head = occupied.minimum, head.releasesAt <= session.arrival {\n                _ = occupied.popMin()\n                free.insert(head.bay)\n            }\n\n            let bay: Int\n            if let reused = free.popMin() {\n                bay = reused\n            } else {\n                bay = opened\n                opened += 1\n            }\n\n            assignment[session.vehicleID] = bay\n            occupied.insert(OccupiedBay(releasesAt: session.departure, bay: bay))\n        }\n\n        return assignment\n    }\n\n    // MARK: The one sweep\n\n    /// Every stretch between two consecutive events, with who is parked during\n    /// it. Parts 2 and 3 are both projections of this, which is what keeps a\n    /// single sweep in the file.\n    private func occupancySegments(_ sessions: [ChargeSession]) throws(DepotError) -> [PeakWindow] {\n        var segments: [PeakWindow] = []\n        var parked: Set<String> = []\n        var cursor: Int?\n\n        for event in try events(from: sessions) {\n            if let start = cursor, event.instant > start, !parked.isEmpty {\n                segments.append(\n                    PeakWindow(\n                        start: start,\n                        end: event.instant,\n                        occupancy: parked.count,\n                        vehicleIDs: parked.sorted()\n                    )\n                )\n            }\n\n            switch event {\n            case .arrives(let vehicleID, _): parked.insert(vehicleID)\n            case .departs(let vehicleID, _): parked.remove(vehicleID)\n            }\n            cursor = event.instant\n        }\n\n        return segments\n    }\n\n    /// One occupied bay, ordered by the instant it frees up so the heap always\n    /// offers the bay that becomes available soonest.\n    private struct OccupiedBay: Comparable, Sendable {\n        let releasesAt: Int\n        let bay: Int\n\n        static func < (lhs: OccupiedBay, rhs: OccupiedBay) -> Bool {\n            lhs.releasesAt == rhs.releasesAt ? lhs.bay < rhs.bay : lhs.releasesAt < rhs.releasesAt\n        }\n    }\n\n    // MARK: Shared validation\n\n    /// The precondition every part rests on. Parts 2 and 3 reach it through\n    /// the event decomposition; Part 4 does not walk events at all, so it\n    /// calls this directly.\n    private func validate(_ sessions: [ChargeSession]) throws(DepotError) {\n        guard sessions.count <= Self.maximumSessionCount else {\n            throw .tooManySessions(sessions.count)\n        }\n        var seen = Set<String>()\n        seen.reserveCapacity(sessions.count)\n        for session in sessions {\n            guard session.departure > session.arrival else {\n                throw .departureNotAfterArrival(vehicleID: session.vehicleID)\n            }\n            guard seen.insert(session.vehicleID).inserted else {\n                throw .duplicateVehicleID(session.vehicleID)\n            }\n        }\n    }\n}\n\nprivate extension ChargeEvent {\n    /// Departures sort before arrivals at a shared instant, so the sweep needs\n    /// to tell them apart without unwrapping their payloads.\n    var isDeparture: Bool {\n        if case .departs = self { return true }\n        return false\n    }\n}\n"
+    }
+  },
+  "swift-72": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "Before writing the simulation, decide what it returns. Which later question would a yes-or-no answer force you to re-run the whole thing for?",
+        "concepts": [
+          "one reviewer, no idling, so each filing finishes at the running total of review hours",
+          "a missed filing still consumes its hours, because the work was done and simply done too late",
+          "a trace rather than a verdict, since three later readers want three different things from it"
+        ],
+        "steps": [
+          "Walk the proposed order carrying a running clock and add each filing's review hours to it.",
+          "Compare that clock with the filing's deadline: at or before is lodged, after is missed.",
+          "Keep going either way. A replay that stops at the first miss, or that skips missed filings, is not a replay.",
+          "Return the lodged list, the missed list and the finishing hour, because the next parts read different fields of it.",
+          "Add the deadline ordering alongside, with ties by id, and put the validation there since every part reaches the backlog through it."
+        ],
+        "pitfalls": [
+          "returning a bare feasibility flag, which forces every later part to simulate the backlog again",
+          "skipping a missed filing's review hours, which makes every subsequent finishing hour too low",
+          "treating a filing that finishes exactly on its deadline as missed, which is off by one on the tightest and most interesting cases"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "The clock overruns on the filing in hand. The right move is not to skip it. What do you give back instead, and why does that leave you no worse off?",
+        "concepts": [
+          "deadline order as the key, because a short filing with a distant deadline can always be deferred",
+          "a greedy choice that can be revoked, which is the shape this part exists to teach",
+          "the exchange argument: one in, one out leaves the count unchanged and the clock no higher than before"
+        ],
+        "steps": [
+          "Order the backlog by deadline and take every filing as you reach it, adding its hours to the clock.",
+          "When the clock passes the deadline in hand, give back the longest filing taken so far, which may be one accepted several steps ago.",
+          "State why that is safe before writing it: one filing came in and one went out, so the count holds and the clock cannot be higher than it was before this one arrived.",
+          "Conclude that no later decision is ever made worse, which is what licenses revoking an earlier choice.",
+          "Reach for a heap keyed on review hours so the longest is always in hand, and put the walk in one private helper the next part reads too."
+        ],
+        "pitfalls": [
+          "sorting by review hours, which is the reflex and loses the long filing whose deadline was near",
+          "skipping the filing in hand instead of giving back the longest, which leaves a longer job in place and a higher clock for the same count",
+          "forgetting that the filing in hand is itself a candidate for being given back, which is what happens when its own hours are the largest"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "Nothing new is computed here. What does that tell you about where the walk should have lived, and how do you check the answer actually fits?",
+        "concepts": [
+          "reconstruction as a second reading of one walk rather than a second walk",
+          "the working order being deadline order restricted to the survivors",
+          "the first part as a callable check on this one, which is stronger than any assertion about shape"
+        ],
+        "steps": [
+          "Read the survivors off whatever the shared walk left holding.",
+          "Return them in deadline order, because that is the order the reviewer actually works them in.",
+          "Make the count from the previous part read this selection's size rather than repeating the walk.",
+          "Check yourself by replaying the selection through the first part: every filing must be lodged and none missed.",
+          "Treat a selection that passes every shape check but fails that replay as the bug it is."
+        ],
+        "pitfalls": [
+          "rebuilding the selection with a second pass that can disagree with the count",
+          "returning the survivors in input order, which is not an order any reviewer could work",
+          "trusting the size of the answer without ever replaying it, which is how a plausible but infeasible selection survives"
+        ]
+      },
+      {
+        "part": 4,
+        "prompt": "This greedy revokes nothing and there is no exchange to argue. What replaces the argument, and where does the resulting formula quietly break?",
+        "concepts": [
+          "a counting bound rather than an exchange, which is the second kind of greedy proof",
+          "the busiest statutory type as a skeleton of blocks with the settling gap inside them",
+          "a clamp against the backlog size, because with enough distinct types there is no idle time at all"
+        ],
+        "steps": [
+          "Count the filings of each statutory type and find the busiest count.",
+          "Lay out the skeleton: that many lodgements separated by the settling gap, which fixes the elapsed hours the busiest type alone demands.",
+          "Add one hour for each type tied at that busiest count, since they all have to sit in the last block.",
+          "Notice that every other filing fits into idle hours the skeleton already contains, so nothing else lengthens it.",
+          "Take the larger of the skeleton and the backlog size, and guard the gap before the arithmetic so a huge value is refused rather than overflowed."
+        ],
+        "pitfalls": [
+          "returning the skeleton alone, which underestimates whenever there are enough distinct types to fill every hour",
+          "dropping the tie term, which is invisible on a backlog with one busiest type and wrong the moment two are tied",
+          "reaching for a tick-by-tick simulation, which is correct but is a different lesson and does not scale with the gap"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "The finishing hour of a replay is lower than the sum of every filing's review hours",
+          "cause": "Missed filings are being skipped rather than worked, so their hours never reach the clock",
+          "check": "Replay a single filing that cannot possibly be lodged and confirm the finishing hour is its review count."
+        },
+        {
+          "symptom": "A filing that finishes exactly on its deadline is reported as missed",
+          "cause": "The comparison is strictly less than where the deadline is inclusive",
+          "check": "Replay a filing whose review hours equal its deadline and confirm it is lodged."
+        },
+        {
+          "symptom": "One fewer filing is lodged than an exhaustive search finds, on a backlog with one long early job",
+          "cause": "The overrun is handled by skipping the filing in hand rather than giving back the longest taken so far",
+          "check": "Run a backlog where the first filing is much longer than the rest and confirm it is the one dropped."
+        },
+        {
+          "symptom": "A long filing with a near deadline is never lodged",
+          "cause": "The backlog is being ordered by review hours rather than by deadline",
+          "check": "Take two filings where the shorter has the later deadline and confirm both are lodged."
+        },
+        {
+          "symptom": "The selection looks reasonable but replaying it misses filings",
+          "cause": "The selection is rebuilt by a separate pass that does not carry the clock the sweep maintained",
+          "check": "Replay the reported selection through the first part and confirm nothing is missed."
+        },
+        {
+          "symptom": "The elapsed hours are too low on a backlog with many distinct statutory types",
+          "cause": "The skeleton formula is returned on its own, without the clamp against the number of filings",
+          "check": "Take six filings across four types with a gap of one and confirm the answer is six rather than five."
+        }
+      ]
+    },
+    "execution": {
+      "timeBudget": {
+        "navigation": 4,
+        "solution": 9,
+        "coding": 26,
+        "verification": 6
+      },
+      "navigation": {
+        "say": "Two questions matter more than the rest. Whether the deadline is inclusive, because it moves the tightest cases by one; and whether the last rule shares any state with the first three, because if it does not then it is a second problem in the same file and should be treated as one.",
+        "questions": [
+          "Is a filing lodged when it finishes exactly on its deadline, or must it finish before?",
+          "Is there one reviewer, and does work ever pause?",
+          "For the settling gap, does the review effort matter at all, or is lodging a filing one slot whatever it took to prepare?",
+          "Do the deadlines apply under the settling-gap rule as well, or is that a separate scheduling question?"
+        ],
+        "assumptions": [
+          "The deadline is inclusive: a filing finishing exactly on it is lodged.",
+          "One reviewer, starting at hour zero, never idle, so a missed filing still consumes its hours.",
+          "The settling gap is about lodgement slots rather than review effort, so each filing occupies one hour there whatever its review count.",
+          "Deadlines do not apply under the settling-gap rule, which is what makes it a different objective rather than a harder version of the same one."
+        ],
+        "edgeCases": [
+          "an empty backlog, where every answer is empty or zero rather than a failure",
+          "a filing whose review hours already exceed its deadline, which can never be lodged in any order",
+          "a backlog where the first filing is the longest, which is where giving back beats skipping",
+          "a backlog of many distinct types under the settling gap, which is where the skeleton formula alone is too small"
+        ],
+        "restate": "Given filings with review hours and statutory deadlines worked by one reviewer, report what a proposed order achieves, the largest number that can be lodged on time, which ones and in what order, and separately the fewest elapsed hours to lodge the whole backlog when filings of one type need a settling gap between them."
+      },
+      "solution": {
+        "pitch": "Deadline order, take everything, and give back the longest filing taken so far whenever the clock overruns. Shortest-first is the reflex and it is wrong, because a short filing with a distant deadline can always be deferred while a long one with a near deadline cannot. The exchange argument for the give-back is the subtlest claim in the file and it is worth stating slowly: one filing came in as one went out, so the count is unchanged, and the clock is now no higher than it stood before the new filing arrived, so no later decision is ever made worse. The last part is a different animal entirely: nothing is revoked, there is no exchange, and the correctness comes from a counting bound the busiest statutory type imposes.",
+        "dataStructures": [
+          "One array sorted by deadline, which every part of the first three reads.",
+          "A max-heap keyed on review hours, holding the filings currently accepted, so the one worth giving back is always at the top.",
+          "A running integer clock, which is the entire rest of the sweep's state.",
+          "For the last part, a dictionary of counts per statutory type. There is no schedule built at all, which is the point of a counting bound."
+        ],
+        "types": [
+          "A filing carries a readable id and a statutory type as strings, because both answers are lists a compliance lead then acts on.",
+          "The trace is its own type with the lodged list, the missed list and the finishing hour, deliberately not a boolean: the sweep needs the hour, the selection check needs the lodged list, and a user needs the missed list.",
+          "The accepted filings go into the heap as a small private Comparable struct rather than bare integers, so the survivors can be named afterwards.",
+          "The failures are a typed enum, including an explicit range guard, because Swift traps on integer overflow rather than returning a wrong number."
+        ],
+        "composition": "The first three parts share one sequencing routine, with the count reading its size and the selection reading its ids, so there is no way for them to disagree. The strongest composition here is a call rather than an assertion about shape: the suite replays the reported selection through the first part and requires that nothing is missed, which catches a plausible selection that does not actually fit. The fourth part optimises a different quantity, so no invariant against the second exists at all and inventing one would be a design error; the suite checks it against an independently written hour-by-hour simulation instead.",
+        "tradeoff": "The heap costs a logarithmic factor and an allocation per filing where a plain scan for the longest would be simpler to read. I want it because the give-back is the operation this problem exists to teach and the heap is what makes it a first-class move rather than an afterthought. If the backlogs were always tiny, a linear scan would be honest and I would say so out loud rather than reaching for a heap by habit.",
+        "trap": "Three. Sorting by review hours, which feels like scheduling and loses exactly the filings whose deadlines were tight. Skipping the filing in hand rather than giving back the longest, which is a different and worse algorithm that produces the same answer on easy backlogs. And in the last part, returning the skeleton formula without the clamp, which is wrong on any backlog with enough distinct types to leave no idle hour at all."
+      },
+      "coding": {
+        "order": [
+          "Write the replay first. It is short, everything else is checked against it, and it forces the deadline convention to be settled.",
+          "Write the deadline ordering next, with the tie-break, and put the validation there.",
+          "Say the exchange argument aloud, then write the sweep with the heap.",
+          "Check it on a backlog where the first filing is the longest, which is where giving back beats skipping.",
+          "Read the selection off the same walk rather than writing a second one, then replay it to prove it fits.",
+          "Write the last part separately and say clearly that it is a different objective with a different kind of proof."
+        ],
+        "commentary": [
+          "Deadline order, not shortest first. A short filing with a distant deadline can always wait; a long one with a near deadline cannot, so the deadline is what the key has to be.",
+          "I take every filing as I reach it, which sounds reckless until you see what happens on an overrun.",
+          "When the clock passes the deadline in hand, I give back the longest filing taken so far, and that may well be one I accepted several steps ago.",
+          "Here is why that is safe. One filing came in and one went out, so the count is exactly what it was.",
+          "And the clock is now no higher than it stood before this filing arrived, because what I removed is at least as long as what I added.",
+          "So no future decision is ever made worse, which is what lets a greedy revoke an earlier choice and stay correct.",
+          "Note that the filing in hand is itself a candidate for being given back, and on some backlogs it is the one that goes.",
+          "The last part is a different kind of greedy and I want to name that. Nothing is revoked, there is no exchange, and the whole answer is a counting bound the busiest type imposes.",
+          "The bound alone is not the answer though: with enough distinct types there is no idle hour at all, and the schedule is simply as long as the backlog. The answer is the larger of the two."
+        ],
+        "checkIn": "Before the last part I would say: I am reading the settling gap as a rule about lodgement slots, so each filing takes one hour there regardless of its review effort, and deadlines do not apply. That makes it a genuinely separate question from the first three rather than a harder version of them. If the registry rule actually interacts with review time, that is a different and much harder problem and I would rather know now."
+      },
+      "verification": {
+        "walkthroughs": [
+          "Take four filings: 100 hours due at 200, 200 due at 1300, 1000 due at 1250 and 2000 due at 3200. In deadline order that is the first, the third, the second, the fourth.",
+          "The clock runs 100, then 1100, then 1300, all inside their deadlines. The fourth pushes it to 3300, which is past 3200.",
+          "The longest taken is the 2000-hour filing itself, so it is the one given back and the clock returns to 1300. Three filings lodged.",
+          "Now try a backlog whose first filing is 100 hours due at 100, followed by three 50-hour filings due at 160, 180 and 190. Giving back the first lodges three; skipping the filing in hand lodges two.",
+          "For the settling gap, take three filings across two types with a gap of two: the busiest type appears twice, so the skeleton is one block of three hours plus one final hour, which is four.",
+          "Then take six filings across four types with a gap of one: the skeleton says five, there are six filings and no idle hour, so the answer is six and the clamp is what supplies it."
+        ],
+        "tests": "Run the sequencer's suite and read the four parts in order. The second suite cross-checks against an exhaustive search over every subset, and its give-back fixture is what separates the right algorithm from the skipping one. The third suite replays the reported selection through the first part, which is the composition check a shape assertion could not make. The fourth suite compares the arithmetic with an independently written hour-by-hour simulation across several gaps.",
+        "complexity": "The sequencing is O(n log n): one sort, then one heap operation per filing and at most one pop per overrun. The replay is linear. The settling-gap answer is linear in the backlog and independent of the gap, which is the practical reason to prefer the counting bound over a simulation that would tick once per hour and grow with the gap rather than with the work.",
+        "moreTime": "Weighted filings, where a filing carries a penalty for missing rather than counting one each, which breaks the exchange argument and hands the problem to dynamic programming. Then several reviewers, which makes the give-back harder because a filing dropped from one reviewer might fit with another. And release times, where a filing cannot be started before its papers arrive, which is the variant where deadline order stops being sufficient on its own."
+      },
+      "code": "public struct Filing: Equatable, Sendable {\n    public let id: String\n    public let statutoryType: String\n    public let reviewHours: Int\n    public let deadlineHour: Int\n\n    public init(id: String, statutoryType: String, reviewHours: Int, deadlineHour: Int) {\n        self.id = id\n        self.statutoryType = statutoryType\n        self.reviewHours = reviewHours\n        self.deadlineHour = deadlineHour\n    }\n}\n\npublic struct ScheduleTrace: Equatable, Sendable {\n    public let lodged: [String]\n    public let missed: [String]\n    public let finishHour: Int\n\n    public init(lodged: [String], missed: [String], finishHour: Int) {\n        self.lodged = lodged\n        self.missed = missed\n        self.finishHour = finishHour\n    }\n}\n\npublic enum SequencingError: Error, Equatable, Sendable {\n    case nonPositiveReviewHours(id: String)\n    case nonPositiveDeadline(id: String)\n    case hoursOutOfRange(id: String)\n    case duplicateFilingID(String)\n    case tooManyFilings(Int)\n    case negativeSettlingGap(Int)\n    case settlingGapOutOfRange(Int)\n    case notImplemented\n}\n\n/// A binary max-heap, provided because the standard library has none and\n/// building one is not what this problem is about. Use it, or do not; the\n/// public interface is what the tests read.\npublic struct MaxHeap<Element: Comparable>: Sendable where Element: Sendable {\n    private var storage: [Element] = []\n\n    public init() {}\n\n    public var count: Int { storage.count }\n    public var isEmpty: Bool { storage.isEmpty }\n\n    /// The largest element, without removing it.\n    public var maximum: Element? { storage.first }\n\n    public mutating func insert(_ element: Element) {\n        storage.append(element)\n        var child = storage.count - 1\n        while child > 0 {\n            let parent = (child - 1) / 2\n            guard storage[parent] < storage[child] else { break }\n            storage.swapAt(child, parent)\n            child = parent\n        }\n    }\n\n    public mutating func popMax() -> Element? {\n        guard let largest = storage.first else { return nil }\n        storage.swapAt(0, storage.count - 1)\n        storage.removeLast()\n\n        var parent = 0\n        while true {\n            let left = parent * 2 + 1\n            let right = left + 1\n            var swap = parent\n            if left < storage.count, storage[swap] < storage[left] { swap = left }\n            if right < storage.count, storage[swap] < storage[right] { swap = right }\n            guard swap != parent else { break }\n            storage.swapAt(parent, swap)\n            parent = swap\n        }\n        return largest\n    }\n}\n\npublic struct FilingSequencer: Sendable {\n    /// The backlog is bounded, and so is any single hour figure, so that the\n    /// running clock and the settling-gap arithmetic cannot overflow.\n    public static let maximumFilingCount = 100_000\n    public static let maximumHour = 1_000_000_000\n    public static let maximumSettlingGap = 1_000_000\n\n    public init() {}\n\n    // MARK: Part 1 - Replay a proposed order\n\n    /// What a proposed working order actually achieves.\n    ///\n    /// The trace is deliberately richer than a verdict. Part 2 needs the\n    /// finishing hour to notice an overrun, Part 3's answer is checked by\n    /// replaying it, and a compliance lead needs the missed list to escalate.\n    /// A method returning only whether the order works would force all three\n    /// to simulate the backlog again.\n    public func replay(_ order: [Filing]) throws(SequencingError) -> ScheduleTrace {\n        try validate(order)\n\n        var lodged: [String] = []\n        var missed: [String] = []\n        var clock = 0\n\n        for filing in order {\n            // The work happens either way. A filing lodged late was still\n            // reviewed, and pretending otherwise makes every later hour wrong.\n            clock += filing.reviewHours\n            if clock <= filing.deadlineHour {\n                lodged.append(filing.id)\n            } else {\n                missed.append(filing.id)\n            }\n        }\n\n        return ScheduleTrace(lodged: lodged, missed: missed, finishHour: clock)\n    }\n\n    /// The backlog in statutory deadline order, earliest first, ties by id.\n    ///\n    /// This is the only sort key in the file. Shortest-first is the reflex and\n    /// it is the wrong key: a short filing with a distant deadline can always\n    /// be deferred, while a long filing with a near one cannot.\n    public func orderedByDeadline(_ filings: [Filing]) throws(SequencingError) -> [Filing] {\n        try validate(filings)\n        return filings.sorted { left, right in\n            left.deadlineHour == right.deadlineHour\n                ? left.id < right.id\n                : left.deadlineHour < right.deadlineHour\n        }\n    }\n\n    // MARK: Part 2 - Maximum filings lodged\n\n    /// The largest number of filings that can be lodged on time.\n    ///\n    /// A projection of the same walk Part 3 reads, so there is one sequencing\n    /// routine in the file rather than two that can disagree.\n    public func maximumLodged(_ filings: [Filing]) throws(SequencingError) -> Int {\n        try sequence(filings).count\n    }\n\n    // MARK: Part 3 - Report the selection\n\n    /// The filings that get lodged, in the order the reviewer works them.\n    public func selectedFilings(_ filings: [Filing]) throws(SequencingError) -> [String] {\n        try sequence(filings).map(\\.id)\n    }\n\n    // MARK: Part 4 - Least elapsed time under a settling gap\n\n    /// The fewest elapsed hours, idle included, in which the whole backlog can\n    /// be lodged when two filings of one statutory type must be `settlingGap`\n    /// hours apart.\n    ///\n    /// A different kind of greedy, and worth naming as such: nothing is\n    /// revoked and there is no exchange to argue. The busiest type sets a\n    /// skeleton of `maxCount - 1` blocks of `gap + 1` hours, plus one hour for\n    /// each type tied at that count. Every other filing fits into the idle\n    /// hours the skeleton already contains.\n    ///\n    /// The skeleton is not the whole answer. With enough distinct types there\n    /// is no idle time at all and the schedule is simply as long as the\n    /// backlog, which the skeleton underestimates. The answer is the larger of\n    /// the two, and that clamp is the whole trap.\n    public func leastElapsedHours(\n        _ filings: [Filing],\n        settlingGap: Int\n    ) throws(SequencingError) -> Int {\n        try validate(filings)\n        guard settlingGap >= 0 else { throw .negativeSettlingGap(settlingGap) }\n        guard settlingGap <= Self.maximumSettlingGap else {\n            throw .settlingGapOutOfRange(settlingGap)\n        }\n\n        var perType: [String: Int] = [:]\n        for filing in filings {\n            perType[filing.statutoryType, default: 0] += 1\n        }\n        guard let busiest = perType.values.max() else { return 0 }\n        let tiedAtBusiest = perType.values.filter { $0 == busiest }.count\n\n        let skeleton = (busiest - 1) * (settlingGap + 1) + tiedAtBusiest\n        return max(filings.count, skeleton)\n    }\n\n    // MARK: The one sequencing routine\n\n    /// Deadline order, take everything, and drop the longest filing taken so\n    /// far whenever the clock overruns the deadline in hand.\n    ///\n    /// The exchange argument, which is the reason this is correct: dropping\n    /// the longest keeps the count the same, because one filing came in as one\n    /// went out, and leaves the clock no higher than it stood before the new\n    /// filing arrived. No later decision is ever made worse, so a greedy that\n    /// revokes an earlier choice is still safe. Skipping the current filing\n    /// instead is a different and worse algorithm: it leaves a longer filing\n    /// in place and a higher clock, for the same count.\n    private func sequence(_ filings: [Filing]) throws(SequencingError) -> [Filing] {\n        let ordered = try orderedByDeadline(filings)\n\n        var taken = MaxHeap<TakenFiling>()\n        var clock = 0\n\n        for filing in ordered {\n            clock += filing.reviewHours\n            taken.insert(TakenFiling(reviewHours: filing.reviewHours, id: filing.id))\n\n            if clock > filing.deadlineHour, let longest = taken.popMax() {\n                clock -= longest.reviewHours\n            }\n        }\n\n        var keptIDs = Set<String>()\n        keptIDs.reserveCapacity(taken.count)\n        while let survivor = taken.popMax() {\n            keptIDs.insert(survivor.id)\n        }\n\n        // Deadline order restricted to the survivors, because that is the\n        // order the reviewer actually works them in.\n        return ordered.filter { keptIDs.contains($0.id) }\n    }\n\n    /// A filing currently accepted, ordered by review hours so the heap always\n    /// offers the one worth giving back.\n    private struct TakenFiling: Comparable, Sendable {\n        let reviewHours: Int\n        let id: String\n\n        static func < (lhs: TakenFiling, rhs: TakenFiling) -> Bool {\n            lhs.reviewHours == rhs.reviewHours ? lhs.id < rhs.id : lhs.reviewHours < rhs.reviewHours\n        }\n    }\n\n    // MARK: Shared validation\n\n    /// The precondition every part rests on. The hour ceiling is not\n    /// decoration: an unguarded running clock over a full backlog is the one\n    /// place this file could overflow, and Swift traps on that rather than\n    /// returning a wrong number.\n    private func validate(_ filings: [Filing]) throws(SequencingError) {\n        guard filings.count <= Self.maximumFilingCount else {\n            throw .tooManyFilings(filings.count)\n        }\n        var seen = Set<String>()\n        seen.reserveCapacity(filings.count)\n        for filing in filings {\n            guard filing.reviewHours > 0 else {\n                throw .nonPositiveReviewHours(id: filing.id)\n            }\n            guard filing.deadlineHour > 0 else {\n                throw .nonPositiveDeadline(id: filing.id)\n            }\n            guard filing.reviewHours <= Self.maximumHour,\n                  filing.deadlineHour <= Self.maximumHour else {\n                throw .hoursOutOfRange(id: filing.id)\n            }\n            guard seen.insert(filing.id).inserted else {\n                throw .duplicateFilingID(filing.id)\n            }\n        }\n    }\n}\n"
+    }
   }
 }
