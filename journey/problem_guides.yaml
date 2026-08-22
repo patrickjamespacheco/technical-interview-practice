@@ -5836,5 +5836,400 @@
       },
       "code": "public struct AliasTable: Sendable {\n    private let targets: [String: String]\n    private let known: Set<String>\n\n    public init(targets: [String: String]) {\n        self.targets = targets\n        self.known = Set(targets.keys).union(targets.values)\n    }\n\n    /// The next id in the chain, or nil when this id resolves to itself: it is\n    /// a real destination rather than another alias.\n    public func target(of id: String) -> String? {\n        targets[id]\n    }\n\n    /// Whether this id appears in the table at all, either as an alias or as\n    /// something an alias points at. An id that does not is a typo rather than\n    /// a terminal.\n    public func contains(_ id: String) -> Bool {\n        known.contains(id)\n    }\n\n    /// Every id the table redirects away from, sorted, so an audit walks the\n    /// table in a stable order.\n    public var aliasIDs: [String] {\n        targets.keys.sorted()\n    }\n}\n\npublic enum ChainProbe: Equatable, Sendable {\n    case terminates(finalID: String)\n    case loops(meetingID: String)\n}\n\npublic enum Resolution: Equatable, Sendable {\n    case terminal(id: String, hops: Int)\n    case cycle(entryID: String, length: Int)\n    case unknownAlias(String)\n}\n\npublic enum ChainError: Error, Equatable, Sendable {\n    case unknownAlias(String)\n    case cyclicChain(entryID: String)\n    case nonPositiveOffset(Int)\n    case offsetBeyondChain(offset: Int, length: Int)\n    case notImplemented\n}\n\npublic struct LongestChain: Equatable, Sendable {\n    public let startID: String\n    public let hops: Int\n\n    public init(startID: String, hops: Int) {\n        self.startID = startID\n        self.hops = hops\n    }\n}\n\npublic struct ChainAudit: Equatable, Sendable {\n    public let terminalCount: Int\n    public let cyclicCount: Int\n    public let longestChain: LongestChain?\n    public let cycleEntryIDs: [String]\n\n    public init(\n        terminalCount: Int,\n        cyclicCount: Int,\n        longestChain: LongestChain?,\n        cycleEntryIDs: [String]\n    ) {\n        self.terminalCount = terminalCount\n        self.cyclicCount = cyclicCount\n        self.longestChain = longestChain\n        self.cycleEntryIDs = cycleEntryIDs\n    }\n}\n\npublic struct ChainResolver: Sendable {\n    private let table: AliasTable\n\n    public init(table: AliasTable) {\n        self.table = table\n    }\n\n    // MARK: Part 1 - Probe a chain in constant memory\n\n    /// Walk the chain with one cursor at one hop per step and another at two,\n    /// and say what happened.\n    ///\n    /// The return carries the meeting id rather than a bare yes or no, because\n    /// the meeting point is the only thing phase two has to start from. A probe\n    /// that answered `true` would leave the next part re-running this entire\n    /// walk to recover something this one already knew.\n    public func probe(from id: String) throws(ChainError) -> ChainProbe {\n        guard table.contains(id) else { throw .unknownAlias(id) }\n\n        var slow = id\n        var fast = id\n\n        while true {\n            guard let oneHop = table.target(of: fast) else { return .terminates(finalID: fast) }\n            guard let twoHops = table.target(of: oneHop) else { return .terminates(finalID: oneHop) }\n            fast = twoHops\n            // Safe: the fast cursor got two hops out of this position, so the\n            // slow cursor, which is behind it, can certainly take one.\n            slow = table.target(of: slow) ?? slow\n            if slow == fast { return .loops(meetingID: slow) }\n        }\n    }\n\n    // MARK: Part 2 - Resolve to a terminal or a named loop\n\n    /// Where this id actually ends up: a real destination and how far away it\n    /// is, or the loop it falls into and how big that loop is.\n    ///\n    /// The probe is phase one. On a chain that terminates the work left is a\n    /// single walk that counts hops. On a chain that loops the work left is\n    /// phase two, and phase two is a proof rather than a coding detail: the\n    /// distance from the start to the loop entry equals the distance from the\n    /// meeting point to the loop entry, so resetting one cursor to the start\n    /// and stepping both one hop at a time lands them together on the entry.\n    public func resolve(from id: String) -> Resolution {\n        guard let outcome = try? probe(from: id) else { return .unknownAlias(id) }\n\n        switch outcome {\n        case .terminates(let finalID):\n            var hops = 0\n            var cursor = id\n            while cursor != finalID, let next = table.target(of: cursor) {\n                cursor = next\n                hops += 1\n            }\n            return .terminal(id: finalID, hops: hops)\n\n        case .loops(let meetingID):\n            var fromStart = id\n            var fromMeeting = meetingID\n            while fromStart != fromMeeting {\n                fromStart = table.target(of: fromStart) ?? fromStart\n                fromMeeting = table.target(of: fromMeeting) ?? fromMeeting\n            }\n            let entry = fromStart\n\n            var length = 1\n            var cursor = table.target(of: entry) ?? entry\n            while cursor != entry {\n                cursor = table.target(of: cursor) ?? cursor\n                length += 1\n            }\n            return .cycle(entryID: entry, length: length)\n        }\n    }\n\n    // MARK: Part 3 - Positional queries on a terminating chain\n\n    /// The id halfway along a chain that terminates, taking the later of the\n    /// two middles when the chain has an even number of ids.\n    ///\n    /// Two cursors again, and the rate difference is doing something completely\n    /// different from what it did in Part 1: when the fast cursor runs out of\n    /// chain the slow one is standing on the middle.\n    public func midpointID(from id: String) throws(ChainError) -> String {\n        try requireTerminating(id)\n\n        var slow = id\n        var fast: String? = id\n        while let position = fast, let oneHop = table.target(of: position) {\n            slow = table.target(of: slow) ?? slow\n            fast = table.target(of: oneHop)\n        }\n        return slow\n    }\n\n    /// The id `offset` places from the end of a chain that terminates, counting\n    /// the destination itself as one.\n    ///\n    /// A lead cursor goes `offset - 1` hops out first, then both cursors step\n    /// together until the lead reaches the destination. The gap between them is\n    /// the answer, and nothing has to be stored to find it.\n    public func id(from start: String, hopsFromEnd offset: Int) throws(ChainError) -> String {\n        guard offset > 0 else { throw .nonPositiveOffset(offset) }\n        try requireTerminating(start)\n\n        var lead = start\n        var length = 1\n        for _ in 1..<offset {\n            guard let next = table.target(of: lead) else {\n                throw .offsetBeyondChain(offset: offset, length: length)\n            }\n            lead = next\n            length += 1\n        }\n\n        var trail = start\n        while let next = table.target(of: lead) {\n            lead = next\n            trail = table.target(of: trail) ?? trail\n        }\n        return trail\n    }\n\n    // MARK: Part 4 - Audit the whole table\n\n    /// Resolve every alias in the table and summarise what came back.\n    ///\n    /// This is Part 2 applied across the table and nothing else. Where two\n    /// aliases tie on length the earlier id wins, so the audit does not depend\n    /// on dictionary ordering.\n    public func audit() -> ChainAudit {\n        var terminalCount = 0\n        var cyclicCount = 0\n        var longest: LongestChain?\n        var entries: Set<String> = []\n\n        for alias in table.aliasIDs {\n            switch resolve(from: alias) {\n            case .terminal(_, let hops):\n                terminalCount += 1\n                if hops > (longest?.hops ?? -1) {\n                    longest = LongestChain(startID: alias, hops: hops)\n                }\n            case .cycle(let entryID, _):\n                cyclicCount += 1\n                entries.insert(entryID)\n            case .unknownAlias:\n                continue\n            }\n        }\n\n        return ChainAudit(\n            terminalCount: terminalCount,\n            cyclicCount: cyclicCount,\n            longestChain: longest,\n            cycleEntryIDs: entries.sorted()\n        )\n    }\n\n    // MARK: Shared gate for the positional queries\n\n    /// The positional queries only mean anything on a chain that ends, so they\n    /// share one gate, and that gate is Part 2 rather than a second walk.\n    private func requireTerminating(_ id: String) throws(ChainError) {\n        switch resolve(from: id) {\n        case .terminal:\n            return\n        case .cycle(let entryID, _):\n            throw .cyclicChain(entryID: entryID)\n        case .unknownAlias(let missing):\n            throw .unknownAlias(missing)\n        }\n    }\n}\n"
     }
+  },
+  "swift-36": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "Two cursors, but each walks a different list. What does the invariant become, and which list advances at each step?",
+        "concepts": [
+          "one cursor per sequence, with no converging band and no lagging write cursor",
+          "the invariant restated: every answer involving a window already passed has been emitted",
+          "half-open windows, so an overlap is real only when its low bound is strictly below its high bound"
+        ],
+        "steps": [
+          "Take the low bound as the later of the two starts and the high bound as the earlier of the two ends, which is the intersection of the two windows the cursors stand on.",
+          "Emit it only when the low bound is strictly below the high bound. Two windows that merely touch share no instant.",
+          "Decide which cursor moves by comparing ends, not starts: the window that ends first can have no further intersections, while the other one still might.",
+          "Say why before you write it. Every window in the other list starts at or after the one that cursor stands on, which itself ends later, so nothing is stepped over.",
+          "Tag each overlap with the index in each list that produced it, since the caller wants to know which roster row is involved.",
+          "Check the preconditions the sweep rests on: each window is a real span, and each list is sorted and internally disjoint. Each failure is typed, and the list ones name the index."
+        ],
+        "pitfalls": [
+          "comparing starts instead of ends, which still terminates and returns a subset of the answer on most inputs",
+          "emitting an overlap where two windows only touch, which manufactures zero-length spans that inflate every downstream count",
+          "advancing both cursors on a tie, which skips the window that could still have intersected the next one"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "A job needs three resources free at once. What makes folding the pairwise answer legal rather than needing a sweep with k cursors?",
+        "concepts": [
+          "the intersection of two sorted disjoint lists is itself sorted and disjoint",
+          "a fold over the roster, with the previous part doing the work at each step",
+          "no resources is a different question from no availability"
+        ],
+        "steps": [
+          "Notice the closure property first: the previous part's output satisfies the same precondition its input did, which is exactly what a fold needs.",
+          "Start from the first resource's own windows and intersect the running result with each remaining resource in turn.",
+          "Map the overlaps back to plain windows between folds; that is the only glue this needs.",
+          "A roster of one resource returns that resource's windows, validated.",
+          "An empty roster is a typed failure. Answering it with an empty list hides a caller's bug behind a plausible answer.",
+          "Validate every list before the fold starts, or a malformed roster stops being a fault the moment the running result empties."
+        ],
+        "pitfalls": [
+          "generalising the sweep to k cursors, which is a second implementation of the previous part with more places to get the move rule wrong",
+          "returning an empty list for an empty roster instead of refusing",
+          "letting validation ride along with the fold, so a malformed list later in the roster is never looked at"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "The union walks the same two lists but keeps everything. What decides whether two spans become one, and what does the gap query assume about its input?",
+        "concepts": [
+          "taking whichever window starts first rather than intersecting the two",
+          "coalescing on touch as well as on overlap, because availability that meets at an instant is continuous",
+          "a coalesced list is the precondition for asking what is left uncovered"
+        ],
+        "steps": [
+          "Walk both lists again, taking whichever window starts first each time.",
+          "Extend the span you are building whenever the next window starts at or before its end, and start a new one otherwise.",
+          "For the gaps, run a cursor along the horizon: anything between the cursor and the next window's start is uncovered, and the cursor then jumps to that window's end.",
+          "Clip each window to the horizon first, and finish by reporting whatever is left between the cursor and the horizon's end.",
+          "Refuse an empty or inverted horizon, which is a caller's bug rather than a horizon with no gaps.",
+          "Check the relationship by hand rather than by calling the first part: the two inputs together cover exactly the union plus the intersection."
+        ],
+        "pitfalls": [
+          "coalescing only on strict overlap, which reports a boundary in the union where availability is actually continuous",
+          "asking for the gaps of a list that has not been coalesced, where the answer is not defined",
+          "forgetting the tail, so a horizon extending past the last window reports one gap too few"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "The intersection is missing spans you can find by hand, but the sweep still finishes",
+          "cause": "The move rule compares the two windows' starts rather than their ends, so a window is abandoned while it could still intersect",
+          "check": "Intersect two lists where one long window spans two short ones and confirm both short spans come back."
+        },
+        {
+          "symptom": "Zero-length spans appear in the results, or downstream counts are larger than expected",
+          "cause": "The overlap is emitted whenever the low bound is at or below the high bound, rather than strictly below",
+          "check": "Intersect a list whose window ends exactly where the other list's window begins and confirm nothing is emitted for that pair."
+        },
+        {
+          "symptom": "Common availability across three resources is wider than across two of them",
+          "cause": "The fold restarts from one resource's own windows instead of carrying the running intersection forward",
+          "check": "Confirm the three-resource answer is contained in each two-resource answer on the same roster."
+        },
+        {
+          "symptom": "An empty roster returns an empty list instead of refusing",
+          "cause": "The empty case is being treated as an answer rather than as a caller's bug",
+          "check": "Ask for common availability with no resources at all and confirm it is a typed failure."
+        },
+        {
+          "symptom": "The union reports two spans where the availability is continuous",
+          "cause": "Spans are merged only on strict overlap, so two windows that meet at an instant stay apart",
+          "check": "Take the union of a list holding two windows that touch and confirm one span comes back."
+        },
+        {
+          "symptom": "The horizon's tail is never reported as a gap",
+          "cause": "The scan ends with the last window rather than closing out the range between the cursor and the horizon's end",
+          "check": "Ask for the gaps of a single early window inside a horizon that runs well past it."
+        }
+      ]
+    },
+    "execution": {
+      "timeBudget": {
+        "navigation": 4,
+        "solution": 9,
+        "coding": 26,
+        "verification": 6
+      },
+      "navigation": {
+        "say": "This is a two-sequence walk rather than a converging one, and the thing worth a minute up front is the window model: whether the ends are inclusive, and what the upstream roster actually guarantees about ordering. Both change the code, and neither is visible from the signatures.",
+        "questions": [
+          "Are the windows half-open, so a window ending where another begins shares nothing?",
+          "Is each resource's list guaranteed sorted and internally non-overlapping, or do I have to earn that?",
+          "Does the caller need to know which roster rows produced an overlap, or only the spans?",
+          "For the gaps, is the horizon given, or should it be inferred from the windows themselves?"
+        ],
+        "assumptions": [
+          "Windows are half-open and measured in minutes since a planning epoch, so a shared instant is not availability.",
+          "Each list arrives sorted by start and internally disjoint, which is what the rostering system guarantees, and a list that is not is a fault rather than something to sort here.",
+          "Overlaps carry the contributing index in each list, because a dispatcher has to go back to the roster row.",
+          "The gap query is asked of an already-coalesced list, which is why the coalescing ships alongside it."
+        ],
+        "edgeCases": [
+          "one or both lists empty, where there is nothing to intersect and the union is the other list",
+          "windows that touch exactly, which share nothing but whose union is continuous",
+          "one long window containing several short ones, where every overlap comes from the same left index",
+          "a horizon that starts before or ends after every window, where the gaps run to the edges"
+        ],
+        "restate": "Given per-resource availability windows, each list sorted and internally disjoint, report the spans two resources share, the spans a whole roster shares, the coalesced union of two lists, and what a coalesced list leaves uncovered inside a horizon."
+      },
+      "solution": {
+        "pitch": "One cursor per list, three times. This is the corner of the two-pointer family where the invariant has to be restated, because there is no band closing in and no write cursor lagging a read cursor: the guarantee is that everything already walked past has been fully accounted for. The move rule follows from that directly. Advance the list whose current window ends first, because that window can have no further intersections while the other one still might. The k-resource question is then a fold rather than a new algorithm, because the intersection of two sorted disjoint lists is itself sorted and disjoint.",
+        "dataStructures": [
+          "Two integer cursors and the output array. Nothing that grows with the input except the answer.",
+          "For the union, the result array doubles as the working state: the span being built is always its last element.",
+          "For the gaps, one integer cursor along the horizon, which is the whole state that query needs.",
+          "No sorting anywhere, because the precondition supplies it, and the code checks the precondition rather than re-establishing it."
+        ],
+        "types": [
+          "A window is a struct with a duration property rather than a bare pair, because the duration identity in the third part reads much better against a name.",
+          "It is Comparable so the union's merge step is a comparison rather than a tuple of conditionals.",
+          "An overlap is its own type carrying both contributing indices, because a dispatcher needs the roster rows and not only the span.",
+          "The failures are a typed enum, with the list ones naming the offending index, since the caller's next move is to go and look at that row."
+        ],
+        "composition": "The k-resource question is a literal fold over the pairwise one, which is the composition the design is built around. The third part does not call the first, and I would rather be honest about that than manufacture a call: what ties them together is an identity the suite can assert on every input, that both lists together cover exactly the union plus the intersection. That is stronger than a call would be, because it can be red where a call would be green. An implementation that emits zero-length overlaps, or one that leaves a touching pair unmerged, breaks it immediately.",
+        "tradeoff": "Carrying the contributing indices on every overlap costs two words per result and means the type cannot be a bare window. I want it, because the caller's next question is always which roster row to look at, and recovering that afterwards means a second search. If the spans alone were ever enough, projecting them out is one map.",
+        "trap": "Two, and the first is the one that gets written by reflex: compare ends, not starts. Comparing starts still terminates and still produces a plausible-looking subset of the answer, which is exactly why it survives a quick read. The second is the empty intersection: with half-open windows the overlap is real only when its low bound is strictly below its high bound, and emitting a zero-length span there poisons every count downstream."
+      },
+      "coding": {
+        "order": [
+          "Write the precondition check first. All four entry points need it and it is six lines.",
+          "Write the intersection next, stating the advance rule out loud before writing the conditional that follows from it.",
+          "Check it immediately against a fixture where one long window spans two short ones, which is where comparing starts goes visibly wrong.",
+          "Write the fold, saying why the closure property makes it legal rather than needing a k-cursor sweep.",
+          "Write the union, and decide the touching case deliberately rather than by whichever comparison operator comes out of your fingers.",
+          "Write the gaps last as a cursor along the horizon, and remember the tail after the final window."
+        ],
+        "commentary": [
+          "There is no converging band here, so I restate the invariant: after each step, every answer involving a window I have already passed has been emitted.",
+          "That is what tells me which cursor moves. The window that ends first cannot intersect anything else, because everything left in the other list starts at or after a window that ends later than it does.",
+          "So I compare ends. Comparing starts is the version that terminates and quietly returns a subset, which is the sort of bug that survives a code review.",
+          "The windows are half-open, so I only emit when the low bound is strictly below the high bound. A zero-length overlap is not an overlap.",
+          "For k resources, the previous part's output is sorted and disjoint just like its input, so folding is legal and a k-cursor sweep would be the same algorithm written a second time.",
+          "I validate every list before folding, because once the running intersection empties, a validation carried by the fold would never look at what is left.",
+          "For the union I coalesce on touch as well as on overlap: two windows meeting at an instant describe one continuous span of availability.",
+          "The gaps assume a coalesced list, which is why the coalescing lives in the same part rather than being assumed by it."
+        ],
+        "checkIn": "Before writing the union I would say: I am going to merge two windows that merely touch into one span, on the grounds that availability meeting at an instant is continuous rather than two options. If your dispatcher would rather see the boundary, that is a one-character change and now is the moment to make it."
+      },
+      "verification": {
+        "walkthroughs": [
+          "Walk a driver free from eight to twelve and fourteen to eighteen against a vehicle free from nine to ten, eleven to sixteen and seventeen to twenty: the shared spans are nine to ten, eleven to twelve, fourteen to sixteen, and seventeen to eighteen.",
+          "Walk the same pair with the move rule comparing starts and watch eleven to twelve disappear while the sweep still finishes cleanly.",
+          "Add a dock free only from nine to fifteen and fold: the three-way answer shortens the third span to fourteen to fifteen and drops the fourth entirely.",
+          "Check the identity on that pair by hand: eight minutes of driver plus nine of vehicle is seventeen, and their union of twelve plus their intersection of five is seventeen as well.",
+          "Take the union of two windows that touch at an instant and confirm one span comes back rather than two."
+        ],
+        "tests": "Run the matcher's suite and read the three parts in order. The worked roster in the first suite is the fixture that catches comparing starts, and the touching pair is what catches emitting zero-length overlaps. The third suite asserts the duration identity on every pair of fixtures, which is the cross-part check this problem can honestly make, and it also asserts that the gaps and the union together partition the horizon exactly.",
+        "complexity": "Every part is linear in the total number of windows it is handed, with constant extra state beyond the output. The fold over k resources is linear in the sum of the list lengths, since the running intersection never grows larger than the shorter input. The temptation to reach for a sort or an interval tree is worth naming and declining: the precondition already supplies the order, and checking it costs one pass.",
+        "moreTime": "Weighted resources, where a span is only useful if it is at least some minimum length, which turns the intersection into a filter and changes what the fold can discard early. Recurring weekly availability, where windows wrap a period and the sweep needs a normalising pass first. And a streaming roster, where lists arrive incrementally and the fold has to keep its running intersection across arrivals."
+      },
+      "code": "public struct Window: Equatable, Comparable, Sendable {\n    public let start: Int\n    public let end: Int\n\n    public init(_ start: Int, _ end: Int) {\n        self.start = start\n        self.end = end\n    }\n\n    /// Windows are half-open, so a window that ends where another begins\n    /// contributes nothing to the overlap between them.\n    public var duration: Int { end - start }\n\n    public static func < (lhs: Window, rhs: Window) -> Bool {\n        lhs.start == rhs.start ? lhs.end < rhs.end : lhs.start < rhs.start\n    }\n}\n\npublic struct Overlap: Equatable, Sendable {\n    public let window: Window\n    public let leftIndex: Int\n    public let rightIndex: Int\n\n    public init(window: Window, leftIndex: Int, rightIndex: Int) {\n        self.window = window\n        self.leftIndex = leftIndex\n        self.rightIndex = rightIndex\n    }\n}\n\npublic enum WindowError: Error, Equatable, Sendable {\n    case emptyOrInvertedWindow(start: Int, end: Int)\n    case unsortedInput(index: Int)\n    case overlappingInput(index: Int)\n    case noResources\n    case notImplemented\n}\n\npublic struct DispatchMatcher: Sendable {\n    public init() {}\n\n    // MARK: Part 1 - Intersect two sorted window lists\n\n    /// Every span during which both resources are simultaneously free.\n    ///\n    /// One cursor per list. There is no converging band here and no lagging\n    /// write cursor: the two cursors walk two different sequences, so the\n    /// invariant has to be restated as \"every intersection involving a window\n    /// already passed has been emitted\".\n    ///\n    /// The move rule follows from that restatement. The window that ends first\n    /// can have no further intersections, because every remaining window in the\n    /// other list starts at or after the window the other cursor stands on,\n    /// which itself ends later. So the list whose current window ends first is\n    /// the one that advances, and nothing is stepped over.\n    public func overlaps(_ left: [Window], _ right: [Window]) throws(WindowError) -> [Overlap] {\n        try validate(left)\n        try validate(right)\n\n        var overlaps: [Overlap] = []\n        var i = 0\n        var j = 0\n\n        while i < left.count, j < right.count {\n            let lo = max(left[i].start, right[j].start)\n            let hi = min(left[i].end, right[j].end)\n\n            // Half-open windows only genuinely overlap when lo is strictly\n            // below hi. Emitting lo == hi manufactures zero-length overlaps\n            // that inflate every downstream count.\n            if lo < hi {\n                overlaps.append(Overlap(window: Window(lo, hi), leftIndex: i, rightIndex: j))\n            }\n\n            // Ends, not starts. Comparing starts still terminates, which is\n            // what makes it such a comfortable bug.\n            if left[i].end < right[j].end {\n                i += 1\n            } else {\n                j += 1\n            }\n        }\n\n        return overlaps\n    }\n\n    // MARK: Part 2 - Common availability across k resources\n\n    /// The spans during which every listed resource is simultaneously free.\n    ///\n    /// This folds the pairwise intersection across the resources rather than\n    /// generalising the sweep to k cursors: the intersection of sorted disjoint\n    /// lists is itself sorted and disjoint, which is exactly what makes the\n    /// fold legal and what makes a k-cursor rewrite unnecessary.\n    public func commonAvailability(of lists: [[Window]]) throws(WindowError) -> [Window] {\n        guard let first = lists.first else { throw .noResources }\n\n        // Every roster is checked before the fold starts. A malformed list is a\n        // fault whether or not the fold would have reached it: once the running\n        // intersection empties, nothing later can put a span back, and a\n        // validation that rode along with the fold would fall silent exactly\n        // then.\n        for list in lists {\n            try validate(list)\n        }\n\n        var running = first\n        for list in lists.dropFirst() {\n            running = try overlaps(running, list).map(\\.window)\n        }\n\n        return running\n    }\n\n    // MARK: Part 3 - Coalesced union and its gaps\n\n    /// Every span during which at least one of the two resources is free, with\n    /// touching and overlapping spans coalesced into one.\n    ///\n    /// The same two cursors, now taking whichever window starts first instead\n    /// of intersecting them. Coalescing on touch as well as on overlap is what\n    /// makes the result a genuine union: two windows that meet at an instant\n    /// describe one continuous span of availability.\n    public func coalescedUnion(_ left: [Window], _ right: [Window]) throws(WindowError) -> [Window] {\n        try validate(left)\n        try validate(right)\n\n        var merged: [Window] = []\n        var i = 0\n        var j = 0\n\n        while i < left.count || j < right.count {\n            let next: Window\n            if j == right.count || (i < left.count && left[i] < right[j]) {\n                next = left[i]\n                i += 1\n            } else {\n                next = right[j]\n                j += 1\n            }\n\n            if let last = merged.last, next.start <= last.end {\n                merged[merged.count - 1] = Window(last.start, max(last.end, next.end))\n            } else {\n                merged.append(next)\n            }\n        }\n\n        return merged\n    }\n\n    /// The spans inside the horizon that the given windows do not cover.\n    ///\n    /// The windows are expected to be coalesced already, which is why the\n    /// coalescing lives in this part rather than being assumed by it: gaps of a\n    /// list that still holds two windows describing one span are not defined.\n    public func gaps(in windows: [Window], within horizon: Window) throws(WindowError) -> [Window] {\n        try validate(windows)\n        guard horizon.end > horizon.start else {\n            throw .emptyOrInvertedWindow(start: horizon.start, end: horizon.end)\n        }\n\n        var gaps: [Window] = []\n        var cursor = horizon.start\n\n        for window in windows {\n            let start = max(window.start, horizon.start)\n            let end = min(window.end, horizon.end)\n            guard start < end else { continue }\n\n            if start > cursor {\n                gaps.append(Window(cursor, start))\n            }\n            cursor = max(cursor, end)\n        }\n\n        if cursor < horizon.end {\n            gaps.append(Window(cursor, horizon.end))\n        }\n\n        return gaps\n    }\n\n    // MARK: Shared validation\n\n    /// The precondition every part rests on: each window is a real span, and\n    /// the list is sorted and internally disjoint. All three parts read the\n    /// list assuming this, so all three check it.\n    private func validate(_ windows: [Window]) throws(WindowError) {\n        for (index, window) in windows.enumerated() {\n            guard window.end > window.start else {\n                throw .emptyOrInvertedWindow(start: window.start, end: window.end)\n            }\n            guard index > 0 else { continue }\n            let previous = windows[index - 1]\n            guard window.start >= previous.start else { throw .unsortedInput(index: index) }\n            guard window.start >= previous.end else { throw .overlappingInput(index: index) }\n        }\n    }\n}\n"
+    }
+  },
+  "swift-37": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "Before writing the sweep, decide what it should return. Which later question would a hits-only answer force you to re-run this whole sweep for?",
+        "concepts": [
+          "converging cursors over a sorted range, licensed by sortedness rather than by luck",
+          "a return type designed for the caller two parts away, not only for this one",
+          "a range argument, so later parts can hand down a suffix rather than a copy"
+        ],
+        "steps": [
+          "Open the file and check the two preconditions every later part relies on: it is sorted ascending by amount with ties broken by id, and no amount exceeds the supported magnitude.",
+          "Start a cursor at each end of the range and add the two amounts they stand on.",
+          "Argue the move: under the target, the only way to raise the sum is to give up the smallest amount still in play; over it, the only way to lower it is to give up the largest.",
+          "Carry the closest miss as you go, because the third part needs it and re-deriving it later means running this sweep a second time with a different accumulator.",
+          "On a hit, step both cursors past every entry carrying the amount they just used, so a repeated amount is one explanation rather than several.",
+          "Notice which entries a hit names: the low cursor sits on the first entry carrying its amount, the high cursor on the last carrying its own, so report the earliest of both."
+        ],
+        "pitfalls": [
+          "returning only the exact matches, which forces the third part to reimplement this sweep instead of calling it",
+          "taking the whole file rather than a range, which leaves later parts copying suffixes to ask their questions",
+          "skipping duplicates on only one side, which reports the same amounts twice on a file with repeats"
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "Fixing one entry turns three into two. Where does duplicate suppression have to live once there is an outer loop as well as a sweep?",
+        "concepts": [
+          "the reduction: a triple question is a pair question over the suffix after a fixed entry",
+          "the residual target, which is the discrepancy left once the fixed entry is accounted for",
+          "duplicate suppression in the outer enumeration as well as inside the sweep"
+        ],
+        "steps": [
+          "Walk an outer index over the file and, for each, ask the previous part for pairs over everything after it.",
+          "The target you hand down is the discrepancy minus the fixed entry's amount.",
+          "Prepend the fixed entry to each pair that comes back, and let its total be the fixed amount plus the pair's, so the arithmetic is never restated.",
+          "Skip an outer amount equal to the one just used: that entry asks the same question of a shorter suffix and gets back a subset of the same answers.",
+          "Leave the inner skips where they are. Moving them out here means writing them twice.",
+          "Walk a small file with a repeated amount on paper before trusting either skip, because the two failure modes look nothing alike."
+        ],
+        "pitfalls": [
+          "wrapping an outer loop around a freshly written sweep instead of calling the one that already exists",
+          "getting the outer skip right and the inner ones wrong, which reports the same set of amounts twice",
+          "getting the inner skips right and the outer one wrong, which silently misses valid sets"
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "Nothing nets exactly and someone still has to be told where it nearly landed. How much of the previous part changes?",
+        "concepts": [
+          "the same outer enumeration reading the other half of what the sweep already returns",
+          "a tie rule stated once, so a nearest pair and a nearest triple cannot drift apart",
+          "the payoff of the signature decision made in the first part"
+        ],
+        "steps": [
+          "Enumerate the outer entry exactly as before and ask for the same scan over the suffix.",
+          "Read the closest miss rather than the exact matches, and prepend the fixed entry to it.",
+          "Keep the best candidate under a rule you can state: closest wins, then the lower total, then the entries appearing earlier in the file.",
+          "Put that rule in one place both this part and the sweep can use, or a nearest pair and a nearest triple will eventually disagree about a tie.",
+          "A file too short to hold three entries has no answer at all, which is different from an answer of nothing.",
+          "If this is turning into a rewritten sweep, the return type from the first part is what to revisit, not this part."
+        ],
+        "pitfalls": [
+          "re-running the sweep here with a different accumulator, which is the anti-pattern the first part's return type exists to prevent",
+          "leaving the tie rule implicit, so the answer depends on the order candidates happened to be visited",
+          "measuring distance by subtraction without considering a target far outside the file's range, where the subtraction is the one place overflow is reachable"
+        ]
+      },
+      {
+        "part": 4,
+        "prompt": "What is the smallest change that takes three to any k, and where does the recursion have to stop?",
+        "concepts": [
+          "a k-sum is a k-minus-one-sum over each suffix",
+          "the recursion bottoming out in the sweep rather than in another loop",
+          "an overflow ceiling declared as a constant and checked when the file is opened"
+        ],
+        "steps": [
+          "Write the reduction so the outer enumeration and the residual target are the same shape at every depth.",
+          "Stop at two entries left to place and call the sweep. Stopping at three instead duplicates the previous part inside the recursion.",
+          "Keep the duplicate skip at every level, since the argument for it does not change with depth.",
+          "Refuse a size of zero or less, and one larger than the file, as typed failures rather than empty answers.",
+          "Declare the largest supported size as an immutable constant and bound a single entry's magnitude against it when the file is opened, so the sweep needs no arithmetic guard at all.",
+          "Keep that ceiling separate from the size at which enumerating groups stops being affordable; only the first is a correctness guard."
+        ],
+        "pitfalls": [
+          "bottoming out at three rather than two, which puts a second copy of the triple logic inside the recursion",
+          "checking for overflow inside the sweep rather than bounding the input once, which puts a branch in the hot loop and still misses the deep sums",
+          "confusing the overflow ceiling with a performance ceiling, and guarding the wrong one"
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "The same set of amounts is reported twice on a file with a repeated amount",
+          "cause": "Duplicates are skipped in the outer enumeration but not on both sides inside the sweep",
+          "check": "Scan a file holding two entries of the same amount and confirm each combination of amounts comes back once."
+        },
+        {
+          "symptom": "A set you can find by hand is missing",
+          "cause": "The inner skips run before the hit is recorded, or the outer skip compares against the wrong neighbour",
+          "check": "Take a small file with one repeated amount, list its answers by hand, and compare against what comes back."
+        },
+        {
+          "symptom": "The nearest triple is right but the code for it looks like the pair sweep written again",
+          "cause": "The sweep returns only exact matches, so the nearest question cannot be answered by calling it",
+          "check": "Look at whether the third part contains a loop over two cursors at all. It should contain none."
+        },
+        {
+          "symptom": "Two runs over the same file disagree about which set is nearest",
+          "cause": "The tie rule is implicit, so the answer depends on the order candidates were visited",
+          "check": "Ask for the nearest set on a file where two totals are equally far from the target and confirm the answer is stable and documented."
+        },
+        {
+          "symptom": "Groups of three disagree with the earlier triples on some target",
+          "cause": "The recursion bottoms out at three rather than at two, so the triple logic exists twice and only one copy was fixed",
+          "check": "Compare groups of three against the triples, and groups of two against a scan over the whole file, on every fixture."
+        },
+        {
+          "symptom": "The whole test process ends rather than a test failing",
+          "cause": "A sum overflowed. Swift traps on Int overflow in debug and release alike, so nothing is returned at all",
+          "check": "Confirm the magnitude ceiling is checked when the file is opened, and that a file at the ceiling still answers a group of the maximum size."
+        }
+      ]
+    },
+    "execution": {
+      "timeBudget": {
+        "navigation": 4,
+        "solution": 9,
+        "coding": 26,
+        "verification": 6
+      },
+      "navigation": {
+        "say": "The framing has a constraint in it that is doing real work, so I want to check I have read it right before I write anything: no index over the file. That is what makes this a sorted-array sweep rather than a hash map, and if I have that wrong I am about to solve a different problem.",
+        "questions": [
+          "The file is memory-mapped and I cannot build an index over it. Does that budget cover a hash map keyed on amount, which is what I would reach for otherwise?",
+          "Two entries carrying the same amount: is that one explanation or two? It changes what the answer set even is.",
+          "Is the file guaranteed sorted by amount when I get it, and are ties broken by anything?",
+          "What is the largest group anyone actually asks for? That is a correctness question here, not a performance one."
+        ],
+        "assumptions": [
+          "The file arrives sorted ascending by amount with ties broken by id, and a file that is not is a fault rather than something to sort in memory.",
+          "The memory budget forbids an index over the file: cursors and the answer being built, and nothing proportional to the file.",
+          "Sets naming the same amounts are one explanation, reported once and named by the earliest entries carrying those amounts.",
+          "Amounts are signed minor units, and a magnitude ceiling is what keeps sums inside an Int."
+        ],
+        "edgeCases": [
+          "a file too short to hold the requested group, where there is no answer rather than an empty one",
+          "a file of all-identical amounts, where every group is the same explanation",
+          "a target far outside anything the file can reach, where the nearest question still has an answer",
+          "a group size of zero or larger than the file, both of which are caller bugs"
+        ],
+        "restate": "Over a sorted, memory-mapped day-file that may not be indexed, find the sets of entries that net to a target discrepancy: pairs within a range and the nearest miss, triples, the nearest triple, and the general k-entry case."
+      },
+      "solution": {
+        "pitch": "The sweep itself is the easy half. What makes this problem is that the sweep is a subroutine rather than the whole algorithm, so the decision that matters happens at the signature and not in the loop. I write one converging sweep that takes a range and returns both the exact hits and the closest miss, and then every other part is an outer enumeration that calls it: triples fix one entry and read the hits, the nearest triple fixes one entry and reads the miss, and the general case is a recursion that bottoms out in exactly the same call. Sortedness pays twice here, once for the sweep and once for making duplicate suppression a comparison against the neighbour rather than a set of tuples.",
+        "dataStructures": [
+          "Two integer cursors and the results being accumulated. No index over the file, which is the constraint the whole design is built around.",
+          "A range argument rather than a sliced array, so handing a suffix down costs nothing and copies nothing.",
+          "The recursion's own stack, which is bounded by the group size rather than by the file.",
+          "An immutable magnitude ceiling as a static constant, which is what lets the sweep do its arithmetic without a guard."
+        ],
+        "types": [
+          "The pair scan is its own type with both the exact matches and the nearest miss, because that decision is the whole composition story.",
+          "A set of entries carries its ids and its total rather than indices, since the caller's next step is to go and look at the entries.",
+          "Failures are a typed enum: an out-of-order file names the index, an out-of-range amount names the ceiling, and an impossible group size says which way it was impossible.",
+          "The group size ceiling and the amount ceiling are separate constants, because they exist for different reasons and are read by different people."
+        ],
+        "composition": "Every part calls the first one. Triples fix an entry and read the exact matches over the suffix; the nearest triple fixes an entry and reads the closest miss over the same suffix; the general reduction recurses until two entries are left and then makes exactly that call. Because the calls are real rather than decorative, the suite can assert them: groups of three must equal the triples, and groups of two must equal a scan over the whole file. Those two equalities can be red, which is what makes them worth asserting rather than describing.",
+        "tradeoff": "Returning the nearest miss alongside the hits makes the first part's return type larger than the first question needs. That is the trade, and it is the right way round: a method returning only hits cannot answer how close the best pair came, so the nearest question would have to re-run the entire sweep with a different accumulator, which is the same algorithm written twice with two places for a bug to live. Carrying both costs one comparison per step while I am already there.",
+        "trap": "Duplicate suppression in three places that are each easy to get right alone: the outer enumeration skips a repeated amount before starting a sweep, and the sweep skips repeated amounts on both sides after recording a hit. Getting the outer one right and the inner ones wrong reports the same amounts twice; the reverse misses valid sets. The second trap is Swift-specific and fatal rather than wrong: Int addition traps in release as well as debug, so an unguarded sum over large minor units ends the process instead of returning a bad number, and it takes every other suite in the package down with it."
+      },
+      "coding": {
+        "order": [
+          "Write the file's preconditions first: sorted by amount with ties by id, and every amount inside the magnitude ceiling.",
+          "Write the sweep next, with the range argument and both halves of the return in place from the start rather than retrofitted.",
+          "Test it on a file with a repeated amount before going any further, because every later part inherits whatever the skips do here.",
+          "Write the triples as an outer loop calling the sweep, and add the outer duplicate skip deliberately rather than after seeing a duplicate.",
+          "Write the nearest triple next; if it is more than a short loop, go back and look at the return type instead of pushing on.",
+          "Write the general reduction last, stopping at two rather than three, and check it against the two parts it generalises."
+        ],
+        "commentary": [
+          "I cannot index the file, so the sweep is what sortedness buys me: under the target I give up the smallest amount in play, over it I give up the largest.",
+          "I am returning the closest miss as well as the hits, and that is deliberate. The nearest-triple question needs it, and a hits-only answer would make that part re-run this whole sweep.",
+          "The range argument is the other half of that decision: it is what lets the later parts fix an entry and hand down the suffix without copying anything.",
+          "After a hit I step both cursors past every entry carrying the amounts I just used. Two entries of the same amount are one explanation for a reconciler.",
+          "A hit can only land on a block boundary, because moving inside a run of equal amounts leaves the sum unchanged. So I name the first entry of each amount rather than wherever the cursor stopped.",
+          "The triple case fixes an entry and asks the pair question of the suffix. The outer skip is the same argument as the inner ones, one level up.",
+          "The nearest triple is the same enumeration reading the other field. Nothing about the sweep is rewritten, which is exactly what the return type bought.",
+          "The general case bottoms out at two entries left, not three, or I would have a second copy of the triple logic inside the recursion.",
+          "The magnitude ceiling is checked when the file is opened, so the sweep needs no overflow guard. Swift traps on Int overflow in release too, and a trap ends the process rather than failing a test."
+        ],
+        "checkIn": "Before writing the sweep I would say: I am going to return both the exact matches and the closest miss from this, even though you have only asked for the matches. The reason is that the nearest-set question is coming and a matches-only answer would make me write this loop twice. If you would rather see the smaller signature first, say so now, because retrofitting it later is the expensive direction."
+      },
+      "verification": {
+        "walkthroughs": [
+          "Walk a six-entry file of minus four, minus one, minus one, nothing, one and two against a target of one: the sweep finds minus one with two, and nothing with one.",
+          "Walk the same file against a target of nothing: minus one with one is the only pair, once rather than twice, because the second entry carrying minus one is the same explanation.",
+          "Walk the triples of that file against a target of nothing: minus one with minus one and two, and minus one with nothing and one.",
+          "Walk the nearest triple against a target of a hundred: nothing, one and two total three, and nothing in the file gets closer.",
+          "Walk a file of minus five followed by three zeros and confirm the pair netting to nothing names the first two zeros, not the last two."
+        ],
+        "tests": "Run the finder's suite and read the four parts in order. The repeated-amount fixtures are what catch the skips, and the file of minus five followed by three zeros is what catches naming the wrong witness. The fourth suite asserts the composition directly: groups of three equal the triples and groups of two equal a whole-file scan, on every fixture and every target. Every part is also checked against an independently written enumeration of all combinations, which shares none of the recurrence's machinery.",
+        "complexity": "The sweep is linear in the range it is given after the file is already sorted, and the reduction is one order of magnitude worse per extra entry: triples are quadratic, the general case is the file's length to the power of the group size minus one. Space is the recursion depth and the answer, and nothing else, which is the constraint the framing set. The alternative worth naming out loud is the hash index: it makes the pair question linear, and it is exactly what the memory budget forbids.",
+        "moreTime": "Netting with a tolerance rather than an exact target, which turns each hit into a band and changes what the cursors may discard. Weighted or signed constraints, such as requiring at least one credit and one debit in every set, which prunes the enumeration rather than the sweep. And streaming the file in pages, where the sweep survives but the recursion's suffix handling does not, which is the honest limit of this design."
+      },
+      "code": "public struct LedgerEntry: Equatable, Sendable {\n    public let id: String\n    public let amountMinor: Int\n\n    public init(id: String, amountMinor: Int) {\n        self.id = id\n        self.amountMinor = amountMinor\n    }\n}\n\npublic struct EntrySet: Equatable, Sendable {\n    public let entryIDs: [String]\n    public let total: Int\n\n    public init(entryIDs: [String], total: Int) {\n        self.entryIDs = entryIDs\n        self.total = total\n    }\n}\n\npublic struct PairScan: Equatable, Sendable {\n    public let exactMatches: [EntrySet]\n    public let nearest: EntrySet?\n\n    public init(exactMatches: [EntrySet], nearest: EntrySet?) {\n        self.exactMatches = exactMatches\n        self.nearest = nearest\n    }\n}\n\npublic enum NettingError: Error, Equatable, Sendable {\n    case unsortedLedger(index: Int)\n    case nonPositiveGroupSize(Int)\n    case groupSizeExceedsLedger(Int)\n    case groupSizeExceedsSupportedMaximum(k: Int, maximum: Int)\n    case amountRangeUnsupported(maxAbsoluteAmount: Int)\n    case notImplemented\n}\n\npublic struct NettingFinder: Sendable {\n    /// The largest group this finder will assemble. Sums of up to this many\n    /// amounts are what the range guard below is sized against.\n    public static let maxGroupSize = 8\n\n    /// The ceiling on a single entry's magnitude. It is a machine limit rather\n    /// than an accounting one: Swift traps on `Int` overflow in debug and in\n    /// release alike, so a sum that does not fit ends the process instead of\n    /// returning a wrong number. Bounding a single amount here is what makes\n    /// every sum of up to `maxGroupSize` amounts safe without a check inside\n    /// the sweep.\n    public static let maxAbsoluteAmount = Int.max / (maxGroupSize + 1)\n\n    private let ledger: [LedgerEntry]\n\n    public init(ledger: [LedgerEntry]) throws(NettingError) {\n        for (index, entry) in ledger.enumerated() {\n            guard entry.amountMinor.magnitude <= UInt(Self.maxAbsoluteAmount) else {\n                throw .amountRangeUnsupported(maxAbsoluteAmount: Self.maxAbsoluteAmount)\n            }\n            guard index > 0 else { continue }\n            let previous = ledger[index - 1]\n            let ordered = previous.amountMinor < entry.amountMinor\n                || (previous.amountMinor == entry.amountMinor && previous.id <= entry.id)\n            guard ordered else { throw .unsortedLedger(index: index) }\n        }\n        self.ledger = ledger\n    }\n\n    /// The day-file as read, for a caller that wants to check what it handed in.\n    public var entries: [LedgerEntry] { ledger }\n\n    // MARK: Part 1 - Scan one range for pairs\n\n    /// Every pair inside `range` whose amounts net to `target`, plus the pair\n    /// that came closest whether or not any of them landed.\n    ///\n    /// Two cursors converge from the ends of the range. Sortedness is what\n    /// makes that legal: when the running sum is under the target the only way\n    /// to raise it is to give up the smallest amount still in play, and when it\n    /// is over, the only way to lower it is to give up the largest.\n    ///\n    /// The nearest pair rides along rather than being computed by a second\n    /// sweep, because the callers in later parts need it. A method that\n    /// returned only the exact matches would force each of them to re-run this\n    /// whole sweep with a different accumulator, which is the same algorithm\n    /// written twice.\n    ///\n    /// Two sets naming the same amounts are one explanation for a reconciler,\n    /// so a repeated amount is consumed once: after a hit, both cursors step\n    /// past every entry carrying the amount they just used, and every reported\n    /// set names the earliest entries carrying its amounts.\n    public func scanPairs(summingTo target: Int, in range: Range<Int>) -> PairScan {\n        var lo = max(range.lowerBound, 0)\n        var hi = min(range.upperBound, ledger.count) - 1\n\n        var exactMatches: [EntrySet] = []\n        var nearest: EntrySet?\n\n        while lo < hi {\n            let sum = ledger[lo].amountMinor + ledger[hi].amountMinor\n\n            if isCloser(sum, than: nearest, to: target) {\n                nearest = set(at: [lo, earliestWitness(of: hi, after: lo)], total: sum)\n            }\n\n            if sum == target {\n                exactMatches.append(set(at: [lo, earliestWitness(of: hi, after: lo)], total: sum))\n\n                let lowAmount = ledger[lo].amountMinor\n                let highAmount = ledger[hi].amountMinor\n                while lo < hi, ledger[lo].amountMinor == lowAmount { lo += 1 }\n                while lo < hi, ledger[hi].amountMinor == highAmount { hi -= 1 }\n            } else if sum < target {\n                lo += 1\n            } else {\n                hi -= 1\n            }\n        }\n\n        return PairScan(exactMatches: exactMatches, nearest: nearest)\n    }\n\n    // MARK: Part 2 - Triples\n\n    /// Every distinct set of three entries netting to `target`.\n    ///\n    /// The sweep from Part 1 becomes the inner loop. Fixing the first entry\n    /// turns the question into a pair question over the suffix after it, which\n    /// is the whole reduction, and the range argument is what lets that suffix\n    /// be handed down without copying the file.\n    ///\n    /// Duplicate suppression happens in two places and both are needed. The\n    /// outer loop skips an amount equal to the one it just used, because that\n    /// entry would ask the same question of a shorter suffix and get back a\n    /// subset of the same answers. The inner skips live in Part 1.\n    public func triples(summingTo target: Int) -> [EntrySet] {\n        var results: [EntrySet] = []\n        guard ledger.count >= 3 else { return results }\n\n        for index in 0...(ledger.count - 3) {\n            if index > 0, ledger[index].amountMinor == ledger[index - 1].amountMinor { continue }\n\n            let scan = scanPairs(\n                summingTo: residual(of: target, minus: ledger[index].amountMinor),\n                in: (index + 1)..<ledger.count\n            )\n            for pair in scan.exactMatches {\n                results.append(prepending(index, to: pair))\n            }\n        }\n\n        return results\n    }\n\n    // MARK: Part 3 - Nearest triple when nothing nets exactly\n\n    /// The set of three entries whose total comes closest to `target`.\n    ///\n    /// This is the same outer enumeration as Part 2 reading the other half of\n    /// what Part 1 already returns. Nothing about the sweep is rewritten, which\n    /// is exactly what the richer return type bought.\n    ///\n    /// Ties resolve to the lower total, and then to the entries that appear\n    /// earlier in the file, so two runs over one day-file cannot disagree.\n    public func closestTriple(to target: Int) -> EntrySet? {\n        guard ledger.count >= 3 else { return nil }\n\n        var best: EntrySet?\n        for index in 0...(ledger.count - 3) {\n            if index > 0, ledger[index].amountMinor == ledger[index - 1].amountMinor { continue }\n\n            let scan = scanPairs(\n                summingTo: residual(of: target, minus: ledger[index].amountMinor),\n                in: (index + 1)..<ledger.count\n            )\n            guard let pair = scan.nearest else { continue }\n\n            let candidate = prepending(index, to: pair)\n            if isCloser(candidate.total, than: best, to: target) {\n                best = candidate\n            }\n        }\n\n        return best\n    }\n\n    // MARK: Part 4 - The general k-entry reduction\n\n    /// Every distinct set of exactly `k` entries netting to `target`.\n    ///\n    /// The reduction is the point: a k-sum is a (k - 1)-sum over each suffix,\n    /// and the recursion bottoms out in exactly one call to the Part 1 sweep\n    /// when two entries are left to place. There is one sweep in this file and\n    /// four questions asked of it.\n    public func groups(ofSize k: Int, summingTo target: Int) throws(NettingError) -> [EntrySet] {\n        guard k > 0 else { throw .nonPositiveGroupSize(k) }\n        guard k <= Self.maxGroupSize else {\n            throw .groupSizeExceedsSupportedMaximum(k: k, maximum: Self.maxGroupSize)\n        }\n        guard k <= ledger.count else { throw .groupSizeExceedsLedger(k) }\n\n        return reduce(k: k, summingTo: target, from: 0)\n    }\n\n    // MARK: The reduction, and the pieces every part shares\n\n    private func reduce(k: Int, summingTo target: Int, from start: Int) -> [EntrySet] {\n        if k == 2 {\n            return scanPairs(summingTo: target, in: start..<ledger.count).exactMatches\n        }\n        if k == 1 {\n            guard let index = (start..<ledger.count).first(where: { ledger[$0].amountMinor == target })\n            else { return [] }\n            return [set(at: [index], total: target)]\n        }\n\n        var results: [EntrySet] = []\n        var index = start\n        while index <= ledger.count - k {\n            defer { index += 1 }\n            if index > start, ledger[index].amountMinor == ledger[index - 1].amountMinor { continue }\n\n            let deeper = reduce(\n                k: k - 1,\n                summingTo: residual(of: target, minus: ledger[index].amountMinor),\n                from: index + 1\n            )\n            for group in deeper {\n                results.append(prepending(index, to: group))\n            }\n        }\n\n        return results\n    }\n\n    private func set(at indices: [Int], total: Int) -> EntrySet {\n        EntrySet(entryIDs: indices.map { ledger[$0].id }, total: total)\n    }\n\n    private func prepending(_ index: Int, to group: EntrySet) -> EntrySet {\n        EntrySet(\n            entryIDs: [ledger[index].id] + group.entryIDs,\n            total: ledger[index].amountMinor + group.total\n        )\n    }\n\n    /// The target the rest of a group has to reach once one entry is fixed.\n    ///\n    /// A caller may pass any `Int` as a target, and the entry amounts are\n    /// bounded but the target is not, so this subtraction is the one place in\n    /// the file where overflow is reachable. Saturating is the right answer\n    /// rather than trapping or wrapping: a residual that does not fit in an\n    /// `Int` is one no bounded group of amounts can ever reach, and the\n    /// saturated value behaves exactly like the unreachable target it stands\n    /// for, including for the nearest-miss question.\n    private func residual(of target: Int, minus amount: Int) -> Int {\n        let (value, overflowed) = target.subtractingReportingOverflow(amount)\n        guard overflowed else { return value }\n        return amount < 0 ? Int.max : Int.min\n    }\n\n    /// How far a total sits from the target, saturating rather than trapping\n    /// for the same reason the residual does.\n    private func distance(_ total: Int, to target: Int) -> Int {\n        let (value, overflowed) = total.subtractingReportingOverflow(target)\n        guard !overflowed, value != Int.min else { return Int.max }\n        return value < 0 ? -value : value\n    }\n\n    /// The earliest entry after `lo` carrying the same amount as `index`.\n    ///\n    /// A hit can only land on a block boundary, because advancing a cursor\n    /// inside a run of equal amounts leaves the sum unchanged. So the low\n    /// cursor is already on the first entry carrying its amount while the high\n    /// cursor is on the last entry carrying its own, and naming the first of\n    /// both is what makes a reported set the earliest witness rather than\n    /// whichever entry the sweep happened to stop on.\n    private func earliestWitness(of index: Int, after lo: Int) -> Int {\n        let amount = ledger[index].amountMinor\n        var witness = index\n        while witness - 1 > lo, ledger[witness - 1].amountMinor == amount {\n            witness -= 1\n        }\n        return witness\n    }\n\n    /// The nearest-miss ordering, stated once so Parts 1 and 3 cannot drift:\n    /// closer wins, then the lower total, then the entries that appear earlier\n    /// in the file, which the sweep and the outer enumeration both reach first.\n    private func isCloser(_ total: Int, than current: EntrySet?, to target: Int) -> Bool {\n        guard let current else { return true }\n\n        let candidate = distance(total, to: target)\n        let incumbent = distance(current.total, to: target)\n        if candidate != incumbent { return candidate < incumbent }\n        return total < current.total\n    }\n}\n"
+    }
   }
 }

@@ -162,6 +162,12 @@ if [[ "$ANSWER_ABS" == *.swift ]]; then
     elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem35RedirectChainResolver/Problem.swift" ]]; then
         PROBLEM_ID="35_redirect_chain_resolver"
         SAME_FILE=1
+    elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem36DispatchWindowMatcher/Problem.swift" ]]; then
+        PROBLEM_ID="36_dispatch_window_matcher"
+        SAME_FILE=1
+    elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem37LedgerNettingFinder/Problem.swift" ]]; then
+        PROBLEM_ID="37_ledger_netting_finder"
+        SAME_FILE=1
     elif [[ "$ANSWER_BASENAME" =~ (^|_)([0-9][0-9]_[a-z0-9_]+)\.swift$ ]]; then
         PROBLEM_ID="${BASH_REMATCH[2]}"
     else
@@ -194,6 +200,8 @@ if [[ "$ANSWER_ABS" == *.swift ]]; then
         33_firmware_telemetry_buffer_compactor) ACTIVE_REL="Sources/Problem33FirmwareTelemetryBufferCompactor/Problem.swift" ;;
         34_floodplain_ponding_analyzer) ACTIVE_REL="Sources/Problem34FloodplainPondingAnalyzer/Problem.swift" ;;
         35_redirect_chain_resolver) ACTIVE_REL="Sources/Problem35RedirectChainResolver/Problem.swift" ;;
+        36_dispatch_window_matcher) ACTIVE_REL="Sources/Problem36DispatchWindowMatcher/Problem.swift" ;;
+        37_ledger_netting_finder) ACTIVE_REL="Sources/Problem37LedgerNettingFinder/Problem.swift" ;;
         *) echo "Error: unknown Swift problem ID '$PROBLEM_ID'; no target mapping exists."; exit 1 ;;
     esac
     if [[ "${CMD[0]}" != "swift" || "${CMD[1]:-}" != "test" ]]; then

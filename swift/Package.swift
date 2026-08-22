@@ -29,7 +29,9 @@ let package = Package(
         .library(name: "Problem32StorageArbitrageScheduler", targets: ["Problem32StorageArbitrageScheduler"]),
         .library(name: "Problem33FirmwareTelemetryBufferCompactor", targets: ["Problem33FirmwareTelemetryBufferCompactor"]),
         .library(name: "Problem34FloodplainPondingAnalyzer", targets: ["Problem34FloodplainPondingAnalyzer"]),
-        .library(name: "Problem35RedirectChainResolver", targets: ["Problem35RedirectChainResolver"])
+        .library(name: "Problem35RedirectChainResolver", targets: ["Problem35RedirectChainResolver"]),
+        .library(name: "Problem36DispatchWindowMatcher", targets: ["Problem36DispatchWindowMatcher"]),
+        .library(name: "Problem37LedgerNettingFinder", targets: ["Problem37LedgerNettingFinder"])
     ],
     targets: [
         .target(name: "Problem03PermissionManager"),
@@ -81,6 +83,10 @@ let package = Package(
         .target(name: "Problem34FloodplainPondingAnalyzer"),
         .testTarget(name: "Problem34FloodplainPondingAnalyzerTests", dependencies: ["Problem34FloodplainPondingAnalyzer"]),
         .target(name: "Problem35RedirectChainResolver"),
-        .testTarget(name: "Problem35RedirectChainResolverTests", dependencies: ["Problem35RedirectChainResolver"])
+        .testTarget(name: "Problem35RedirectChainResolverTests", dependencies: ["Problem35RedirectChainResolver"]),
+        .target(name: "Problem36DispatchWindowMatcher"),
+        .testTarget(name: "Problem36DispatchWindowMatcherTests", dependencies: ["Problem36DispatchWindowMatcher"]),
+        .target(name: "Problem37LedgerNettingFinder"),
+        .testTarget(name: "Problem37LedgerNettingFinderTests", dependencies: ["Problem37LedgerNettingFinder"])
     ]
 )
