@@ -8385,6 +8385,162 @@ window.JOURNEY_PROBLEMS = {
       }
     }
   },
+  "swift-73": {
+    "id": "swift-73",
+    "title": "Course Prerequisite Order",
+    "description": "Use Kahn's in-degree queue to put courses after their prerequisites, detect cycles, and group ready courses into parallel waves.",
+    "language": "swift",
+    "industry": "general",
+    "tags": [
+      "topological-sort",
+      "graph-traversal",
+      "in-degree",
+      "dependencies"
+    ],
+    "level": "mid-level",
+    "stubPath": "swift/practice_problems/problem_73_course_prerequisite_order.swift",
+    "testPath": "swift/Tests/Problem73CoursePrerequisiteOrderTests/Problem73CoursePrerequisiteOrderTests.swift",
+    "sourceScript": "journey-sources/swift-73.js",
+    "lessonAvailable": true,
+    "lessonScript": "journey-lessons/swift-73.js",
+    "example": "let planner = CoursePlanner()\nlet courses = [\n    Course(id: \"basics\"),\n    Course(id: \"swift\", prerequisites: [\"basics\"]),\n    Course(id: \"app\", prerequisites: [\"swift\"]),\n]\ntry planner.order(courses)          // -> [\"basics\", \"swift\", \"app\"]\ntry planner.canFinish(courses)      // -> true\ntry planner.parallelWaves(courses)  // -> [[\"basics\"], [\"swift\"], [\"app\"]]",
+    "exampleStatus": "canonical",
+    "parts": [
+      {
+        "part": 1,
+        "title": "A valid order",
+        "contract": "Implement order for acyclic inputs. Emit each course exactly once, after\nevery prerequisite. Include independent courses and disconnected components.\nBuild one private traverse helper for the in-degree queue; order projects\nits order field. The helper's waves field may stay empty until Part 3.\nAim for O(V + E) time and space, where V is courses and E is prerequisites.\nArray.removeFirst() shifts the queue: use an advancing head index instead.\nFunctional tests cannot enforce the algorithm choice or its running time."
+      },
+      {
+        "part": 2,
+        "title": "Detect a cycle",
+        "contract": "Extend the shared traversal to throw CoursePlanError.cycleDetected when the\nqueue empties before all courses have been emitted. Never return a partial\norder as success, even when a separate component can finish.\nImplement canFinish by calling order: true on success, false on a cycle.\nPropagate other errors (including the stub's notImplemented error).\nPart 1 tests use only acyclic inputs and do not call canFinish."
+      },
+      {
+        "part": 3,
+        "title": "Parallel waves",
+        "contract": "Extend the same traverse helper to collect waves, then project that field\nfrom parallelWaves. Each wave contains ALL courses ready at its start.\nCourses unlocked during that wave belong to the next one. Each course\ntakes one wave; prerequisites must finish in strictly earlier waves.\nFreeze the queue's end at the start of a wave so newly appended IDs wait.\nReuse Part 2's cycle check; cyclic input throws instead of returning partial\nwaves. Keep order working without calling the later public method.\n\npublic struct Course: Equatable, Sendable {\n    public let id: String\n    public let prerequisites: [String]\n\n    public init(id: String, prerequisites: [String] = []) {\n        self.id = id\n        self.prerequisites = prerequisites\n    }\n}\n\npublic enum CoursePlanError: Error, Equatable, Sendable {\n    case cycleDetected\n    case notImplemented\n}\n\npublic struct CoursePlanner: Sendable {\n    public init() {}\n\nMARK: Part 1 — A valid order\n    public func order(_ courses: [Course]) throws(CoursePlanError) -> [String] {\n        throw .notImplemented\n    }\n\nMARK: Part 2 — Detect a cycle\n    public func canFinish(_ courses: [Course]) throws(CoursePlanError) -> Bool {\n        throw .notImplemented\n    }\n\nMARK: Part 3 — Parallel waves\n    public func parallelWaves(_ courses: [Course]) throws(CoursePlanError) -> [[String]] {\n        throw .notImplemented\n    }\n\nShared seam: implement for Part 1, extend for Parts 2 and 3.\n    private func traverse(_ courses: [Course]) throws(CoursePlanError)\n        -> (order: [String], waves: [[String]]) {\n        throw .notImplemented\n    }\n}"
+      }
+    ],
+    "testSuites": [
+      "Part 1 — A valid order",
+      "Part 2 — Detect a cycle",
+      "Part 3 — Parallel waves"
+    ],
+    "partSuites": [
+      [
+        "Part 1 — A valid order"
+      ],
+      [
+        "Part 2 — Detect a cycle"
+      ],
+      [
+        "Part 3 — Parallel waves"
+      ]
+    ],
+    "commands": {
+      "answerPath": "swift/practice_problem_answers/my_answer_73_course_prerequisite_order.swift",
+      "copyCommand": "cp swift/practice_problems/problem_73_course_prerequisite_order.swift swift/practice_problem_answers/my_answer_73_course_prerequisite_order.swift",
+      "openCommand": "code swift/practice_problems/problem_73_course_prerequisite_order.swift",
+      "testCommand": "./run_tests.sh -f swift/practice_problem_answers/my_answer_73_course_prerequisite_order.swift -c swift test --filter Problem73CoursePrerequisiteOrderTests",
+      "partTestCommands": [
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_73_course_prerequisite_order.swift -c swift test --filter Problem73CoursePrerequisiteOrderTests.CoursePrerequisiteOrderPart1Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_73_course_prerequisite_order.swift -c swift test --filter Problem73CoursePrerequisiteOrderTests.CoursePrerequisiteOrderPart2Tests",
+        "./run_tests.sh -f swift/practice_problem_answers/my_answer_73_course_prerequisite_order.swift -c swift test --filter Problem73CoursePrerequisiteOrderTests.CoursePrerequisiteOrderPart3Tests"
+      ]
+    },
+    "guide": {
+      "approach": [
+        {
+          "part": 1,
+          "prompt": "What does a course's in-degree count, and which courses can enter the queue first?",
+          "concepts": [
+            "remaining prerequisites",
+            "prerequisite-to-dependent adjacency",
+            "a queue with an advancing head"
+          ],
+          "steps": [
+            "Sketch the edge direction before choosing the adjacency index.",
+            "Account for every listed course, including those with no edges.",
+            "Explain what must become true before a dependent enters the queue.",
+            "Keep the traversal in the shared helper so later parts can extend it."
+          ],
+          "pitfalls": [
+            "Counting outgoing edges instead of unfinished prerequisites.",
+            "Queueing a course after just one of several prerequisites finishes.",
+            "Using removeFirst or repeatedly scanning all courses breaks the O(V + E) goal; functional tests do not measure complexity."
+          ]
+        },
+        {
+          "part": 2,
+          "prompt": "When the queue empties, what distinguishes finishing the graph from getting stuck?",
+          "concepts": [
+            "emitted count",
+            "blocked remainder",
+            "typed cycle failure"
+          ],
+          "steps": [
+            "Compare the traversal's coverage with the input before returning success.",
+            "Let canFinish translate the existing ordering outcome.",
+            "Consider a cycle in a component separate from ready courses."
+          ],
+          "pitfalls": [
+            "Returning a successful prefix even though some courses remain blocked.",
+            "Treating any thrown error as a cycle.",
+            "Adding a second graph walk just to answer feasibility."
+          ]
+        },
+        {
+          "part": 3,
+          "prompt": "How will you distinguish courses ready now from courses unlocked while processing this wave?",
+          "concepts": [
+            "ready frontier",
+            "frozen wave boundary",
+            "one shared traversal"
+          ],
+          "steps": [
+            "Name the queue boundary that remains fixed for a wave.",
+            "Keep newly ready courses behind that boundary until the next wave.",
+            "Return the helper's recorded waves and preserve its cycle outcome."
+          ],
+          "pitfalls": [
+            "Letting a changing queue length extend the current wave.",
+            "Delaying a ready independent course to a later wave.",
+            "Rebuilding a separate ordering or cycle-detection algorithm for waves."
+          ]
+        }
+      ],
+      "verify": {
+        "commonFailures": [
+          {
+            "symptom": "A dependent appears too early",
+            "cause": "The count or edge direction does not model unfinished prerequisites",
+            "check": "Trace a course with several prerequisites and inspect each decrement."
+          },
+          {
+            "symptom": "Independent courses disappear",
+            "cause": "Only courses appearing in adjacency lists enter the traversal",
+            "check": "Compare the initial queue candidates with all listed courses."
+          },
+          {
+            "symptom": "A graph with a cycle returns a short successful order",
+            "cause": "Empty queue is mistaken for complete coverage",
+            "check": "Inspect what happens to courses never emitted by the traversal."
+          },
+          {
+            "symptom": "A wave contains a course and its prerequisite",
+            "cause": "New arrivals extend the current frontier",
+            "check": "Track which queue endpoint is fixed while the wave runs."
+          },
+          {
+            "symptom": "Later calls disagree with a fresh planner",
+            "cause": "In-degree counts survive from an earlier traversal",
+            "check": "Rebuild local counts for each call and leave the input unchanged."
+          }
+        ]
+      }
+    }
+  },
   "swift-71": {
     "id": "swift-71",
     "title": "Allocation Yield Optimiser",

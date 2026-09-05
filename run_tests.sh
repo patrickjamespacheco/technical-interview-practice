@@ -183,6 +183,9 @@ if [[ "$ANSWER_ABS" == *.swift ]]; then
     elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem72FilingDeadlineSequencer/Problem.swift" ]]; then
         PROBLEM_ID="72_filing_deadline_sequencer"
         SAME_FILE=1
+    elif [[ "$ANSWER_ABS" -ef "$SWIFT_ROOT/Sources/Problem73CoursePrerequisiteOrder/Problem.swift" ]]; then
+        PROBLEM_ID="73_course_prerequisite_order"
+        SAME_FILE=1
     elif [[ "$ANSWER_BASENAME" =~ (^|_)([0-9][0-9]_[a-z0-9_]+)\.swift$ ]]; then
         PROBLEM_ID="${BASH_REMATCH[2]}"
     else
@@ -222,6 +225,7 @@ if [[ "$ANSWER_ABS" == *.swift ]]; then
         70_depot_charger_capacity_sizer) ACTIVE_REL="Sources/Problem70DepotChargerCapacitySizer/Problem.swift" ;;
         71_allocation_yield_optimiser) ACTIVE_REL="Sources/Problem71AllocationYieldOptimiser/Problem.swift" ;;
         72_filing_deadline_sequencer) ACTIVE_REL="Sources/Problem72FilingDeadlineSequencer/Problem.swift" ;;
+        73_course_prerequisite_order) ACTIVE_REL="Sources/Problem73CoursePrerequisiteOrder/Problem.swift" ;;
         *) echo "Error: unknown Swift problem ID '$PROBLEM_ID'; no target mapping exists."; exit 1 ;;
     esac
     if [[ "${CMD[0]}" != "swift" || "${CMD[1]:-}" != "test" ]]; then

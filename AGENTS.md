@@ -660,3 +660,10 @@ Rules when editing it:
 - The Python/Swift choice is page-wide and persists in `localStorage` under `practice-patterns.code-language`, mirroring how `index.html` persists its language filter.
 - A "Practice it" block links to a catalogue tag only when that tag actually returns problems. Where nothing drills the family, the page says so in one line rather than linking to an empty filter. Do not retag existing problems to manufacture a link.
 - No third-party problem-site names, numbers, or titles anywhere on the page, including code comments and link text.
+
+## Maintaining this file
+
+Keep this file for knowledge useful to almost every future agent session in this project.
+Do not repeat what the codebase already shows; point to the authoritative file or command instead.
+Prefer rewriting or pruning existing entries over appending new ones.
+When updating this file, preserve this bar for all agents and keep entries concise.
