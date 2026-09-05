@@ -7065,6 +7065,205 @@
       "reflection": "Greedy is a proof about preserved future options. Here the furthest reachable end dominates every shorter eligible choice, while a handoff requirement changes eligibility without changing that dominance."
     }
   },
+  "swift-73": {
+    "approach": [
+      {
+        "part": 1,
+        "prompt": "What does a course's in-degree count, and which courses can enter the queue first?",
+        "concepts": [
+          "remaining prerequisites",
+          "prerequisite-to-dependent adjacency",
+          "a queue with an advancing head"
+        ],
+        "steps": [
+          "Sketch the edge direction before choosing the adjacency index.",
+          "Account for every listed course, including those with no edges.",
+          "Explain what must become true before a dependent enters the queue.",
+          "Keep the traversal in the shared helper so later parts can extend it."
+        ],
+        "pitfalls": [
+          "Counting outgoing edges instead of unfinished prerequisites.",
+          "Queueing a course after just one of several prerequisites finishes.",
+          "Using removeFirst or repeatedly scanning all courses breaks the O(V + E) goal; functional tests do not measure complexity."
+        ]
+      },
+      {
+        "part": 2,
+        "prompt": "When the queue empties, what distinguishes finishing the graph from getting stuck?",
+        "concepts": [
+          "emitted count",
+          "blocked remainder",
+          "typed cycle failure"
+        ],
+        "steps": [
+          "Compare the traversal's coverage with the input before returning success.",
+          "Let canFinish translate the existing ordering outcome.",
+          "Consider a cycle in a component separate from ready courses."
+        ],
+        "pitfalls": [
+          "Returning a successful prefix even though some courses remain blocked.",
+          "Treating any thrown error as a cycle.",
+          "Adding a second graph walk just to answer feasibility."
+        ]
+      },
+      {
+        "part": 3,
+        "prompt": "How will you distinguish courses ready now from courses unlocked while processing this wave?",
+        "concepts": [
+          "ready frontier",
+          "frozen wave boundary",
+          "one shared traversal"
+        ],
+        "steps": [
+          "Name the queue boundary that remains fixed for a wave.",
+          "Keep newly ready courses behind that boundary until the next wave.",
+          "Return the helper's recorded waves and preserve its cycle outcome."
+        ],
+        "pitfalls": [
+          "Letting a changing queue length extend the current wave.",
+          "Delaying a ready independent course to a later wave.",
+          "Rebuilding a separate ordering or cycle-detection algorithm for waves."
+        ]
+      }
+    ],
+    "verify": {
+      "commonFailures": [
+        {
+          "symptom": "A dependent appears too early",
+          "cause": "The count or edge direction does not model unfinished prerequisites",
+          "check": "Trace a course with several prerequisites and inspect each decrement."
+        },
+        {
+          "symptom": "Independent courses disappear",
+          "cause": "Only courses appearing in adjacency lists enter the traversal",
+          "check": "Compare the initial queue candidates with all listed courses."
+        },
+        {
+          "symptom": "A graph with a cycle returns a short successful order",
+          "cause": "Empty queue is mistaken for complete coverage",
+          "check": "Inspect what happens to courses never emitted by the traversal."
+        },
+        {
+          "symptom": "A wave contains a course and its prerequisite",
+          "cause": "New arrivals extend the current frontier",
+          "check": "Track which queue endpoint is fixed while the wave runs."
+        },
+        {
+          "symptom": "Later calls disagree with a fresh planner",
+          "cause": "In-degree counts survive from an earlier traversal",
+          "check": "Rebuild local counts for each call and leave the input unchanged."
+        }
+      ]
+    },
+    "lesson": {
+      "parts": [
+        {
+          "part": 1,
+          "steps": [
+            {
+              "explanation": "Course is the provided input record. Its prerequisite list names incoming edges; the enum gives the public methods typed failures. Inputs are already valid, so there is no validation layer to build.",
+              "code": "public struct Course: Equatable, Sendable {\n    public let id: String\n    public let prerequisites: [String]\n\n    public init(id: String, prerequisites: [String] = []) {\n        self.id = id\n        self.prerequisites = prerequisites\n    }\n}\n\npublic enum CoursePlanError: Error, Equatable, Sendable {\n    case cycleDetected\n    case notImplemented\n}\n\n"
+            },
+            {
+              "explanation": "Build the reverse index from prerequisite to dependents, count each course's prerequisites, and seed every zero-count course. Advancing the queue head completes one course and removes its outgoing edges. A dependent enters exactly when its remaining count reaches zero. The queue itself records the emitted order. Keep waves empty in Part 1; its tests use only acyclic inputs.",
+              "code": "public struct CoursePlanner: Sendable {\n    public init() {}\n\n    public func order(_ courses: [Course]) throws(CoursePlanError) -> [String] {\n        try traverse(courses).order\n    }\n\n    private func traverse(_ courses: [Course]) throws(CoursePlanError)\n        -> (order: [String], waves: [[String]]) {\n        var inDegree: [String: Int] = [:]\n        var dependents: [String: [String]] = [:]\n        for course in courses {\n            inDegree[course.id] = course.prerequisites.count\n            for prerequisite in course.prerequisites {\n                dependents[prerequisite, default: []].append(course.id)\n            }\n        }\n\n        var queue = courses.filter { inDegree[$0.id] == 0 }.map(\\.id)\n        var head = 0\n        while head < queue.count {\n            let id = queue[head]\n            head += 1\n            for dependent in dependents[id, default: []] {\n                inDegree[dependent, default: 0] -= 1\n                if inDegree[dependent] == 0 {\n                    queue.append(dependent)\n                }\n            }\n        }\n        return (order: queue, waves: [])\n    }\n}\n",
+              "rejected": "Repeatedly scanning the entire course list for newly ready work duplicates effort. Array.removeFirst also shifts every remaining element; a head index keeps queue removal constant time."
+            }
+          ]
+        },
+        {
+          "part": 2,
+          "steps": [
+            {
+              "explanation": "Replace the final return in traverse with this coverage check and return. Once the queue is exhausted, every queued course has been emitted. A smaller count leaves a subgraph with no zero-in-degree course, which proves a cycle. The blocked remainder may include courses downstream of a cycle, so we report the existence of a cycle without claiming to identify its members.",
+              "code": "guard queue.count == courses.count else { throw .cycleDetected }\nreturn (order: queue, waves: [])"
+            },
+            {
+              "explanation": "Add canFinish inside CoursePlanner. It calls order, translating only the known cycle error to false. This makes feasibility and ordering share the same traversal and prevents an unfinished stub from masquerading as a cyclic graph.",
+              "code": "    public func canFinish(_ courses: [Course]) throws(CoursePlanError) -> Bool {\n        do {\n            _ = try order(courses)\n            return true\n        } catch {\n            if error == .cycleDetected { return false }\n            throw error\n        }\n    }",
+              "rejected": "A blanket catch returning false would hide unrelated errors, including notImplemented during practice."
+            }
+          ]
+        },
+        {
+          "part": 3,
+          "steps": [
+            {
+              "explanation": "Replace traverse with this version. Freeze the queue's end, copy the ready slice as a wave, and process only that slice. Newly unlocked courses append beyond the boundary. The outer loop begins the next wave, and the existing coverage check still rejects a partial result. Every course is copied into exactly one wave, preserving linear total work.",
+              "code": "    private func traverse(_ courses: [Course]) throws(CoursePlanError)\n        -> (order: [String], waves: [[String]]) {\n        var inDegree: [String: Int] = [:]\n        var dependents: [String: [String]] = [:]\n        for course in courses {\n            inDegree[course.id] = course.prerequisites.count\n            for prerequisite in course.prerequisites {\n                dependents[prerequisite, default: []].append(course.id)\n            }\n        }\n\n        // Include every source, even isolated courses in another component.\n        var queue = courses.filter { inDegree[$0.id] == 0 }.map(\\.id)\n        var head = 0\n        var waves: [[String]] = []\n        while head < queue.count {\n            // New arrivals are ready for the next wave, not this one.\n            let waveEnd = queue.count\n            waves.append(Array(queue[head..<waveEnd]))\n            while head < waveEnd {\n                let id = queue[head]\n                head += 1\n                for dependent in dependents[id, default: []] {\n                    inDegree[dependent, default: 0] -= 1\n                    if inDegree[dependent] == 0 {\n                        queue.append(dependent)\n                    }\n                }\n            }\n        }\n\n        // A blocked remainder proves a cycle; it may also contain courses\n        // downstream of that cycle, so it is not a list of cycle members.\n        guard queue.count == courses.count else { throw .cycleDetected }\n        return (order: queue, waves: waves)\n    }\n"
+            },
+            {
+              "explanation": "Add parallelWaves inside CoursePlanner as the second projection of traverse. The earlier order method still works without calling this later public method. Courses within a wave may appear in any order; every prerequisite belongs to an earlier wave.",
+              "code": "    public func parallelWaves(_ courses: [Course]) throws(CoursePlanError) -> [[String]] {\n        try traverse(courses).waves\n    }"
+            }
+          ]
+        }
+      ],
+      "reflection": "One remaining-prerequisite invariant supplies three answers: the queue records a valid order, missing coverage proves a cycle, and frozen queue boundaries expose independent waves. Extra views of the same traversal do not need extra algorithms."
+    },
+    "execution": {
+      "timeBudget": {
+        "navigation": 5,
+        "solution": 8,
+        "coding": 25,
+        "verification": 7
+      },
+      "navigation": {
+        "say": "I will use Kahn's in-degree queue to order the courses, report whether a cycle blocks completion, and group ready courses into parallel waves.",
+        "questions": [
+          "Are all prerequisite IDs listed, with no duplicate courses or prerequisite entries?",
+          "Can ready courses appear in any order, and does every course take one wave?"
+        ],
+        "assumptions": "The supplied contract guarantees valid IDs and unique prerequisite entries. Any valid order is accepted; there is no sorting tie-break. Self prerequisites are allowed input and mean a cycle. Each call computes from the original course list.",
+        "edgeCases": [
+          "Empty input: empty order, true feasibility, no waves.",
+          "A single independent course, several sources, and disconnected chains.",
+          "A self-loop, a directed cycle, and a separate ready component beside a cycle."
+        ],
+        "restate": "Every course appears once after its prerequisites, or the ordering throws cycleDetected. A parallel wave contains every course whose prerequisites finished in previous waves."
+      },
+      "solution": {
+        "pitch": "Count incoming prerequisites, index outgoing dependents, and queue all zero-count IDs. Consume with a head index, decrement each dependent once per edge, and enqueue on reaching zero. Compare emitted count with input count. Freeze the queue end to record each parallel wave.",
+        "dataStructures": [
+          "[String: Int] for remaining in-degree.",
+          "[String: [String]] from prerequisite to dependent course IDs.",
+          "[String] queue plus an integer head; [[String]] for completed ready frontiers."
+        ],
+        "types": "Course is an immutable value containing id and prerequisites. CoursePlanError distinguishes cycleDetected from the stub marker. CoursePlanner is stateless, and traverse returns a tuple containing order and waves.",
+        "composition": "Part 1 implements traverse and projects order. Part 2 adds the count guard in traverse and implements canFinish by calling order. Part 3 extends that same traverse with wave boundaries and projects waves. No earlier public method calls a later one.",
+        "tradeoff": "The helper collects both outputs even when a caller wants only one. That adds linear storage and keeps the teaching implementation to one traversal. Input validation and sorting are outside this problem's contract.",
+        "trap": "In-degree counts unfinished prerequisites, so adjacency must point from prerequisite to dependent. Enqueue only at zero, and keep the current wave's end fixed while appending newly ready courses."
+      },
+      "coding": {
+        "order": [
+          "Keep the provided Course and error types, then add order as a projection of traverse.",
+          "Implement adjacency, in-degree, the initial queue, and a moving head. Run Part 1 before later methods exist.",
+          "Add the post-traversal count guard and implement canFinish through order.",
+          "Wrap queue consumption in an outer wave loop with a frozen end, then add parallelWaves as a projection."
+        ],
+        "commentary": [
+          "This count is the number of prerequisites still unfinished, not the number of courses depending on this one.",
+          "Every listed course can seed the queue, including one with no edges at all.",
+          "Each edge decrements exactly once; zero is the only moment a dependent becomes ready.",
+          "When the queue is exhausted, a missing course proves we are blocked by a cycle.",
+          "New arrivals are beyond waveEnd, so they cannot run beside their prerequisites."
+        ],
+        "checkIn": "After the order works, trace one branching graph out loud. Before waves, explain why a count mismatch still catches a cycle in another component. After waves, show that order remains a projection of the same helper."
+      },
+      "verification": {
+        "walkthroughs": [
+          "basics -> swift -> app gives order [basics, swift, app], canFinish true, and three singleton waves.",
+          "basics unlocks ui and data; app needs both. Waves are {basics}, {ui, data}, {app}, allowing either order inside the middle wave.",
+          "A free course beside a <-> b emits the free course but leaves the count short: order and waves throw, canFinish returns false.",
+          "Empty input skips the loop, passes the coverage check, and returns two empty outputs."
+        ],
+        "tests": "Run ./run_tests.sh -f swift/practice_problem_answers/reference_answer_73_course_prerequisite_order.swift -c swift test --filter Problem73CoursePrerequisiteOrderTests. Check prerequisite positions and exact node membership rather than one arbitrary sequence; compare wave membership as sets. The suite also compares all 64 three-course directed graphs without self-edges against a permutation oracle. Self-loops have their own tests.",
+        "complexity": "O(V + E) time and space with expected constant-time dictionary operations, treating ID hashing as constant. Each vertex enters the queue once and each edge is processed once. Head indexing avoids Array.removeFirst shifts; repeated full scans or sorting ready IDs would lose the linear bound. Functional tests cannot prove that bound or distinguish Kahn from another algorithm, so inspect the implementation.",
+        "moreTime": "Trace another fan-in graph and explain the cycle proof: if every remaining vertex has an incoming edge from the remainder, repeatedly following such edges in a finite graph must revisit a vertex. Keep this exercise focused on the same queue."
+      },
+      "code": "public struct Course: Equatable, Sendable {\n    public let id: String\n    public let prerequisites: [String]\n\n    public init(id: String, prerequisites: [String] = []) {\n        self.id = id\n        self.prerequisites = prerequisites\n    }\n}\n\npublic enum CoursePlanError: Error, Equatable, Sendable {\n    case cycleDetected\n    case notImplemented\n}\n\npublic struct CoursePlanner: Sendable {\n    public init() {}\n\n    // Part 1: the order is a projection of one Kahn traversal.\n    public func order(_ courses: [Course]) throws(CoursePlanError) -> [String] {\n        try traverse(courses).order\n    }\n\n    // Part 2: reuse the ordering contract, including its cycle check.\n    public func canFinish(_ courses: [Course]) throws(CoursePlanError) -> Bool {\n        do {\n            _ = try order(courses)\n            return true\n        } catch {\n            if error == .cycleDetected { return false }\n            throw error\n        }\n    }\n\n    // Part 3: the same traversal also records the ready frontier per wave.\n    public func parallelWaves(_ courses: [Course]) throws(CoursePlanError) -> [[String]] {\n        try traverse(courses).waves\n    }\n\n    private func traverse(_ courses: [Course]) throws(CoursePlanError)\n        -> (order: [String], waves: [[String]]) {\n        var inDegree: [String: Int] = [:]\n        var dependents: [String: [String]] = [:]\n        for course in courses {\n            inDegree[course.id] = course.prerequisites.count\n            for prerequisite in course.prerequisites {\n                dependents[prerequisite, default: []].append(course.id)\n            }\n        }\n\n        // Include every source, even isolated courses in another component.\n        var queue = courses.filter { inDegree[$0.id] == 0 }.map(\\.id)\n        var head = 0\n        var waves: [[String]] = []\n        while head < queue.count {\n            // New arrivals are ready for the next wave, not this one.\n            let waveEnd = queue.count\n            waves.append(Array(queue[head..<waveEnd]))\n            while head < waveEnd {\n                let id = queue[head]\n                head += 1\n                for dependent in dependents[id, default: []] {\n                    inDegree[dependent, default: 0] -= 1\n                    if inDegree[dependent] == 0 {\n                        queue.append(dependent)\n                    }\n                }\n            }\n        }\n\n        // A blocked remainder proves a cycle; it may also contain courses\n        // downstream of that cycle, so it is not a list of cycle members.\n        guard queue.count == courses.count else { throw .cycleDetected }\n        return (order: queue, waves: waves)\n    }\n}\n"
+    }
+  },
   "swift-71": {
     "approach": [
       {

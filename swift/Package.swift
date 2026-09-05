@@ -36,7 +36,8 @@ let package = Package(
         .library(name: "Problem69RelayCoveragePlanner", targets: ["Problem69RelayCoveragePlanner"]),
         .library(name: "Problem70DepotChargerCapacitySizer", targets: ["Problem70DepotChargerCapacitySizer"]),
         .library(name: "Problem71AllocationYieldOptimiser", targets: ["Problem71AllocationYieldOptimiser"]),
-        .library(name: "Problem72FilingDeadlineSequencer", targets: ["Problem72FilingDeadlineSequencer"])
+        .library(name: "Problem72FilingDeadlineSequencer", targets: ["Problem72FilingDeadlineSequencer"]),
+        .library(name: "Problem73CoursePrerequisiteOrder", targets: ["Problem73CoursePrerequisiteOrder"])
     ],
     targets: [
         .target(name: "Problem03PermissionManager"),
@@ -102,6 +103,8 @@ let package = Package(
         .target(name: "Problem71AllocationYieldOptimiser"),
         .testTarget(name: "Problem71AllocationYieldOptimiserTests", dependencies: ["Problem71AllocationYieldOptimiser"]),
         .target(name: "Problem72FilingDeadlineSequencer"),
-        .testTarget(name: "Problem72FilingDeadlineSequencerTests", dependencies: ["Problem72FilingDeadlineSequencer"])
+        .testTarget(name: "Problem72FilingDeadlineSequencerTests", dependencies: ["Problem72FilingDeadlineSequencer"]),
+        .target(name: "Problem73CoursePrerequisiteOrder"),
+        .testTarget(name: "Problem73CoursePrerequisiteOrderTests", dependencies: ["Problem73CoursePrerequisiteOrder"])
     ]
 )
